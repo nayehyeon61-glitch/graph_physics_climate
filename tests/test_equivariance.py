@@ -162,3 +162,74 @@ def test_diffusion_loss_and_sampling_shapes(graphs):
     mem = diff.sample(ctx, graphs.view(), n_members=2, steps=3, seed=0)
     assert len(mem) == 2 and mem[0].s.shape == (2, G, SPEC.n_s) and mem[0].v.shape == (2, G, SPEC.n_v)
     assert relative_error(mem[0], mem[1]) > 1e-3  # independent seeds -> different members
+
+
+# ----------------------------------------------------------------------------- fixed physics operators
+def test_physics_operators_analytic(graphs):
+    """LS stencil reproduces grad / curl / div of analytic fields on the finest mesh."""
+    from gpclimate.nn.physics_ops import PhysicsOperators, Stencil
+
+    m = graphs.mesh[0]
+    e = graphs.mesh_edges[0]
+    lat = np.deg2rad(m.lat)
+    st = Stencil(e)
+    s = torch.as_tensor(np.sin(lat), dtype=torch.float32)[None, :, None]  # s = z  ->  grad = cos(lat) * north
+    g = st.grad(s)[0, :, 0]
+    expect = 1j * torch.as_tensor(np.cos(lat), dtype=torch.float32) * st.h  # per mean-edge-length unit
+    interior = np.abs(np.cos(lat)) > 0.3
+    err = (g - expect).abs()[interior] / expect.abs()[interior]
+    assert float(err.median()) < 0.05, float(err.median())
+    # solid-body rotation u = cos(lat) east: divergence 0, relative vorticity 2 sin(lat)
+    u = torch.complex(torch.as_tensor(np.cos(lat), dtype=torch.float32), torch.zeros(m.n))[None, :, None]
+    J = st.jacobian(u)[0, :, 0]
+    div = J[0, 0] + J[1, 1] if J.dim() == 2 else J[..., 0, 0] + J[..., 1, 1]
+    curl = J[..., 1, 0] - J[..., 0, 1]
+    curl_expect = 2 * torch.as_tensor(np.sin(lat), dtype=torch.float32) * st.h
+    sel = np.abs(np.sin(lat)) > 0.3
+    assert float(((curl - curl_expect).abs()[sel] / curl_expect.abs()[sel]).median()) < 0.1
+    assert float(div.abs().median()) < 0.1 * float(curl_expect.abs().median())
+    ops = PhysicsOperators(1, 1, 0)
+    out = ops(s, u, s.new_zeros(1, m.n, 0), graphs.mesh_sinlat[0], e)
+    assert out.s.shape == (1, m.n, ops.out_dims[0]) and out.v.shape == (1, m.n, ops.out_dims[1])
+    assert torch.isfinite(out.s).all() and torch.isfinite(out.v).all()
+
+
+def test_physics_operators_equivariance(graphs):
+    from gpclimate.nn.physics_ops import PhysicsOperators
+
+    ops = PhysicsOperators(3, 2, 2, v_scale_mps=torch.tensor([8.0, 5.0]))
+    N = graphs.mesh[0].n
+    s, v, c = torch.randn(2, N, 3), torch.complex(torch.randn(2, N, 2), torch.randn(2, N, 2)), torch.randn(1, N, 2)
+    tg, tm = random_gauges(graphs)
+    gv = graphs.gauge_transformed(tm, tg)
+    y0 = ops(s, v, c, graphs.mesh_sinlat[0], graphs.mesh_edges[0])
+    y1 = ops(s, v * torch.exp(-1j * tm[0])[None, :, None], c, gv.mesh_sinlat[0], gv.mesh_edges[0])
+    assert relative_error(y1, y0.gauge(tm[0])) < TOL
+    # scalar outputs are exactly invariant, vectors rotate: guard against trivially small outputs
+    assert float(y0.s.abs().mean()) > 1e-3 and float(y0.v.abs().mean()) > 1e-3
+
+
+def test_guide_with_physics_ops_equivariance(graphs):
+    cfg = GuideConfig(cs=8, cv=4, depth=(1, 1, 1, 1, 1), hidden=16, physics_ops=True, tend_head=True)
+    model = LieGuidedForecaster(SPEC, cfg, VNetConfig(cs=8, cv=4, depth=(1, 1, 1, 1, 1), heads=2, ds=4, dv=2,
+                                                      hidden=16))
+    model.guide.phys_ops.v_scale.copy_(torch.tensor([8.0, 4.0]))
+    G = graphs.grid.n
+    x = rand_field(2, G, SPEC.n_s, SPEC.n_v)
+    c = rand_field(1, G, SPEC.n_cond_s, SPEC.n_cond_v)
+
+    def fn(xx, cc, gv):
+        P = model.physics(xx, cc, gv)
+        rec, aux, tend = model.guide.heads_all(P, gv)
+        return {"rec": rec, "tend": tend, "aux": Field(aux, aux.new_zeros(*aux.shape[:-1], 0, dtype=torch.complex64)),
+                **P}
+
+    lv = {"rec": "grid", "tend": "grid", "aux": "grid", "P0": "0", "P1": "1", "P2": "2", "P1u": "1", "P0u": "0"}
+    rep = gauge_equivariance_report(fn, x, c, graphs, lv)
+    assert max(rep.values()) < TOL, rep
+    # the operator branch must change the features (guards against a dead branch)
+    with torch.no_grad():
+        P_on = model.physics(x, c, graphs.view())["P0"]
+        model.guide.phys_ops = None
+        P_off = model.physics(x, c, graphs.view())["P0"]
+    assert relative_error(P_on, P_off) > 1e-3

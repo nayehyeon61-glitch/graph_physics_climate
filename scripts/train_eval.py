@@ -28,7 +28,7 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from gpclimate.data.era5_wb2 import DEFAULT_SPEC, ERA5Pairs, Normalizer, fit_normalizer  # noqa: E402
+from gpclimate.data.era5_wb2 import DEFAULT_SPEC, ERA5Pairs, Normalizer, fit_normalizer, fit_tendency_scale  # noqa: E402
 from gpclimate.data.variables import merge_state  # noqa: E402
 from gpclimate.geometry.graphs import SphereGraphs  # noqa: E402
 from gpclimate.models.diffusion import (DiffusionConfig, GraphResidualDiffusion, ResidualDenoiser,  # noqa: E402
@@ -71,7 +71,7 @@ class Run:
         else:
             self.cfg = {k: getattr(args, k) for k in ("data", "mesh", "lead", "cs", "cv", "depth", "heads", "ds", "dv",
                                                       "hidden", "n_basis", "guide_cs", "guide_cv", "diff_cs",
-                                                      "diff_cv", "diff_depth")}
+                                                      "diff_cv", "diff_depth", "physics_ops", "tend_head")}
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         self.spec = DEFAULT_SPEC
@@ -84,15 +84,24 @@ class Run:
         npath = self.dir / "normalizer.pt"
         if npath.exists():
             self.norm = Normalizer(**torch.load(npath))
+            if self.norm.tend_s is None:  # runs created before the tendency head existed
+                fit_tendency_scale(self.train, self.norm)
+                self.save_normalizer(npath)
         else:
             self.norm = fit_normalizer(self.train)
-            torch.save({k: getattr(self.norm, k) for k in self.norm.__dataclass_fields__}, npath)
+            self.save_normalizer(npath)
+        # flags added later default to off so older run directories keep loading their checkpoints
         self.guide_cfg = GuideConfig(cs=c["guide_cs"], cv=c["guide_cv"], depth=tuple(c["depth"]), n_basis=c["n_basis"],
-                                     hidden=c["hidden"])
+                                     hidden=c["hidden"], physics_ops=bool(c.get("physics_ops", False)),
+                                     tend_head=bool(c.get("tend_head", False)))
         self.vnet_kwargs = dict(cs=c["cs"], cv=c["cv"], depth=tuple(c["depth"]), heads=c["heads"], ds=c["ds"],
                                 dv=c["dv"], n_basis=c["n_basis"], hidden=c["hidden"])
         self.diff_cfg = DiffusionConfig(cs=c["diff_cs"], cv=c["diff_cv"], depth=c["diff_depth"], n_basis=c["n_basis"],
                                         hidden=c["hidden"])
+
+    def save_normalizer(self, path):
+        torch.save({k: getattr(self.norm, k) for k in self.norm.__dataclass_fields__
+                    if getattr(self.norm, k) is not None}, path)
 
     # ---------------------------------------------------------------- data helpers
     def prep(self, ds: ERA5Pairs, idx):
@@ -107,6 +116,8 @@ class Run:
         m = LieGuidedForecaster(self.spec, self.guide_cfg, VNetConfig(use_guide=use_guide, **self.vnet_kwargs))
         m.delta_scale_s.copy_(self.norm.delta_s)
         m.delta_scale_v.copy_(self.norm.delta_v)
+        if m.guide is not None and m.guide.phys_ops is not None:
+            m.guide.phys_ops.v_scale.copy_(self.norm.v_scale)  # m/s per normalised unit (vorticity / 2 Omega)
         return m
 
     def load_guide(self, m: LieGuidedForecaster):
@@ -146,33 +157,43 @@ def stage_a(run: Run):
         xg, cg = x0n.gauge(tg), cn.gauge(tg)
         sigma = sample_sigma(a.batch, a.sigma_max, generator=gen)
         feats = guide(perturb(xg, sigma, gen), cg, sigma, gv)
-        rec, aux = guide.heads(feats, gv)
+        rec, aux, tend = guide.heads_all(feats, gv)
         l_rec = field_mse(rec, xg, w)
         l_aux = ((aux - aux_t) ** 2 * w[None, :, None]).mean() / w.mean()
         loss = l_rec + a.aux_weight * l_aux
+        l_tend = torch.zeros(())
+        if tend is not None:
+            tend_t = run.norm.tendency(x0, run.train.next_state(idx)).gauge(tg)
+            l_tend = field_mse(tend, tend_t, w)
+            loss = loss + a.tend_weight * l_tend
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(guide.parameters(), 1.0)
         opt.step()
         if step % 25 == 0:
-            run.jlog("a", {"step": step, "l_rec": float(l_rec), "l_aux": float(l_aux), "t": time.time() - t0})
+            run.jlog("a", {"step": step, "l_rec": float(l_rec), "l_aux": float(l_aux), "l_tend": float(l_tend),
+                           "t": time.time() - t0})
         if step % a.val_every == 0 or step == a.steps - 1:
             guide.eval()
             with torch.no_grad():
                 x0n, _, cn, x0 = run.prep(run.calib, val_idx)
                 feats = guide(x0n, cn, torch.zeros(len(val_idx)), g)
-                rec, aux = guide.heads(feats, g)
+                rec, aux, tend = guide.heads_all(feats, g)
                 v_rec = float(field_mse(rec, x0n, w))
                 v_aux = float((((aux - run.calib.aux_targets(x0) / run.norm.aux_std) ** 2) * w[None, :, None]).mean()
                               / w.mean())
+                v_tend = 0.0
+                if tend is not None:
+                    v_tend = float(field_mse(tend, run.norm.tendency(x0, run.calib.next_state(val_idx)), w))
             guide.train()
-            score = v_rec + a.aux_weight * v_aux
+            score = v_rec + a.aux_weight * v_aux + a.tend_weight * v_tend
             if score < best:
                 best = score
                 torch.save(guide.state_dict(), run.dir / "guide.pt")
-            run.jlog("a", {"step": step, "val_rec": v_rec, "val_aux": v_aux, "best": best, "t": time.time() - t0})
-            log(f"A {step:5d}  L_rec {float(l_rec):.4f} L_aux {float(l_aux):.4f} | val rec {v_rec:.4f} aux {v_aux:.4f}"
-                f" | {(time.time() - t0) / (step + 1):.2f} s/step")
+            run.jlog("a", {"step": step, "val_rec": v_rec, "val_aux": v_aux, "val_tend": v_tend, "best": best,
+                           "t": time.time() - t0})
+            log(f"A {step:5d}  L_rec {float(l_rec):.4f} L_aux {float(l_aux):.4f} L_tend {float(l_tend):.4f}"
+                f" | val rec {v_rec:.4f} aux {v_aux:.4f} tend {v_tend:.4f} | {(time.time() - t0) / (step + 1):.2f} s/step")
     log(f"stage A done in {(time.time() - t0) / 60:.1f} min, best val score {best:.4f}")
 
 
@@ -284,7 +305,7 @@ def stage_c(run: Run):
 
 # ---------------------------------------------------------------------------- evaluation
 def stage_eval(run: Run):
-    a, g, w, test = run.args, run.g, run.w, run.test
+    a, g, test = run.args, run.g, run.test
     H, W, lead = len(test.lat), len(test.lon), run.cfg["lead"]
     K = a.max_lead_steps
     models = {}
@@ -445,6 +466,11 @@ def main():
     ap.add_argument("--diff-cs", type=int, default=32)
     ap.add_argument("--diff-cv", type=int, default=8)
     ap.add_argument("--diff-depth", type=int, default=2)
+    ap.add_argument("--physics-ops", type=int, default=1, choices=[0, 1],
+                    help="guide: fixed equivariant physics operators as mesh-0 inputs (stored in config.json)")
+    ap.add_argument("--tend-head", type=int, default=1, choices=[0, 1],
+                    help="guide: Stage-A one-step (6 h) tendency head (stored in config.json)")
+    ap.add_argument("--tend-weight", type=float, default=1.0)
     ap.add_argument("--steps", type=int, default=1000)
     ap.add_argument("--batch", type=int, default=4)
     ap.add_argument("--lr", type=float, default=1e-3)

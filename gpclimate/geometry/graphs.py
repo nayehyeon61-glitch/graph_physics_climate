@@ -231,6 +231,9 @@ class SphereGraphs:
                                      weight=_normalize_per_dst(w, dst, self.grid.n))
 
         self.grid_area_weight = torch.as_tensor(self.grid.area / self.grid.area.mean(), dtype=torch.float32)
+        # sin(latitude) of every mesh node: the Coriolis parameter f / (2 Omega), a gauge invariant
+        self.mesh_sinlat: List[torch.Tensor] = [
+            torch.as_tensor(np.sin(np.deg2rad(m.lat)), dtype=torch.float32) for m in self.mesh]
 
     # ------------------------------------------------------------------ helpers
     @property
@@ -291,15 +294,17 @@ class GraphView:
     n_grid: int
     n_mesh: List[int]
     grid_area_weight: torch.Tensor
+    mesh_sinlat: List[torch.Tensor] = field(default_factory=list)
     extras: dict = field(default_factory=dict)
 
     @classmethod
     def from_graphs(cls, g: SphereGraphs) -> "GraphView":
         return cls(g.grid2mesh, g.mesh2grid, list(g.mesh_edges), list(g.attn_edges), list(g.down), list(g.up),
-                   g.grid.n, [m.n for m in g.mesh], g.grid_area_weight)
+                   g.grid.n, [m.n for m in g.mesh], g.grid_area_weight, list(g.mesh_sinlat))
 
     def to(self, device) -> "GraphView":
         return GraphView(self.grid2mesh.to(device), self.mesh2grid.to(device),
                          [e.to(device) for e in self.mesh_edges], [e.to(device) for e in self.attn_edges],
                          [e.to(device) for e in self.down], [e.to(device) for e in self.up],
-                         self.n_grid, list(self.n_mesh), self.grid_area_weight.to(device), dict(self.extras))
+                         self.n_grid, list(self.n_mesh), self.grid_area_weight.to(device),
+                         [t.to(device) for t in self.mesh_sinlat], dict(self.extras))

@@ -101,9 +101,11 @@ class Normalizer:
     cs_mean: torch.Tensor
     cs_std: torch.Tensor
     cv_scale: torch.Tensor
-    delta_s: torch.Tensor  # std of normalised one-step change
+    delta_s: torch.Tensor  # std of normalised lead-time change
     delta_v: torch.Tensor
     aux_std: torch.Tensor
+    tend_s: Optional[torch.Tensor] = None  # std of normalised one-data-step (6 h) change (guide tendency head)
+    tend_v: Optional[torch.Tensor] = None
 
     def state(self, f: Field) -> Field:
         return Field((f.s - self.s_mean) / self.s_std, f.v / self.v_scale)
@@ -115,7 +117,13 @@ class Normalizer:
         return Field((f.s - self.cs_mean) / self.cs_std, f.v / self.cv_scale)
 
     def to_dict(self) -> Dict[str, list]:
-        return {k: getattr(self, k).tolist() for k in self.__dataclass_fields__}
+        return {k: getattr(self, k).tolist() for k in self.__dataclass_fields__ if getattr(self, k) is not None}
+
+    def tendency(self, x0: Field, x1step: Field) -> Field:
+        """Normalised one-step tendency target ``(X_{t+1} - X_t)`` in physical units -> unit variance."""
+        if self.tend_s is None:
+            raise ValueError("normalizer has no tendency scale; call fit_tendency_scale first")
+        return Field((x1step.s - x0.s) / self.s_std / self.tend_s, (x1step.v - x0.v) / self.v_scale / self.tend_v)
 
 
 class ERA5Pairs:
@@ -155,6 +163,11 @@ class ERA5Pairs:
         x1 = split_state(self.state[idx + self.lead], self.spec, self.names)
         return x0, x1, self.cond_field(idx)
 
+    def next_state(self, idx: Sequence[int]) -> Field:
+        """State one data step (6 h) after ``idx`` (always available since lead >= 1)."""
+        idx = torch.as_tensor(idx, dtype=torch.long)
+        return split_state(self.state[idx + 1], self.spec, self.names)
+
     def aux_targets(self, f_phys: Field) -> torch.Tensor:
         """Vorticity / divergence (unit-sphere FD) of every wind pair: [B, G, 2*n_v]."""
         B, G = f_phys.s.shape[:2]
@@ -180,4 +193,15 @@ def fit_normalizer(ds: ERA5Pairs) -> Normalizer:
     delta_s = (n1.s - n0.s).std((0, 1)) + 1e-6
     delta_v = torch.sqrt(((n1.v - n0.v).abs() ** 2).mean((0, 1)) / 2) + 1e-6
     aux_std = ds.aux_targets(x0).std((0, 1)) + 1e-9
-    return Normalizer(s_mean, s_std, v_scale, cs_mean, cs_std, cv_scale, delta_s, delta_v, aux_std)
+    norm = Normalizer(s_mean, s_std, v_scale, cs_mean, cs_std, cv_scale, delta_s, delta_v, aux_std)
+    return fit_tendency_scale(ds, norm)
+
+
+def fit_tendency_scale(ds: ERA5Pairs, norm: Normalizer) -> Normalizer:
+    """Fill ``tend_s / tend_v`` (std of the normalised 6 h change) in place and return ``norm``."""
+    idx = torch.arange(len(ds))
+    x0 = split_state(ds.state[idx], ds.spec, ds.names)
+    x1 = ds.next_state(idx)
+    norm.tend_s = ((x1.s - x0.s) / norm.s_std).std((0, 1)) + 1e-6
+    norm.tend_v = torch.sqrt((((x1.v - x0.v) / norm.v_scale).abs() ** 2).mean((0, 1)) / 2) + 1e-6
+    return norm
