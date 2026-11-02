@@ -44,7 +44,7 @@ class Field(NamedTuple):
 
     def gauge(self, theta: torch.Tensor) -> "Field":
         """Coordinates after rotating every node frame by theta [N]."""
-        return Field(self.s, self.v * torch.exp(-1j * theta.to(self.s.dtype))[..., None])
+        return Field(self.s, self.v * torch.exp(-1j * theta.to(self.s))[..., None])
 
     def detach(self) -> "Field":
         return Field(self.s.detach(), self.v.detach())

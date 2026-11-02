@@ -91,7 +91,7 @@ class LiePhysicalGNN(nn.Module):
     def forward(self, state: Field, cond: Field, sigma: torch.Tensor, g: GraphView) -> Dict[str, Field]:
         B, G = state.s.shape[:2]
         cond = broadcast_batch(cond, B)
-        sig = sigma.to(state.s.dtype).reshape(B, 1, 1).expand(B, G, 1)
+        sig = sigma.to(state.s).reshape(B, 1, 1).expand(B, G, 1)
         x = Field(torch.cat([state.s, cond.s, sig], -1), torch.cat([state.v, cond.v], -1))
         _, m0 = self.lift(x, g)
         P0 = self.enc0(m0, g.mesh_edges[0])

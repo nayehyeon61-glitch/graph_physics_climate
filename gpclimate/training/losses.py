@@ -42,11 +42,16 @@ def random_gauges(graphs: SphereGraphs, generator: Optional[torch.Generator] = N
 
 
 def perturb(x: Field, sigma: torch.Tensor, generator: Optional[torch.Generator] = None) -> Field:
-    """X~ = X + sigma * L * eps with L = I in normalised units; isotropic complex noise for vectors."""
+    """X~ = X + sigma * L * eps with L = I in normalised units; isotropic complex noise for vectors.
+
+    Noise is drawn on the field's device; a ``generator``, if given, must live on that device.
+    """
     B = x.s.shape[0]
-    sg = sigma.reshape(B, 1, 1)
-    es = torch.randn(x.s.shape, generator=generator)
-    ev = torch.complex(torch.randn(x.v.shape, generator=generator), torch.randn(x.v.shape, generator=generator))
+    dev, dt = x.s.device, x.s.dtype
+    sg = sigma.to(device=dev, dtype=dt).reshape(B, 1, 1)
+    es = torch.randn(x.s.shape, generator=generator, device=dev, dtype=dt)
+    ev = torch.complex(torch.randn(x.v.shape, generator=generator, device=dev, dtype=dt),
+                       torch.randn(x.v.shape, generator=generator, device=dev, dtype=dt))
     return Field(x.s + sg * es, x.v + sg * ev)
 
 

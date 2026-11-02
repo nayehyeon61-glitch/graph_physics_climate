@@ -65,8 +65,8 @@ class KAIAdapter:
         self.vec_scale = torch.sqrt((su ** 2 + sv ** 2) / 2)  # one common scale per wind pair
 
     def _phys(self, x: torch.Tensor, idx: List[int]) -> torch.Tensor:
-        m = self.mean[idx].to(x.dtype)[None, :, None, None]
-        s = (self.std[idx] + KAI_STD_EPS).to(x.dtype)[None, :, None, None]
+        m = self.mean[idx].to(x)[None, :, None, None]
+        s = (self.std[idx] + KAI_STD_EPS).to(x)[None, :, None, None]
         return x[:, idx] * s + m
 
     def to_internal(self, x_kai: torch.Tensor) -> Tuple[Field, Field]:
@@ -74,8 +74,9 @@ class KAIAdapter:
         x = x_kai.to(torch.float64)
         B = x.shape[0]
         s = x[:, self.s_idx]  # scalars keep the KAI z-score
-        u = self._phys(x, self.u_idx) / self.vec_scale[None, :, None, None]
-        v = self._phys(x, self.v_idx) / self.vec_scale[None, :, None, None]
+        vs = self.vec_scale.to(x)[None, :, None, None]
+        u = self._phys(x, self.u_idx) / vs
+        v = self._phys(x, self.v_idx) / vs
         c_idx = [self.idx[n] for n in self.spec.static_scalars + self.spec.forcing_scalars]
         cs = x[:, c_idx]
 
@@ -83,7 +84,8 @@ class KAIAdapter:
             return t.flatten(2).transpose(1, 2)
 
         state = Field(flat(s).float(), flat(torch.complex(u, v)).to(torch.complex64))
-        cond = Field(flat(cs).float(), torch.zeros(B, s.shape[-2] * s.shape[-1], 0, dtype=torch.complex64))
+        cond = Field(flat(cs).float(), torch.zeros(B, s.shape[-2] * s.shape[-1], 0, dtype=torch.complex64,
+                                                     device=x.device))
         return state, cond
 
     def to_kai(self, state: Field, template: torch.Tensor) -> torch.Tensor:
@@ -95,10 +97,11 @@ class KAIAdapter:
             return t.transpose(1, 2).reshape(B, -1, H, W).to(torch.float64)
 
         out[:, self.s_idx] = grid(state.s)
-        vs = self.vec_scale[None, :, None, None]
+        vs = self.vec_scale.to(out)[None, :, None, None]
+        mean, std = self.mean.to(out), self.std.to(out)
         u = grid(state.v.real) * vs
         v = grid(state.v.imag) * vs
         for k, (iu, iv) in enumerate(zip(self.u_idx, self.v_idx)):
-            out[:, iu] = (u[:, k] - self.mean[iu]) / (self.std[iu] + KAI_STD_EPS)
-            out[:, iv] = (v[:, k] - self.mean[iv]) / (self.std[iv] + KAI_STD_EPS)
+            out[:, iu] = (u[:, k] - mean[iu]) / (std[iu] + KAI_STD_EPS)
+            out[:, iv] = (v[:, k] - mean[iv]) / (std[iv] + KAI_STD_EPS)
         return out.to(template.dtype)
