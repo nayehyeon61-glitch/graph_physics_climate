@@ -50,3 +50,12 @@ python scripts/smoke_test.py --fetch --ablation    # ERA5 소규모 부분집합
 
 스모크 테스트 결과는 `reports/smoke_test.json`, 로그는 `reports/smoke_test.log`에 남긴다.
 수십~수백 step의 CPU 학습이므로 파이프라인 동작·등변성·손실 감소를 확인하는 용도이며, 예측 성능을 입증하지 않는다.
+
+### 최근 스모크 테스트 (2026-11-02, CPU 4코어, 약 10분)
+
+ERA5 64×32, 24시간 lead, 테스트 2020년 1월 12 사례. 자세한 표: [`reports/SMOKE_TEST_KO.md`](reports/SMOKE_TEST_KO.md).
+
+- 모든 모듈의 게이지 등변성 상대오차 ≤ 4e-7 (float32 수준)
+- 결정론 예측 RMSE가 persistence보다 낮음 (z500 426 vs 591 m²/s², t850 1.86 vs 2.80 K)
+- guide 없는 비교 모델과의 차이는 작아 이 규모로는 결론 불가
+- Stage C 앙상블은 학습량이 부족해 아직 결정론 예측보다 나쁨

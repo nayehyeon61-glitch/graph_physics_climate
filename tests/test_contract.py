@@ -49,3 +49,23 @@ def test_wind_pair_uses_common_scale():
     speed = torch.sqrt(u ** 2 + v ** 2).flatten()
     got = state.v[0, :, k].abs().double() * ad.vec_scale[k]
     assert torch.allclose(got, speed, rtol=1e-5)
+
+
+def test_model_runs_on_kai_layout():
+    """Full KAI tensor layout (67 channels, 121x240 grid with poles) through the forecaster and back."""
+    from gpclimate.geometry.graphs import SphereGraphs
+    from gpclimate.models.dynamics_vnet import LieGuidedForecaster, VNetConfig
+    from gpclimate.models.lie_physical_gnn import GuideConfig
+
+    mean, std = _stats()
+    ad = KAIAdapter(mean, std)
+    lat, lon = kai_grid()
+    graphs = SphereGraphs(lat, lon, mesh_splits=(2, 1, 0))
+    model = LieGuidedForecaster(ad.spec, GuideConfig(cs=8, cv=4, depth=(1, 1, 1, 1, 1), hidden=16),
+                                VNetConfig(cs=8, cv=4, depth=(1, 1, 1, 1, 1), heads=2, ds=4, dv=2, hidden=16))
+    x = torch.randn(1, 67, len(lat), len(lon))
+    state, cond = ad.to_internal(x)
+    with torch.no_grad():
+        f, _ = model(state, cond, graphs.view())
+    out = ad.to_kai(f, x)
+    assert out.shape == x.shape and torch.isfinite(out).all()

@@ -16,7 +16,7 @@ frequency-1 tangent vectors; every layer is SO(2) gauge equivariant.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Tuple
 
 import torch

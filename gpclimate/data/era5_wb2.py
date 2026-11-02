@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -159,7 +159,6 @@ class ERA5Pairs:
 
 
 def fit_normalizer(ds: ERA5Pairs) -> Normalizer:
-    T = ds.state.shape[0]
     idx = torch.arange(len(ds))
     x0, x1, c = ds.batch(idx)
     s_mean, s_std = x0.s.mean((0, 1)), x0.s.std((0, 1)) + 1e-6

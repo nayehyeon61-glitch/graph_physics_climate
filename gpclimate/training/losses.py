@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, Optional
 
 import torch
 
