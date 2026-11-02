@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -50,15 +50,25 @@ def fetch_wb2_subset(out_path: str, periods: Dict[str, Tuple[str, str]], url: st
 
     ds = xr.open_zarr(url, storage_options={"token": "anon"})
     arrays: Dict[str, np.ndarray] = {}
+    # group requests by WB2 variable so each (100-step, all-level) chunk is fetched once
+    by_var: Dict[str, List[Tuple[str, Optional[int]]]] = {}
+    for name, (var, level) in WB2_SOURCES.items():
+        by_var.setdefault(var, []).append((name, level))
     for split, (start, end) in periods.items():
         sub = ds.sel(time=slice(start, end))
         arrays[f"{split}/time"] = sub["time"].values.astype("datetime64[ns]").astype(np.int64)
-        for name, (var, level) in WB2_SOURCES.items():
+        for var, items in by_var.items():
             da = sub[var]
-            if level is not None:
-                da = da.sel(level=level)
-            da = da.transpose("time", "latitude", "longitude").sortby("latitude")
-            arrays[f"{split}/{name}"] = da.values.astype(np.float32)
+            levels = [lv for _, lv in items if lv is not None]
+            if levels:
+                da = da.sel(level=levels)
+                vals = da.transpose("time", "level", "latitude", "longitude").sortby("latitude").values
+                for name, lv in items:
+                    arrays[f"{split}/{name}"] = vals[:, levels.index(lv)].astype(np.float32)
+            else:
+                vals = da.transpose("time", "latitude", "longitude").sortby("latitude").values
+                for name, _ in items:
+                    arrays[f"{split}/{name}"] = vals.astype(np.float32)
     lat = ds["latitude"].sortby("latitude").values
     arrays["lat"] = np.asarray(lat, np.float64)
     arrays["lon"] = np.asarray(ds["longitude"].values, np.float64)
