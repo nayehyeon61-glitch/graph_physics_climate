@@ -71,7 +71,8 @@ class Run:
         else:
             self.cfg = {k: getattr(args, k) for k in ("data", "mesh", "lead", "cs", "cv", "depth", "heads", "ds", "dv",
                                                       "hidden", "n_basis", "guide_cs", "guide_cv", "diff_cs",
-                                                      "diff_cv", "diff_depth", "physics_ops", "tend_head")}
+                                                      "diff_cv", "diff_depth", "physics_ops", "tend_head", "fusion",
+                                                      "pigt_layers", "pigt_ops")}
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         self.spec = DEFAULT_SPEC
@@ -95,7 +96,9 @@ class Run:
                                      hidden=c["hidden"], physics_ops=bool(c.get("physics_ops", False)),
                                      tend_head=bool(c.get("tend_head", False)))
         self.vnet_kwargs = dict(cs=c["cs"], cv=c["cv"], depth=tuple(c["depth"]), heads=c["heads"], ds=c["ds"],
-                                dv=c["dv"], n_basis=c["n_basis"], hidden=c["hidden"])
+                                dv=c["dv"], n_basis=c["n_basis"], hidden=c["hidden"],
+                                fusion=c.get("fusion", "gated"), pigt_layers=int(c.get("pigt_layers", 2)),
+                                pigt_ops=bool(c.get("pigt_ops", True)))
         self.diff_cfg = DiffusionConfig(cs=c["diff_cs"], cv=c["diff_cv"], depth=c["diff_depth"], n_basis=c["n_basis"],
                                         hidden=c["hidden"])
 
@@ -118,6 +121,8 @@ class Run:
         m.delta_scale_v.copy_(self.norm.delta_v)
         if m.guide is not None and m.guide.phys_ops is not None:
             m.guide.phys_ops.v_scale.copy_(self.norm.v_scale)  # m/s per normalised unit (vorticity / 2 Omega)
+        if getattr(m.vnet, "phys_ops", None) is not None:
+            m.vnet.phys_ops.v_scale.copy_(self.norm.v_scale)
         return m
 
     def load_guide(self, m: LieGuidedForecaster):
@@ -284,7 +289,7 @@ def stage_b(run: Run, use_guide: bool):
                 best = score
                 torch.save(model.vnet.state_dict(), run.dir / f"{name}.pt")
             run.jlog(name, {"step": step, "val_mse": v_mse, "val_mse2": v_mse2, "val_persistence_mse": pers,
-                            "best": best, "t": time.time() - t0})
+                            "best": best, "attention_mass": model.vnet.attention_mass(), "t": time.time() - t0})
             log(f"B[{name}] {step:5d}  L_f {float(l_f):.4f} L_roll {float(l_roll):.4f} L_phys {float(l_phys):.5f}"
                 f" | val MSE {v_mse:.4f} 2-step {v_mse2:.4f} (persistence {pers:.4f})"
                 f" | {(time.time() - t0) / (step + 1):.2f} s/step")
@@ -511,6 +516,10 @@ def main():
     ap.add_argument("--tend-head", type=int, default=1, choices=[0, 1],
                     help="guide: Stage-A one-step (6 h) tendency head (stored in config.json)")
     ap.add_argument("--tend-weight", type=float, default=1.0)
+    ap.add_argument("--fusion", default="gated", choices=["gated", "pigt"],
+                    help="V-Net physics fusion: gated cross-attention or the physics-integrated graph transformer")
+    ap.add_argument("--pigt-layers", type=int, default=2)
+    ap.add_argument("--pigt-ops", type=int, default=1, choices=[0, 1])
     ap.add_argument("--perturb-model", default=None,
                     help="Stage A: vnet state dict of a guide-free forecaster whose lead-time forecast replaces the "
                          "input with probability --perturb-prob (structured, forecast-like perturbations)")

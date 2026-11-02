@@ -233,3 +233,39 @@ def test_guide_with_physics_ops_equivariance(graphs):
         model.guide.phys_ops = None
         P_off = model.physics(x, c, graphs.view())["P0"]
     assert relative_error(P_on, P_off) > 1e-3
+
+
+def test_pigt_forecaster_equivariance(graphs):
+    """Physics-integrated graph-transformer fusion (H/P/O sources, bidirectional) stays gauge equivariant."""
+    cfg = GuideConfig(cs=8, cv=4, depth=(1, 1, 1, 1, 1), hidden=16, physics_ops=True, tend_head=True)
+    model = LieGuidedForecaster(SPEC, cfg, VNetConfig(cs=8, cv=4, depth=(1, 1, 1, 1, 1), heads=2, ds=4, dv=2,
+                                                      hidden=16, fusion="pigt", pigt_layers=2, pigt_ops=True))
+    for p in model.vnet.head_out.parameters():
+        torch.nn.init.normal_(p, std=0.1)
+    for f in model.vnet.fusion:  # make the attention branches large enough to matter in the test
+        for layer in f.layers:
+            for lin in (layer.attn_h.o, layer.attn_p.o) if layer.update_p else (layer.attn_h.o,):
+                for p in lin.parameters():
+                    torch.nn.init.normal_(p, std=0.3)
+    G = graphs.grid.n
+    x = rand_field(2, G, SPEC.n_s, SPEC.n_v)
+    c = rand_field(1, G, SPEC.n_cond_s, SPEC.n_cond_v)
+
+    def fn(xx, cc, gv):
+        f, d = model(xx, cc, gv)
+        return {"forecast": f, "delta": d}
+
+    rep = gauge_equivariance_report(fn, x, c, graphs, {"forecast": "grid", "delta": "grid"})
+    assert max(rep.values()) < TOL, rep
+    mass = model.vnet.attention_mass()
+    assert set(mass) == {"P0", "P1", "P2", "P1u", "P0u"}
+    for k, layers in mass.items():
+        for m in layers:
+            assert m is not None and len(m) == 3 and abs(sum(m) - 1.0) < 1e-3, (k, m)
+    # the fusion must change the output (guards against a dead branch)
+    with torch.no_grad():
+        f1, _ = model(x, c, graphs.view())
+        P = model.physics(x, c, graphs.view())
+        d_on = model.vnet(x, c, P, graphs.view())
+        d_off = model.vnet(x, c, None, graphs.view())
+    assert relative_error(d_on, d_off) > 1e-3

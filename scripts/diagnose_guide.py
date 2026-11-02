@@ -54,7 +54,7 @@ def main():
     # reuse Run's loaders with the run's own config
     ns = argparse.Namespace(run=args.run, data=args.data, **{k: None for k in (
         "mesh", "lead", "cs", "cv", "depth", "heads", "ds", "dv", "hidden", "n_basis", "guide_cs", "guide_cv",
-        "diff_cs", "diff_cv", "diff_depth", "physics_ops", "tend_head")})
+        "diff_cs", "diff_cv", "diff_depth", "physics_ops", "tend_head", "fusion", "pigt_layers", "pigt_ops")})
     run = Run(ns)
     g, w, test = run.g, run.w, run.test
     model = run.forecaster(True)
@@ -121,8 +121,14 @@ def main():
     rep["linear_probe_r2_mean"] = {k: float(np.mean(v)) for k, v in probe.items()}
 
     # ---------------------------------------------------------------- 3. gates
-    rep["fusion_gates_mean_abs"] = [float(f.beta_s.abs().mean()) for f in model.vnet.fusion]
-    rep["fusion_gates_max_abs"] = [float(f.beta_s.abs().max()) for f in model.vnet.fusion]
+    if model.vnet.cfg.fusion == "pigt":
+        with torch.no_grad():
+            x0n, _, cn, _ = run.prep(test, idx[:8])
+            model(x0n, cn, g)
+        rep["pigt_attention_mass"] = {"sources": model.vnet.fusion[0].source_names, **model.vnet.attention_mass()}
+    else:
+        rep["fusion_gates_mean_abs"] = [float(f.beta_s.abs().mean()) for f in model.vnet.fusion]
+        rep["fusion_gates_max_abs"] = [float(f.beta_s.abs().max()) for f in model.vnet.fusion]
     out = args.out or str(Path(args.run) / "diagnose_guide.json")
     json.dump(rep, open(out, "w"), indent=2)
     print(json.dumps(rep, indent=1))

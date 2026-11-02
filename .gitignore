@@ -4,3 +4,5 @@ __pycache__/
 data/*.npz
 reports/*.pt
 *.egg-info/
+data/*.pt
+data/*.log
