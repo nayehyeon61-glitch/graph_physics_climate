@@ -145,18 +145,34 @@ def stage_a(run: Run):
     rng = np.random.default_rng(a.seed)
     val_idx = list(np.linspace(0, len(run.calib) - 1, 16).round().astype(int))
     best, t0 = float("inf"), time.time()
+    lead = run.cfg["lead"]
+    # optional structured perturbation: with probability perturb_prob the input is the ``lead``-step forecast of a
+    # guide-free V-Net (valid at t), so the guide also learns to read its own forecast states (rollout robustness)
+    fm = None
+    if getattr(a, "perturb_model", None):
+        fm = run.forecaster(False)
+        fm.vnet.load_state_dict(torch.load(a.perturb_model))
+        fm.eval()
+        log(f"stage A: forecast-state perturbation from {a.perturb_model} with p={a.perturb_prob}")
     log(f"stage A: guide params {n_params(guide)}, steps {a.steps}, batch {a.batch}")
+    n_fc = 0
     for step in range(a.steps):
         for pg in opt.param_groups:
             pg["lr"] = cosine_lr(step, a.steps, a.lr)
-        idx = rng.integers(0, len(run.train), a.batch)
+        idx = rng.integers(lead if fm is not None else 0, len(run.train), a.batch)
         x0n, _, cn, x0 = run.prep(run.train, idx)
+        xin = x0n
+        if fm is not None and rng.random() < a.perturb_prob:
+            with torch.no_grad():
+                xp0n, _, cpn, _ = run.prep(run.train, idx - lead)
+                xin, _ = fm(xp0n, cpn, g)  # forecast valid at idx; targets stay the true state
+            n_fc += 1
         aux_t = run.train.aux_targets(x0) / run.norm.aux_std
         tg, tm = random_gauges(run.graphs, gen)
         gv = run.graphs.gauge_transformed(tm, tg)
         xg, cg = x0n.gauge(tg), cn.gauge(tg)
         sigma = sample_sigma(a.batch, a.sigma_max, generator=gen)
-        feats = guide(perturb(xg, sigma, gen), cg, sigma, gv)
+        feats = guide(perturb(xin.gauge(tg), sigma, gen), cg, sigma, gv)
         rec, aux, tend = guide.heads_all(feats, gv)
         l_rec = field_mse(rec, xg, w)
         l_aux = ((aux - aux_t) ** 2 * w[None, :, None]).mean() / w.mean()
@@ -194,7 +210,8 @@ def stage_a(run: Run):
                            "t": time.time() - t0})
             log(f"A {step:5d}  L_rec {float(l_rec):.4f} L_aux {float(l_aux):.4f} L_tend {float(l_tend):.4f}"
                 f" | val rec {v_rec:.4f} aux {v_aux:.4f} tend {v_tend:.4f} | {(time.time() - t0) / (step + 1):.2f} s/step")
-    log(f"stage A done in {(time.time() - t0) / 60:.1f} min, best val score {best:.4f}")
+    log(f"stage A done in {(time.time() - t0) / 60:.1f} min, best val score {best:.4f}"
+        + (f", forecast-perturbed batches {n_fc}" if fm is not None else ""))
 
 
 # ---------------------------------------------------------------------------- Stage B
@@ -210,44 +227,67 @@ def stage_b(run: Run, use_guide: bool):
     rng = np.random.default_rng(a.seed + 1)
     val_idx = list(np.linspace(0, len(run.calib) - 1, 48).round().astype(int))
     best, t0 = float("inf"), time.time()
-    log(f"stage B[{name}]: vnet params {n_params(model.vnet)}, steps {a.steps}, batch {a.batch}")
+    K, k_start, lead = int(getattr(a, "rollout_steps", 1)), int(getattr(a, "rollout_start", 0)), run.cfg["lead"]
+    lam = float(getattr(a, "rollout_weight", 1.0))
+    val_idx2 = [i for i in val_idx if i < len(run.calib) - lead]  # 2-step validation needs X_{t+2 lead}
+
+    def scaled(f: Field) -> Field:
+        return Field(f.s / model.delta_scale_s, f.v / model.delta_scale_v)
+
+    log(f"stage B[{name}]: vnet params {n_params(model.vnet)}, steps {a.steps}, batch {a.batch}, "
+        f"rollout steps {K} from step {k_start} (weight {lam})")
     for step in range(a.steps):
         for pg in opt.param_groups:
             pg["lr"] = cosine_lr(step, a.steps, a.lr)
-        idx = rng.integers(0, len(run.train), a.batch)
-        x0n, x1n, cn, _ = run.prep(run.train, idx)
-        _, d = model(x0n, cn, g)
-        target = Field((x1n.s - x0n.s) / model.delta_scale_s, (x1n.v - x0n.v) / model.delta_scale_v)
-        l_f = field_mse(d, target, w)
-        l_phys = global_tendency_consistency(d.s * model.delta_scale_s, x1n.s - x0n.s, w)
-        loss = l_f + a.phys_weight * l_phys
+        k_now = K if step >= k_start else 1
+        idx = rng.integers(0, len(run.train) - (k_now - 1) * lead, a.batch)
+        states, conds = run.train.sequence(idx, k_now)
+        xs = [run.norm.state(x) for x in states]
+        cs = [run.norm.cond(c) for c in conds]
+        f, d = model(xs[0], cs[0], g)
+        l_f = field_mse(scaled(f), scaled(xs[1]), w)  # == delta MSE of the one-step target
+        l_phys = global_tendency_consistency(d.s * model.delta_scale_s, xs[1].s - xs[0].s, w)
+        l_roll = torch.zeros(())
+        for k in range(2, k_now + 1):  # autoregressive steps; physics features recomputed from the forecast
+            f, _ = model(f, cs[k - 1], g)
+            l_roll = l_roll + field_mse(scaled(f), scaled(xs[k]), w)
+        loss = l_f + a.phys_weight * l_phys + lam * l_roll
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(params, 1.0)
         opt.step()
         if step % 25 == 0:
-            run.jlog(name, {"step": step, "l_f": float(l_f), "l_phys": float(l_phys), "t": time.time() - t0})
+            run.jlog(name, {"step": step, "l_f": float(l_f), "l_phys": float(l_phys), "l_roll": float(l_roll),
+                            "k": k_now, "t": time.time() - t0})
         if step % a.val_every == 0 or step == a.steps - 1:
             model.eval()
             with torch.no_grad():
-                tot = 0.0
+                tot, tot2 = 0.0, 0.0
                 for i in range(0, len(val_idx), 8):
                     x0n, x1n, cn, _ = run.prep(run.calib, val_idx[i:i + 8])
                     fc, _ = model(x0n, cn, g)
                     tot += float(field_mse(fc, x1n, w)) * len(val_idx[i:i + 8])
-                v_mse = tot / len(val_idx)
+                for i in range(0, len(val_idx2), 8):
+                    states, conds = run.calib.sequence(val_idx2[i:i + 8], 2)
+                    fc = run.norm.state(states[0])
+                    for k in range(2):
+                        fc, _ = model(fc, run.norm.cond(conds[k]), g)
+                    tot2 += float(field_mse(fc, run.norm.state(states[2]), w)) * len(val_idx2[i:i + 8])
+                v_mse, v_mse2 = tot / len(val_idx), tot2 / len(val_idx2)
                 x0n, x1n, cn, _ = run.prep(run.calib, val_idx[:8])
                 pers = float(field_mse(x0n, x1n, w))
             model.train()
             if use_guide:
                 model.guide.eval()
-            if v_mse < best:
-                best = v_mse
+            score = v_mse + (v_mse2 if K >= 2 else 0.0)  # with rollout training select on 1-step + 2-step error
+            if score < best:
+                best = score
                 torch.save(model.vnet.state_dict(), run.dir / f"{name}.pt")
-            run.jlog(name, {"step": step, "val_mse": v_mse, "val_persistence_mse": pers, "best": best,
-                            "t": time.time() - t0})
-            log(f"B[{name}] {step:5d}  L_f {float(l_f):.4f} L_phys {float(l_phys):.5f} | val MSE {v_mse:.4f}"
-                f" (persistence {pers:.4f}) | {(time.time() - t0) / (step + 1):.2f} s/step")
+            run.jlog(name, {"step": step, "val_mse": v_mse, "val_mse2": v_mse2, "val_persistence_mse": pers,
+                            "best": best, "t": time.time() - t0})
+            log(f"B[{name}] {step:5d}  L_f {float(l_f):.4f} L_roll {float(l_roll):.4f} L_phys {float(l_phys):.5f}"
+                f" | val MSE {v_mse:.4f} 2-step {v_mse2:.4f} (persistence {pers:.4f})"
+                f" | {(time.time() - t0) / (step + 1):.2f} s/step")
     log(f"stage B[{name}] done in {(time.time() - t0) / 60:.1f} min, best val MSE {best:.4f}")
 
 
@@ -471,6 +511,13 @@ def main():
     ap.add_argument("--tend-head", type=int, default=1, choices=[0, 1],
                     help="guide: Stage-A one-step (6 h) tendency head (stored in config.json)")
     ap.add_argument("--tend-weight", type=float, default=1.0)
+    ap.add_argument("--perturb-model", default=None,
+                    help="Stage A: vnet state dict of a guide-free forecaster whose lead-time forecast replaces the "
+                         "input with probability --perturb-prob (structured, forecast-like perturbations)")
+    ap.add_argument("--perturb-prob", type=float, default=0.3)
+    ap.add_argument("--rollout-steps", type=int, default=1, help="Stage B: autoregressive steps in the loss")
+    ap.add_argument("--rollout-start", type=int, default=0, help="Stage B: first step that uses the rollout loss")
+    ap.add_argument("--rollout-weight", type=float, default=1.0)
     ap.add_argument("--steps", type=int, default=1000)
     ap.add_argument("--batch", type=int, default=4)
     ap.add_argument("--lr", type=float, default=1e-3)

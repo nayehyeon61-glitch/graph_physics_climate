@@ -168,6 +168,16 @@ class ERA5Pairs:
         idx = torch.as_tensor(idx, dtype=torch.long)
         return split_state(self.state[idx + 1], self.spec, self.names)
 
+    def sequence(self, idx: Sequence[int], n_steps: int):
+        """States ``X_{t + k lead}`` for k = 0..n_steps and conditions for k = 0..n_steps-1 (rollout training).
+
+        Requires ``idx + n_steps * lead < T``, i.e. ``idx < len(self) - (n_steps - 1) * lead``.
+        """
+        idx = torch.as_tensor(idx, dtype=torch.long)
+        states = [split_state(self.state[idx + k * self.lead], self.spec, self.names) for k in range(n_steps + 1)]
+        conds = [self.cond_field(idx + k * self.lead) for k in range(n_steps)]
+        return states, conds
+
     def aux_targets(self, f_phys: Field) -> torch.Tensor:
         """Vorticity / divergence (unit-sphere FD) of every wind pair: [B, G, 2*n_v]."""
         B, G = f_phys.s.shape[:2]
