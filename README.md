@@ -51,6 +51,14 @@ python scripts/smoke_test.py --fetch --ablation    # ERA5 소규모 부분집합
 스모크 테스트 결과는 `reports/smoke_test.json`, 로그는 `reports/smoke_test.log`에 남긴다.
 수십~수백 step의 CPU 학습이므로 파이프라인 동작·등변성·손실 감소를 확인하는 용도이며, 예측 성능을 입증하지 않는다.
 
+### 본 학습 (2026-11-02, CPU 4코어, 약 1시간 45분)
+
+ERA5 64×32, 2016–2017 학습 → 2019 테스트, 24시간 간격으로 5일 rollout. 자세한 표: [`reports/TRAIN_EVAL_2016_2019_KO.md`](reports/TRAIN_EVAL_2016_2019_KO.md), 재현: `bash scripts/run_pipeline.sh`.
+
+- 24시간 RMSE가 persistence보다 35–60% 낮고 5일까지 persistence·기후값 아래로 유지 (z500 1일 239, 5일 771 vs persistence 566/1007 m²/s²)
+- 물리 가이드 유무 차이는 1–3일에서 1–3% (단일 seed, 파라미터 수 다름) → 결론 유보
+- Stage C diffusion 앙상블의 CRPS는 독립 Gaussian 잡음 기준선과 같은 수준 (학습량 부족)
+
 ### 최근 스모크 테스트 (2026-11-02, CPU 4코어, 약 10분)
 
 ERA5 64×32, 24시간 lead, 테스트 2020년 1월 12 사례. 자세한 표: [`reports/SMOKE_TEST_KO.md`](reports/SMOKE_TEST_KO.md).
