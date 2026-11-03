@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage stage10b (2026-11-04 08:40 KST): fcn21 feature matrix with the training losses focused on the base11 channels
+# Stage stage10b (2026-11-04 08:10 KST): fcn21 feature matrix with the training losses focused on the base11 channels
 # (weights: base11 state channels 1.0, the 10 new channels 0.2; Stage A reconstruction + tendency head, Stage B one-step
 # + rollout, guide-free baseline).  Everything else = stage10a (same data file, normaliser, recipe A 1000 / B 1500).
 # Separates "21-channel loss dilution" (stage10a's main suspect) from "value of the column information for the guide".

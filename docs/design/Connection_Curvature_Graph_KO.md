@@ -83,7 +83,7 @@ stage11b가 "확장적 연결"의 본체다. 등변성은 간선·면 특징이 
 | `runs/era5_64x32_s11a_curv/chain_s11.sh` | stage11a 자동 체인 |
 
 
-## 7. stage11b 구현 (2026-11-04 09:40 KST 추가): 심플리셜 메시지 전달 블록
+## 7. stage11b 구현 (2026-11-04 08:15 KST 추가): 심플리셜 메시지 전달 블록
 
 `gpclimate/nn/simplicial.py`의 `SimplicialBlock(cs, cv, ce=16, cf=16, hidden=32)` — 3절 표의 stage11b를 그대로 구현한 것으로, 제한 사상은 전부 기하에서 오는 고정 연산자이고 학습되는 것은 간선·면 MLP와 꼭짓점 읽기뿐이다.
 
