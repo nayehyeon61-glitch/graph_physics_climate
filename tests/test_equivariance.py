@@ -269,3 +269,87 @@ def test_pigt_forecaster_equivariance(graphs):
         d_on = model.vnet(x, c, P, graphs.view())
         d_off = model.vnet(x, c, None, graphs.view())
     assert relative_error(d_on, d_off) > 1e-3
+
+
+def test_reduced_primitive_tendencies_units_and_equivariance():
+    """Stage S5a: fixed resolved dynamics on the 11-variable layout (bilinear grid->mesh sampling, SI units)."""
+    from gpclimate.data.era5_wb2 import DEFAULT_SPEC
+    from gpclimate.nn.primitive2d import DT_DATA, EARTH_RADIUS, ReducedPrimitiveTendencies
+
+    lat = np.linspace(-87.1875, 87.1875, 32)
+    lon = np.arange(0, 360, 5.625)
+    gr = SphereGraphs(lat, lon, mesh_splits=(3, 2, 1))
+    g = gr.view()
+    G, m0 = gr.grid.n, gr.mesh[0]
+    mlat = np.deg2rad(m0.lat)
+    mid = np.abs(mlat) < np.deg2rad(60)
+    LAT, LON = np.meshgrid(np.deg2rad(lat), np.deg2rad(lon), indexing="ij")
+    rp = ReducedPrimitiveTendencies(DEFAULT_SPEC)  # identity scales: normalised == physical
+    s = torch.zeros(1, G, 5)
+    s[..., 1], s[..., 2], s[..., 3], s[..., 4] = 280.0, 0.005, 290.0, 101325.0
+    v = torch.zeros(1, G, 3, dtype=torch.complex64)
+    # z500 = c * lat  ->  du500/dt = -grad Phi = -i c / R (northward component negative)
+    c = 1e4
+    s1 = s.clone()
+    s1[..., 0] = torch.as_tensor(c * LAT.ravel(), dtype=torch.float32)
+    fu = rp.mesh_forward(Field(s1, v), g).v[0, :, 1] / DT_DATA
+    assert float((fu[mid] - (-1j * c / EARTH_RADIUS)).abs().mean() / (c / EARTH_RADIUS)) < 0.02
+    # t850 = T0 + d sin(lon) cos(lat), u850 = U eastward  ->  dT/dt = -U d cos(lon) / R
+    d, U = 5.0, 10.0
+    s2 = s.clone()
+    s2[..., 1] = torch.as_tensor(280 + d * np.sin(LON) * np.cos(LAT), dtype=torch.float32).ravel()
+    v2 = v.clone()
+    v2[..., 0] = U
+    ft = rp.mesh_forward(Field(s2, v2), g).s[0, :, 1] / DT_DATA
+    expt = torch.as_tensor(-U * d * np.cos(np.deg2rad(m0.lon)) / EARTH_RADIUS, dtype=torch.float32)
+    assert float((ft[mid] - expt[mid]).abs().mean() / expt[mid].abs().mean()) < 0.03
+    # geostrophic balance: Phi = A sin^2(lat), u_g = -(dPhi/dlat) / (f R)  ->  Coriolis + PGF nearly cancel
+    A = 2e4
+    f = 2 * 7.292e-5 * np.sin(LAT)
+    ug = -(2 * A * np.sin(LAT) * np.cos(LAT)) / (f * EARTH_RADIUS + 1e-9)
+    s3 = s.clone()
+    s3[..., 0] = torch.as_tensor((A * np.sin(LAT) ** 2).ravel(), dtype=torch.float32)
+    v3 = v.clone()
+    v3[..., 1] = torch.as_tensor(ug.ravel(), dtype=torch.complex64)
+    band = (np.abs(mlat) > np.deg2rad(25)) & (np.abs(mlat) < np.deg2rad(65))
+    both = ReducedPrimitiveTendencies(DEFAULT_SPEC, terms=("coriolis", "pgf")).mesh_forward(Field(s3, v3), g).v[0, :, 1]
+    pgf = ReducedPrimitiveTendencies(DEFAULT_SPEC, terms=("pgf",)).mesh_forward(Field(s3, v3), g).v[0, :, 1]
+    assert float(both[band].abs().mean() / pgf[band].abs().mean()) < 0.05
+    # exact SO(2) gauge equivariance of the full operator
+    torch.manual_seed(0)
+    sr = torch.randn(2, G, 5) * torch.tensor([3000.0, 10.0, 0.003, 10.0, 1000.0]) + torch.tensor(
+        [54000.0, 280.0, 0.005, 288.0, 101300.0])
+    vr = torch.complex(torch.randn(2, G, 3), torch.randn(2, G, 3)) * 8
+    x = Field(sr, vr)
+    tg, tm = random_gauges(gr)
+    gv = gr.gauge_transformed(tm, tg)
+    assert relative_error(rp.mesh_forward(x.gauge(tg), gv), rp.mesh_forward(x, g).gauge(tm[0])) < TOL
+
+
+def test_guide_closure_head_equivariance():
+    """Stage S5a guide: closure head on mesh 0 and the resolved dynamics are equivariant together."""
+    from gpclimate.data.era5_wb2 import DEFAULT_SPEC
+
+    lat = np.linspace(-87.1875, 87.1875, 16)
+    lon = np.arange(0, 360, 11.25)
+    gr = SphereGraphs(lat, lon, mesh_splits=(2, 1, 0))
+    g = gr.view()
+    cfg = GuideConfig(cs=8, cv=4, depth=(1, 1, 1, 1, 1), hidden=16, physics_ops=True, tend_head=False,
+                      closure_tend=True)
+    model = LieGuidedForecaster(DEFAULT_SPEC, cfg, VNetConfig(cs=8, cv=4, depth=(1, 1, 1, 1, 1), heads=2, ds=4, dv=2,
+                                                              hidden=16))
+    model.guide.resolved.set_scales(torch.tensor([54000.0, 280.0, 0.005, 288.0, 101300.0]),
+                                    torch.tensor([3000.0, 10.0, 0.003, 10.0, 1000.0]), torch.tensor([8.0, 12.0, 5.0]),
+                                    torch.full((5,), 0.1), torch.full((3,), 0.3))
+    G = gr.grid.n
+    x = rand_field(2, G, DEFAULT_SPEC.n_s, DEFAULT_SPEC.n_v)
+    c = rand_field(1, G, DEFAULT_SPEC.n_cond_s, DEFAULT_SPEC.n_cond_v)
+    tg, tm = random_gauges(gr)
+    gv = gr.gauge_transformed(tm, tg)
+    with torch.no_grad():
+        P0 = model.physics(x, c, g)
+        P1 = model.physics(x.gauge(tg), c.gauge(tg), gv)
+        y0 = model.guide.tendency_mesh(P0, x, g)
+        y1 = model.guide.tendency_mesh(P1, x.gauge(tg), gv)
+    assert relative_error(y1, y0.gauge(tm[0])) < TOL
+    assert float(model.guide.resolved_tendency(x, g).v.abs().mean()) > 1e-6

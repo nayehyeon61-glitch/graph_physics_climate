@@ -35,6 +35,7 @@ from gpclimate.models.diffusion import (DiffusionConfig, GraphResidualDiffusion,
                                         assemble_ensemble)
 from gpclimate.models.dynamics_vnet import LieGuidedForecaster, VNetConfig  # noqa: E402
 from gpclimate.models.lie_physical_gnn import GuideConfig  # noqa: E402
+from gpclimate.nn.primitive2d import DEFAULT_TERMS, resolved_fraction  # noqa: E402
 from gpclimate.nn.so2 import Field  # noqa: E402
 from gpclimate.training.losses import (field_mse, global_tendency_consistency, perturb, random_gauges,  # noqa: E402
                                        sample_sigma)
@@ -72,7 +73,8 @@ class Run:
             self.cfg = {k: getattr(args, k) for k in ("data", "mesh", "lead", "cs", "cv", "depth", "heads", "ds", "dv",
                                                       "hidden", "n_basis", "guide_cs", "guide_cv", "diff_cs",
                                                       "diff_cv", "diff_depth", "physics_ops", "tend_head", "fusion",
-                                                      "pigt_layers", "pigt_ops")}
+                                                      "pigt_layers", "pigt_ops", "closure_tend", "resolved_terms",
+                                                      "resolved_coef")}
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         self.spec = DEFAULT_SPEC
@@ -94,7 +96,10 @@ class Run:
         # flags added later default to off so older run directories keep loading their checkpoints
         self.guide_cfg = GuideConfig(cs=c["guide_cs"], cv=c["guide_cv"], depth=tuple(c["depth"]), n_basis=c["n_basis"],
                                      hidden=c["hidden"], physics_ops=bool(c.get("physics_ops", False)),
-                                     tend_head=bool(c.get("tend_head", False)))
+                                     tend_head=bool(c.get("tend_head", False)),
+                                     closure_tend=bool(c.get("closure_tend", False)),
+                                     resolved_terms=tuple(c.get("resolved_terms") or DEFAULT_TERMS),
+                                     resolved_coef=c.get("resolved_coef"))
         self.vnet_kwargs = dict(cs=c["cs"], cv=c["cv"], depth=tuple(c["depth"]), heads=c["heads"], ds=c["ds"],
                                 dv=c["dv"], n_basis=c["n_basis"], hidden=c["hidden"],
                                 fusion=c.get("fusion", "gated"), pigt_layers=int(c.get("pigt_layers", 2)),
@@ -123,6 +128,9 @@ class Run:
             m.guide.phys_ops.v_scale.copy_(self.norm.v_scale)  # m/s per normalised unit (vorticity / 2 Omega)
         if getattr(m.vnet, "phys_ops", None) is not None:
             m.vnet.phys_ops.v_scale.copy_(self.norm.v_scale)
+        if m.guide is not None and m.guide.resolved is not None:
+            m.guide.resolved.set_scales(self.norm.s_mean, self.norm.s_std, self.norm.v_scale, self.norm.tend_s,
+                                        self.norm.tend_v)
         return m
 
     def load_guide(self, m: LieGuidedForecaster):
@@ -159,7 +167,9 @@ def stage_a(run: Run):
         fm.vnet.load_state_dict(torch.load(a.perturb_model))
         fm.eval()
         log(f"stage A: forecast-state perturbation from {a.perturb_model} with p={a.perturb_prob}")
-    log(f"stage A: guide params {n_params(guide)}, steps {a.steps}, batch {a.batch}")
+    w_m = torch.ones(g.n_mesh[0])  # icosahedral nodes are nearly uniform in area
+    log(f"stage A: guide params {n_params(guide)}, steps {a.steps}, batch {a.batch}"
+        + (f", closure head with resolved terms {guide.cfg.resolved_terms}" if guide.closure_out is not None else ""))
     n_fc = 0
     for step in range(a.steps):
         for pg in opt.param_groups:
@@ -187,13 +197,19 @@ def stage_a(run: Run):
             tend_t = run.norm.tendency(x0, run.train.next_state(idx)).gauge(tg)
             l_tend = field_mse(tend, tend_t, w)
             loss = loss + a.tend_weight * l_tend
+        l_clos = torch.zeros(())
+        if guide.closure_out is not None:  # S5a: closure = observed tendency - fixed resolved dynamics, on mesh 0
+            tend_m = guide.resolved.pool(run.norm.tendency(x0, run.train.next_state(idx)).gauge(tg), gv)
+            clos_t = tend_m - guide.resolved_tendency(xg, gv)
+            l_clos = field_mse(guide.closure(feats), clos_t, w_m)
+            loss = loss + a.tend_weight * l_clos
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(guide.parameters(), 1.0)
         opt.step()
         if step % 25 == 0:
             run.jlog("a", {"step": step, "l_rec": float(l_rec), "l_aux": float(l_aux), "l_tend": float(l_tend),
-                           "t": time.time() - t0})
+                           "l_clos": float(l_clos), "t": time.time() - t0})
         if step % a.val_every == 0 or step == a.steps - 1:
             guide.eval()
             with torch.no_grad():
@@ -206,15 +222,25 @@ def stage_a(run: Run):
                 v_tend = 0.0
                 if tend is not None:
                     v_tend = float(field_mse(tend, run.norm.tendency(x0, run.calib.next_state(val_idx)), w))
+                v_clos, v_full, rfrac = 0.0, 0.0, None
+                if guide.closure_out is not None:
+                    tend_m = guide.resolved.pool(run.norm.tendency(x0, run.calib.next_state(val_idx)), g)
+                    F = guide.resolved_tendency(x0n, g)
+                    S = guide.closure(feats)
+                    v_clos = float(field_mse(S, tend_m - F, w_m))  # == error of the full tendency F + S
+                    v_full = float(field_mse(F, tend_m, w_m))  # resolved dynamics alone (no closure)
+                    rfrac = resolved_fraction(tend_m, F, w_m)
             guide.train()
-            score = v_rec + a.aux_weight * v_aux + a.tend_weight * v_tend
+            score = v_rec + a.aux_weight * v_aux + a.tend_weight * (v_tend + v_clos)
             if score < best:
                 best = score
                 torch.save(guide.state_dict(), run.dir / "guide.pt")
-            run.jlog("a", {"step": step, "val_rec": v_rec, "val_aux": v_aux, "val_tend": v_tend, "best": best,
+            run.jlog("a", {"step": step, "val_rec": v_rec, "val_aux": v_aux, "val_tend": v_tend, "val_clos": v_clos,
+                           "val_resolved_only": v_full, "resolved_fraction": rfrac, "best": best,
                            "t": time.time() - t0})
             log(f"A {step:5d}  L_rec {float(l_rec):.4f} L_aux {float(l_aux):.4f} L_tend {float(l_tend):.4f}"
-                f" | val rec {v_rec:.4f} aux {v_aux:.4f} tend {v_tend:.4f} | {(time.time() - t0) / (step + 1):.2f} s/step")
+                f" L_clos {float(l_clos):.4f} | val rec {v_rec:.4f} aux {v_aux:.4f} tend {v_tend:.4f} clos {v_clos:.4f}"
+                f" (resolved only {v_full:.4f}) | {(time.time() - t0) / (step + 1):.2f} s/step")
     log(f"stage A done in {(time.time() - t0) / 60:.1f} min, best val score {best:.4f}"
         + (f", forecast-perturbed batches {n_fc}" if fm is not None else ""))
 
@@ -239,8 +265,24 @@ def stage_b(run: Run, use_guide: bool):
     def scaled(f: Field) -> Field:
         return Field(f.s / model.delta_scale_s, f.v / model.delta_scale_v)
 
+    lam_pde = float(getattr(a, "pde_weight", 0.0))
+    use_pde = lam_pde > 0 and use_guide and model.guide.closure_out is not None
+    w_m = torch.ones(g.n_mesh[0])
+
+    def pde_residual(x0n: Field, fc: Field, cn: Field) -> torch.Tensor:
+        """S5b: mean 6 h tendency of the lead-time forecast vs the guide's physics tendency F + S at the midpoint.
+
+        (X_hat - X_t) / lead  (normalised, per data step)  should equal  F(X_bar) + S_theta(X_bar),  X_bar the
+        midpoint state (trapezoidal rule); gradients reach X_hat through F, S_theta and the pooling.
+        """
+        guide = model.guide
+        tend_hat = Field((fc.s - x0n.s) / (lead * run.norm.tend_s), (fc.v - x0n.v) / (lead * run.norm.tend_v))
+        xbar = Field(0.5 * (x0n.s + fc.s), 0.5 * (x0n.v + fc.v))
+        feats = guide(xbar, cn, torch.zeros(x0n.s.shape[0]), g)
+        return field_mse(guide.resolved.pool(tend_hat, g), guide.tendency_mesh(feats, xbar, g), w_m)
+
     log(f"stage B[{name}]: vnet params {n_params(model.vnet)}, steps {a.steps}, batch {a.batch}, "
-        f"rollout steps {K} from step {k_start} (weight {lam})")
+        f"rollout steps {K} from step {k_start} (weight {lam})" + (f", PDE residual weight {lam_pde}" if use_pde else ""))
     for step in range(a.steps):
         for pg in opt.param_groups:
             pg["lr"] = cosine_lr(step, a.steps, a.lr)
@@ -252,18 +294,19 @@ def stage_b(run: Run, use_guide: bool):
         f, d = model(xs[0], cs[0], g)
         l_f = field_mse(scaled(f), scaled(xs[1]), w)  # == delta MSE of the one-step target
         l_phys = global_tendency_consistency(d.s * model.delta_scale_s, xs[1].s - xs[0].s, w)
+        l_pde = pde_residual(xs[0], f, cs[0]) if use_pde else torch.zeros(())
         l_roll = torch.zeros(())
         for k in range(2, k_now + 1):  # autoregressive steps; physics features recomputed from the forecast
             f, _ = model(f, cs[k - 1], g)
             l_roll = l_roll + field_mse(scaled(f), scaled(xs[k]), w)
-        loss = l_f + a.phys_weight * l_phys + lam * l_roll
+        loss = l_f + a.phys_weight * l_phys + lam * l_roll + lam_pde * l_pde
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(params, 1.0)
         opt.step()
         if step % 25 == 0:
             run.jlog(name, {"step": step, "l_f": float(l_f), "l_phys": float(l_phys), "l_roll": float(l_roll),
-                            "k": k_now, "t": time.time() - t0})
+                            "l_pde": float(l_pde), "k": k_now, "t": time.time() - t0})
         if step % a.val_every == 0 or step == a.steps - 1:
             model.eval()
             with torch.no_grad():
@@ -291,7 +334,8 @@ def stage_b(run: Run, use_guide: bool):
             run.jlog(name, {"step": step, "val_mse": v_mse, "val_mse2": v_mse2, "val_persistence_mse": pers,
                             "best": best, "attention_mass": model.vnet.attention_mass(), "t": time.time() - t0})
             log(f"B[{name}] {step:5d}  L_f {float(l_f):.4f} L_roll {float(l_roll):.4f} L_phys {float(l_phys):.5f}"
-                f" | val MSE {v_mse:.4f} 2-step {v_mse2:.4f} (persistence {pers:.4f})"
+                + (f" L_pde {float(l_pde):.4f}" if use_pde else "")
+                + f" | val MSE {v_mse:.4f} 2-step {v_mse2:.4f} (persistence {pers:.4f})"
                 f" | {(time.time() - t0) / (step + 1):.2f} s/step")
     log(f"stage B[{name}] done in {(time.time() - t0) / 60:.1f} min, best val MSE {best:.4f}")
 
@@ -516,6 +560,17 @@ def main():
     ap.add_argument("--tend-head", type=int, default=1, choices=[0, 1],
                     help="guide: Stage-A one-step (6 h) tendency head (stored in config.json)")
     ap.add_argument("--tend-weight", type=float, default=1.0)
+    ap.add_argument("--closure-tend", type=int, default=0, choices=[0, 1],
+                    help="guide (stage S5a): tendency = fixed resolved dynamics + learned closure on mesh 0 "
+                         "(stored in config.json)")
+    ap.add_argument("--resolved-terms", default=",".join(DEFAULT_TERMS),
+                    help="comma-separated resolved terms kept in F (stage S5a; stored in config.json)")
+    ap.add_argument("--resolved-coef", default=None,
+                    help="JSON written by scripts/resolved_fraction.py --fit with the fixed calibration coefficients "
+                         "of the resolved terms (stage S5a; stored in config.json)")
+    ap.add_argument("--pde-weight", type=float, default=0.0,
+                    help="Stage B (stage S5b): weight of the PDE-residual loss between the forecast tendency and "
+                         "the guide's F + S_theta at the midpoint state (needs a closure-head guide)")
     ap.add_argument("--fusion", default="gated", choices=["gated", "pigt"],
                     help="V-Net physics fusion: gated cross-attention or the physics-integrated graph transformer")
     ap.add_argument("--pigt-layers", type=int, default=2)
@@ -542,6 +597,9 @@ def main():
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    args.resolved_terms = [t for t in str(args.resolved_terms).split(',') if t]
+    if args.resolved_coef and not isinstance(args.resolved_coef, dict):
+        args.resolved_coef = json.load(open(args.resolved_coef))["coef"]
     torch.set_num_threads(args.threads)
     torch.manual_seed(args.seed)
     run = Run(args)

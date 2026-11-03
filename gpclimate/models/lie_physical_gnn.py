@@ -32,6 +32,7 @@ from gpclimate.data.variables import VariableSpec
 from gpclimate.geometry.graphs import GraphView
 from gpclimate.nn.gauge_conv import GaugeStack, GaugeTransfer, Merge, transport_interpolate
 from gpclimate.nn.physics_ops import PhysicsOperators
+from gpclimate.nn.primitive2d import DEFAULT_TERMS, ReducedPrimitiveTendencies
 from gpclimate.nn.so2 import EqFFN, EqLinear, EqNorm, Field
 
 LEVEL_KEYS = ("P0", "P1", "P2", "P1u", "P0u")
@@ -46,6 +47,12 @@ class GuideConfig:
     hidden: int = 64
     physics_ops: bool = False  # fixed equivariant differential operators as extra mesh-0 inputs
     tend_head: bool = False  # Stage-A head predicting the one-step tendency of the clean state
+    # stage S5a (layer-wise physical constraints): the tendency is  F(X) + S_theta  with F the fixed resolved
+    # dynamics of the reduced primitive equations (gpclimate.nn.primitive2d) and S_theta a learned closure read
+    # out on mesh 0; the Stage-A target of the closure head is the observed tendency minus F.
+    closure_tend: bool = False
+    resolved_terms: Tuple[str, ...] = DEFAULT_TERMS
+    resolved_coef: Optional[dict] = None  # fixed calibration coefficients (scripts/resolved_fraction.py --fit)
 
 
 class GridLift(nn.Module):
@@ -100,6 +107,13 @@ class LiePhysicalGNN(nn.Module):
         self.rec_out = EqLinear(cs, cv, spec.n_s, spec.n_v)
         self.aux_out = EqLinear(cs, cv, len(spec.aux_names), 0)
         self.tend_out = EqLinear(cs, cv, spec.n_s, spec.n_v) if cfg.tend_head else None
+        # closure head (mesh 0) and the fixed resolved dynamics it completes
+        self.resolved: Optional[ReducedPrimitiveTendencies] = None
+        self.closure_out: Optional[EqLinear] = None
+        if cfg.closure_tend:
+            self.resolved = ReducedPrimitiveTendencies(spec, tuple(cfg.resolved_terms))
+            self.resolved.set_coefficients(cfg.resolved_coef)
+            self.closure_out = EqLinear(cs, cv, spec.n_s, spec.n_v)
 
     @property
     def feature_dims(self) -> Tuple[int, int]:
@@ -133,6 +147,21 @@ class LiePhysicalGNN(nn.Module):
     def heads(self, feats: Dict[str, Field], g: GraphView) -> Tuple[Field, torch.Tensor]:
         d = self.head_dec(feats["P0u"], g.mesh2grid)
         return self.rec_out(d), self.aux_out(d).s
+
+    # ---------------------------------------------------------------- stage S5a: resolved dynamics + closure (mesh 0)
+    def closure(self, feats: Dict[str, Field]) -> Field:
+        """Learned closure tendency S_theta on mesh 0 (normalised 6 h tendency units)."""
+        assert self.closure_out is not None
+        return self.closure_out(feats["P0u"])
+
+    def resolved_tendency(self, state_norm: Field, g: GraphView) -> Field:
+        """Fixed resolved dynamics F(X) on mesh 0 (normalised 6 h tendency units), from the *clean* grid state."""
+        assert self.resolved is not None
+        return self.resolved.mesh_forward(state_norm, g)
+
+    def tendency_mesh(self, feats: Dict[str, Field], state_norm: Field, g: GraphView) -> Field:
+        """Full physics tendency F(X) + S_theta on mesh 0."""
+        return self.resolved_tendency(state_norm, g) + self.closure(feats)
 
     def heads_all(self, feats: Dict[str, Field], g: GraphView) -> Tuple[Field, torch.Tensor, Optional[Field]]:
         """(reconstruction, aux diagnostics, one-step tendency or None)."""

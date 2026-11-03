@@ -24,6 +24,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from gpclimate.nn.gauge_conv import transport_interpolate  # noqa: E402
+from gpclimate.nn.primitive2d import resolved_fraction  # noqa: E402
 from gpclimate.nn.so2 import Field, invariants  # noqa: E402
 from gpclimate.training.losses import field_mse  # noqa: E402
 from train_eval import Run  # noqa: E402
@@ -54,7 +55,8 @@ def main():
     # reuse Run's loaders with the run's own config
     ns = argparse.Namespace(run=args.run, data=args.data, **{k: None for k in (
         "mesh", "lead", "cs", "cv", "depth", "heads", "ds", "dv", "hidden", "n_basis", "guide_cs", "guide_cv",
-        "diff_cs", "diff_cv", "diff_depth", "physics_ops", "tend_head", "fusion", "pigt_layers", "pigt_ops")})
+        "diff_cs", "diff_cv", "diff_depth", "physics_ops", "tend_head", "fusion", "pigt_layers", "pigt_ops",
+        "closure_tend", "resolved_terms", "resolved_coef")})
     run = Run(ns)
     g, w, test = run.g, run.w, run.test
     model = run.forecaster(True)
@@ -129,6 +131,54 @@ def main():
     else:
         rep["fusion_gates_mean_abs"] = [float(f.beta_s.abs().mean()) for f in model.vnet.fusion]
         rep["fusion_gates_max_abs"] = [float(f.beta_s.abs().max()) for f in model.vnet.fusion]
+    # ---------------------------------------------------------------- 4. layer-wise physics (stage S5): resolved
+    # fraction of the 6 h tendency, closure quality, and the PDE residual of the 24 h forecasts (guided / guide-free)
+    phys = {}
+    if model.guide.closure_out is not None:
+        guide, lead = model.guide, run.cfg["lead"]
+        w_m = torch.ones(g.n_mesh[0])
+        acc = {"tend": [], "F": [], "S": []}
+        with torch.no_grad():
+            for i in range(0, len(idx), 8):
+                x0n, _, cn, x0 = run.prep(test, idx[i:i + 8])
+                ids = idx[i:i + 8]
+                acc["tend"].append(guide.resolved.pool(run.norm.tendency(x0, test.next_state(ids)), g))
+                acc["F"].append(guide.resolved_tendency(x0n, g))
+                acc["S"].append(guide.closure(guide(x0n, cn, torch.zeros(len(ids)), g)))
+        cat = {k: Field(torch.cat([f.s for f in v]), torch.cat([f.v for f in v])) for k, v in acc.items()}
+        phys["resolved_fraction_6h"] = resolved_fraction(cat["tend"], cat["F"], w_m)
+        phys["closure_fraction_6h"] = resolved_fraction(cat["tend"], cat["F"] + cat["S"], w_m)
+        phys["mse_6h_tendency"] = {"resolved_only": float(field_mse(cat["F"], cat["tend"], w_m)),
+                                   "resolved_plus_closure": float(field_mse(cat["F"] + cat["S"], cat["tend"], w_m)),
+                                   "zero": float(field_mse(Field(torch.zeros_like(cat["tend"].s),
+                                                                 torch.zeros_like(cat["tend"].v)), cat["tend"], w_m))}
+
+        def pde_residual(fm, x0n, fc, cn):
+            tend_hat = Field((fc.s - x0n.s) / (lead * run.norm.tend_s), (fc.v - x0n.v) / (lead * run.norm.tend_v))
+            xbar = Field(0.5 * (x0n.s + fc.s), 0.5 * (x0n.v + fc.v))
+            feats = guide(xbar, cn, torch.zeros(x0n.s.shape[0]), g)
+            return float(field_mse(guide.resolved.pool(tend_hat, g), guide.tendency_mesh(feats, xbar, g), w_m))
+
+        models = {"lie_guided": model}
+        if (Path(args.run) / "vnet_noguide.pt").exists():
+            m2 = run.forecaster(False)
+            run.load_vnet(m2, "vnet_noguide")
+            m2.eval()
+            models["no_guide"] = m2
+        res = {k: 0.0 for k in models}
+        res["truth"] = 0.0
+        with torch.no_grad():
+            for i in range(0, len(idx), 8):
+                x0n, x1n, cn, _ = run.prep(test, idx[i:i + 8])
+                B = x0n.s.shape[0]
+                for k, m in models.items():
+                    fc, _ = m(x0n, cn, g)
+                    res[k] += pde_residual(m, x0n, fc, cn) * B
+                res["truth"] += pde_residual(model, x0n, x1n, cn) * B
+        phys["pde_residual_24h"] = {k: v / len(idx) for k, v in res.items()}
+        phys["pde_residual_24h"]["note"] = ("mean squared normalised residual (X_hat - X_t)/lead - [F + S](X_bar) on "
+                                           "mesh 0; 'truth' = the same residual of the observed X_{t+lead}")
+        rep["layerwise_physics"] = phys
     out = args.out or str(Path(args.run) / "diagnose_guide.json")
     json.dump(rep, open(out, "w"), indent=2)
     print(json.dumps(rep, indent=1))

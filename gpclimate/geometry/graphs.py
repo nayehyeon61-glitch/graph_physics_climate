@@ -142,6 +142,32 @@ def _geodesic(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.arccos(np.clip(np.sum(a * b, -1), -1.0, 1.0))
 
 
+def _bilinear_weights(lat_deg: np.ndarray, lon_deg: np.ndarray, qlat_deg: np.ndarray, qlon_deg: np.ndarray):
+    """Bilinear interpolation weights from a regular lat/lon grid (ascending lat, periodic lon) at query points.
+
+    Returns (src grid index, dst query index, weight) with four entries per query point; latitude is clamped to
+    the grid's range (rows beyond the last grid latitude use that row), longitude wraps around.
+    """
+    lat, lon = np.asarray(lat_deg, np.float64), np.asarray(lon_deg, np.float64)
+    n_lat, n_lon = len(lat), len(lon)
+    dlat, dlon = lat[1] - lat[0], lon[1] - lon[0]
+    ql = np.asarray(qlat_deg, np.float64)
+    qo = np.mod(np.asarray(qlon_deg, np.float64) - lon[0], 360.0)
+    fi = np.clip((ql - lat[0]) / dlat, 0.0, n_lat - 1.0)
+    i0 = np.clip(np.floor(fi).astype(int), 0, n_lat - 2)
+    t = np.clip(fi - i0, 0.0, 1.0)
+    fj = qo / dlon
+    j0 = np.floor(fj).astype(int) % n_lon
+    u = fj - np.floor(fj)
+    j1 = (j0 + 1) % n_lon
+    q = np.arange(len(ql))
+    src = np.concatenate([i0 * n_lon + j0, i0 * n_lon + j1, (i0 + 1) * n_lon + j0, (i0 + 1) * n_lon + j1])
+    dst = np.concatenate([q, q, q, q])
+    w = np.concatenate([(1 - t) * (1 - u), (1 - t) * u, t * (1 - u), t * u])
+    keep = w > 1e-12
+    return src[keep], dst[keep], w[keep]
+
+
 class SphereGraphs:
     """Grid + 3-level icosahedral hierarchy with gauges and all edge sets.
 
@@ -230,6 +256,13 @@ class SphereGraphs:
         self.mesh2grid = _make_edges(m0, self.grid, src, dst, 1.5 * float(d.max()),
                                      weight=_normalize_per_dst(w, dst, self.grid.n))
 
+        # bilinear (in lat/lon) sampling of the grid at the mesh-0 nodes, with transport: a smooth interpolation for
+        # the fixed differential operators (the Gaussian pooling above is a filter, not an interpolant, and its
+        # node-to-node weight irregularity shows up as ~10% noise once a gradient is taken)
+        src, dst, w = _bilinear_weights(self.lat, self.lon, m0.lat, m0.lon)
+        d = _geodesic(self.grid.pos[src], m0.pos[dst])
+        self.grid2mesh_lin = _make_edges(self.grid, m0, src, dst, 1.5 * float(d.max()) + 1e-6, weight=w)
+
         self.grid_area_weight = torch.as_tensor(self.grid.area / self.grid.area.mean(), dtype=torch.float32)
         # sin(latitude) of every mesh node: the Coriolis parameter f / (2 Omega), a gauge invariant
         self.mesh_sinlat: List[torch.Tensor] = [
@@ -274,6 +307,7 @@ class SphereGraphs:
         v.attn_edges = [e.gauge_transformed(tm[l], tm[l]) for l, e in enumerate(self.attn_edges)]
         v.down = [e.gauge_transformed(tm[l], tm[l + 1]) for l, e in enumerate(self.down)]
         v.up = [e.gauge_transformed(tm[l + 1], tm[l]) for l, e in enumerate(self.up)]
+        v.extras = {"grid2mesh_lin": self.grid2mesh_lin.gauge_transformed(tg, tm[0])}
         return v
 
     def view(self, device=None) -> "GraphView":
@@ -300,11 +334,13 @@ class GraphView:
     @classmethod
     def from_graphs(cls, g: SphereGraphs) -> "GraphView":
         return cls(g.grid2mesh, g.mesh2grid, list(g.mesh_edges), list(g.attn_edges), list(g.down), list(g.up),
-                   g.grid.n, [m.n for m in g.mesh], g.grid_area_weight, list(g.mesh_sinlat))
+                   g.grid.n, [m.n for m in g.mesh], g.grid_area_weight, list(g.mesh_sinlat),
+                   {"grid2mesh_lin": g.grid2mesh_lin})
 
     def to(self, device) -> "GraphView":
         return GraphView(self.grid2mesh.to(device), self.mesh2grid.to(device),
                          [e.to(device) for e in self.mesh_edges], [e.to(device) for e in self.attn_edges],
                          [e.to(device) for e in self.down], [e.to(device) for e in self.up],
                          self.n_grid, list(self.n_mesh), self.grid_area_weight.to(device),
-                         [t.to(device) for t in self.mesh_sinlat], dict(self.extras))
+                         [t.to(device) for t in self.mesh_sinlat],
+                         {k: (v.to(device) if hasattr(v, "to") else v) for k, v in self.extras.items()})

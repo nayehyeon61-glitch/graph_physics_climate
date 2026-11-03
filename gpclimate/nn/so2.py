@@ -39,6 +39,9 @@ class Field(NamedTuple):
     def __add__(self, other: "Field") -> "Field":  # type: ignore[override]
         return Field(self.s + other.s, self.v + other.v)
 
+    def __sub__(self, other: "Field") -> "Field":
+        return Field(self.s - other.s, self.v - other.v)
+
     def scale(self, a_s, a_v) -> "Field":
         return Field(self.s * a_s, self.v * a_v)
 
