@@ -16,6 +16,8 @@ COMMON="--run $RUN --threads $THREADS --batch ${BATCH:-4} --lr ${LR:-1e-3} --phy
 COMMON="$COMMON --closure-tend ${CLOSURE_TEND:-0}"
 [ -n "${RESOLVED_TERMS:-}" ] && COMMON="$COMMON --resolved-terms $RESOLVED_TERMS"
 [ -n "${RESOLVED_COEF:-}" ] && COMMON="$COMMON --resolved-coef $RESOLVED_COEF"
+# stage S8: graph neural ODE dynamics (INTEGRATOR=ode, ODE_STEPS, ODE_SOLVER, ODE_PHYSICS=1 for the physics drift)
+COMMON="$COMMON --integrator ${INTEGRATOR:-delta} --ode-steps ${ODE_STEPS:-4} --ode-solver ${ODE_SOLVER:-euler} --ode-physics ${ODE_PHYSICS:-0}"
 A_EXTRA=""
 [ -n "${PERTURB_MODEL:-}" ] && A_EXTRA="--perturb-model $PERTURB_MODEL --perturb-prob ${PERTURB_PROB:-0.3}"
 B_EXTRA="--rollout-steps ${ROLLOUT_STEPS:-1} --rollout-start ${ROLLOUT_START:-0} --rollout-weight ${ROLLOUT_WEIGHT:-1.0}"
@@ -23,6 +25,14 @@ B_EXTRA="--rollout-steps ${ROLLOUT_STEPS:-1} --rollout-start ${ROLLOUT_START:-0}
 B_EXTRA="$B_EXTRA --pde-weight ${PDE_WEIGHT:-0}"
 if [ -n "${GUIDE_FROM:-}" ]; then
   for f in config.json guide.pt normalizer.pt log_a.jsonl; do [ -f "$RUN/$f" ] || cp "$GUIDE_FROM/$f" "$RUN/"; done
+  if [ -n "${INTEGRATOR:-}" ]; then  # S8: the copied config predates the integrator keys; set them from the env
+    python - "$RUN/config.json" "$INTEGRATOR" "${ODE_STEPS:-4}" "${ODE_SOLVER:-euler}" "${ODE_PHYSICS:-0}" <<'PY'
+import json, sys
+p = sys.argv[1]; c = json.load(open(p))
+c.update(integrator=sys.argv[2], ode_steps=int(sys.argv[3]), ode_solver=sys.argv[4], ode_physics=int(sys.argv[5]))
+json.dump(c, open(p, "w"), indent=2)
+PY
+  fi
 else
   python -W ignore scripts/train_eval.py $COMMON --stage a --steps "${STEPS_A:-1000}" --val-every 200 $A_EXTRA || exit 1
 fi
@@ -34,7 +44,7 @@ else
 fi
 if [ "${TRAIN_NOGUIDE:-0}" = "1" ]; then
   python -W ignore scripts/train_eval.py $COMMON --stage b_noguide --steps "${STEPS_B:-1500}" --val-every 250 $B_EXTRA || exit 1
-else
+elif [ "${COPY_NOGUIDE:-1}" = "1" ]; then  # COPY_NOGUIDE=0 when BASE's guide-free V-Net has another integrator (S8)
   [ -f "$RUN/vnet_noguide.pt" ] || cp "$BASE/vnet_noguide.pt" "$BASE/log_vnet_noguide.jsonl" "$RUN/"
 fi
 # Stage C (residual graph diffusion) is optional: STAGE_C=1; NOISE_CONSTRAINTS=1 = stage S5c (projection + penalties)

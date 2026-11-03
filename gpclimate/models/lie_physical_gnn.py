@@ -163,6 +163,16 @@ class LiePhysicalGNN(nn.Module):
         """Full physics tendency F(X) + S_theta on mesh 0."""
         return self.resolved_tendency(state_norm, g) + self.closure(feats)
 
+    def physics_tendency(self, feats: Dict[str, Field], state_norm: Field, g: GraphView) -> Optional[Field]:
+        """One-data-step (6 h) tendency of the clean state on the *grid*, in normalised tendency units -- the
+        physics drift of the stage S8 graph neural ODE: the Stage-A tendency head when present, otherwise the
+        closure-structured ``F(X) + S_theta`` transported from mesh 0 to the grid; ``None`` without either head."""
+        if self.closure_out is not None:
+            return transport_interpolate(self.tendency_mesh(feats, state_norm, g), g.mesh2grid)
+        if self.tend_out is not None:
+            return self.tend_out(self.head_dec(feats["P0u"], g.mesh2grid))
+        return None
+
     def heads_all(self, feats: Dict[str, Field], g: GraphView) -> Tuple[Field, torch.Tensor, Optional[Field]]:
         """(reconstruction, aux diagnostics, one-step tendency or None)."""
         d = self.head_dec(feats["P0u"], g.mesh2grid)

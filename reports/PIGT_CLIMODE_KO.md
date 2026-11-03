@@ -1,14 +1,14 @@
 # PIGT(물리 통합 graph transformer) 학습 결과와 ClimODE 비교
 
-stage S4 (`docs/EXPERIMENT_STAGES_KO.md`). 요청: "PIGT 진행 및 ClimODE와 비교" (감자, 2026-11-02). 표 전체: `reports/PIGT_CLIMODE_compare.md` (`scripts/compare_runs.py`), 원자료: `runs/era5_64x32_pigt/`, `runs/climode_2019_trainmode/`, `runs/climode_2019/`.
+stage4 (`docs/EXPERIMENT_STAGES_KO.md`). 요청: "PIGT 진행 및 ClimODE와 비교" (감자, 2026-11-02). 표 전체: `reports/PIGT_CLIMODE_compare.md` (`scripts/compare_runs.py`), 원자료: `runs/era5_64x32_pigt/`, `runs/climode_2019_trainmode/`, `runs/climode_2019/`.
 
 ## 0. 요약
 
-- **PIGT는 직전 단계 S3(보강 guide + 게이트 융합 + rollout)보다 24–72 h에서 11변수 모두 낮은 RMSE**(11변수 평균 −1.0 / −1.0 / −0.6 %), 96–120 h에서는 같은 수준(−0.3 / 0.0 %, 7/11·6/11 변수 개선)입니다. 2018 검증 MSE도 0.0822 vs 0.0842(2-step 0.150 vs 0.155)로 전 구간에서 S3 아래였습니다. guide 없음 대비로는 모든 리드에서 −0.7~−2.4 %입니다.
+- **PIGT는 직전 단계 stage3(보강 guide + 게이트 융합 + rollout)보다 24–72 h에서 11변수 모두 낮은 RMSE**(11변수 평균 −1.0 / −1.0 / −0.6 %), 96–120 h에서는 같은 수준(−0.3 / 0.0 %, 7/11·6/11 변수 개선)입니다. 2018 검증 MSE도 0.0822 vs 0.0842(2-step 0.150 vs 0.155)로 전 구간에서 stage3 아래였습니다. guide 없음 대비로는 모든 리드에서 −0.7~−2.4 %입니다.
 - **기여도는 어텐션 질량으로 바로 읽힙니다.** 학습이 끝난 뒤 고정 물리 연산자 토큰 O가 다섯 해상도 모두에서 29–47 %, guide 토큰 P가 30–47 %, 자기 이웃 H가 15–31 %를 가져갑니다. P는 가장 고운 인코더 층(P0 0.47)과 첫 디코더 층(P1u 0.44)에서, O는 중간 층(P1 0.47, P2 0.40)에서 가장 큽니다.
-- guide를 0으로 했을 때 24 h MSE가 +69 %(S3 게이트 융합 +102 %) 나빠집니다. 물리의 일부가 O에서 직접 들어오므로 학습된 guide에 대한 의존이 그만큼 고정 연산자로 옮겨간 것이며, 어텐션 분포와 일치합니다.
+- guide를 0으로 했을 때 24 h MSE가 +69 %(stage3 게이트 융합 +102 %) 나빠집니다. 물리의 일부가 O에서 직접 들어오므로 학습된 guide에 대한 의존이 그만큼 고정 연산자로 옮겨간 것이며, 어텐션 분포와 일치합니다.
 - **ClimODE(저자 공개 체크포인트, 저자 평가 프로토콜)와는 24–48 h의 z500·바람에서 ClimODE가 앞서고(z500 −14.5 % / −5.5 %), 72 h에 역전되어 96–120 h에서는 PIGT가 z500 4–9 %, t850 16–20 % 낮습니다. t2m은 ClimODE가 모든 리드에서 persistence보다 나쁩니다.** 통상의 추론 방식(eval 모드)으로 돌린 ClimODE는 전 리드에서 더 나쁘고 72 h부터 일부 초기시각이 발산합니다.
-- 주의: PIGT V-Net 파라미터는 677,790으로 S3(554,665)보다 22 % 많고, 단일 seed입니다. 1 % 안팎의 차이는 두 번째 seed 없이는 확정할 수 없습니다. 다만 24–72 h에서 11/11 변수가 같은 방향인 것은 단일 변수 수치보다 강한 신호입니다.
+- 주의: PIGT V-Net 파라미터는 677,790으로 stage3(554,665)보다 22 % 많고, 단일 seed입니다. 1 % 안팎의 차이는 두 번째 seed 없이는 확정할 수 없습니다. 다만 24–72 h에서 11/11 변수가 같은 방향인 것은 단일 변수 수치보다 강한 신호입니다.
 
 ## 1. 실험 설정
 
@@ -27,7 +27,7 @@ stage S4 (`docs/EXPERIMENT_STAGES_KO.md`). 요청: "PIGT 진행 및 ClimODE와 �
 | 열 | 모델 | 파라미터 | 비고 |
 |---|---|---|---|
 | **PIGT** | S3와 같은 guide(고정) + Dynamics V-Net, 융합을 PIGT(물리 통합 graph transformer, 1 layer)로 교체 | V-Net 677,790 (+ guide 275,817) | `runs/era5_64x32_pigt`, 설계 `docs/design/Physics_Integrated_Graph_Transformer_KO.md` |
-| **보강 guide + rollout (S3)** | 같은 guide + 게이트 융합 V-Net(F = H + β·Attn(H, P)) | V-Net 554,665 (+ guide 275,817) | `runs/era5_64x32_physops_roll:lie_guided`, `reports/ROLLOUT_LOSS_KO.md` |
+| **보강 guide + rollout (stage3)** | 같은 guide + 게이트 융합 V-Net(F = H + β·Attn(H, P)) | V-Net 554,665 (+ guide 275,817) | `runs/era5_64x32_physops_roll:lie_guided`, `reports/ROLLOUT_LOSS_KO.md` |
 | **guide 없음 + rollout** | 같은 V-Net, guide 입력 없음, 같은 rollout 손실 | 447,505 | `runs/era5_64x32_physops_roll:no_guide` (PIGT run에 재사용) |
 | **ClimODE (저자 프로토콜)** | 체크포인트 `ClimODE_global.pt`, 저자 평가 스크립트처럼 `eval()`을 부르지 않음(BatchNorm 테스트 배치 통계 + dropout 켜짐), 초기시각 2개 배치 | 2,752,099 | `runs/climode_2019_trainmode` |
 | **ClimODE (eval 모드)** | 같은 체크포인트, `model.eval()` | 2,752,099 | `runs/climode_2019` |
@@ -48,9 +48,9 @@ stage S4 (`docs/EXPERIMENT_STAGES_KO.md`). 요청: "PIGT 진행 및 ClimODE와 �
 
 ## 2. 결과
 
-### 2.1 핵심 변수 (굵은 글씨 = 행 최선, 괄호 = S3 대비 PIGT 상대 변화)
+### 2.1 핵심 변수 (굵은 글씨 = 행 최선, 괄호 = stage3 대비 PIGT 상대 변화)
 
-| lead | 변수 | PIGT | 보강 guide+rollout (S3) | guide 없음+rollout | ClimODE 저자 프로토콜 | ClimODE eval 모드 | persistence |
+| lead | 변수 | PIGT | 보강 guide+rollout (stage3) | guide 없음+rollout | ClimODE 저자 프로토콜 | ClimODE eval 모드 | persistence |
 |---|---|---|---|---|---|---|---|
 | 24 h | z500 | 248.2 (−0.3%) | 248.9 | 252.3 | **212.1** | 267.1 | 565.7 |
 | 24 h | t850 | 1.411 (−1.2%) | 1.428 | 1.453 | **1.335** | 1.515 | 2.683 |
@@ -77,7 +77,7 @@ stage S4 (`docs/EXPERIMENT_STAGES_KO.md`). 요청: "PIGT 진행 및 ClimODE와 �
 
 ### 2.2 11변수 평균 상대 변화
 
-| lead | PIGT vs S3 (11변수 평균) | PIGT vs guide 없음 (11변수 평균) | PIGT가 S3보다 나은 변수 수 |
+| lead | PIGT vs stage3 (11변수 평균) | PIGT vs guide 없음 (11변수 평균) | PIGT가 S3보다 나은 변수 수 |
 |---|---|---|---|
 | 24 h | −1.0% | −2.4% | 11/11 |
 | 48 h | −1.0% | −2.3% | 11/11 |
@@ -85,11 +85,11 @@ stage S4 (`docs/EXPERIMENT_STAGES_KO.md`). 요청: "PIGT 진행 및 ClimODE와 �
 | 96 h | −0.3% | −1.3% | 7/11 |
 | 120 h | −0.0% | −0.7% | 6/11 |
 
-가장 큰 개선은 msl 24–48 h(−2.9 / −2.2 %)와 t850 전 리드(−0.9 ~ −1.7 %)입니다. 96–120 h에서 z500·msl이 +0.1 ~ +1.3 % 나빠지는 것은 S3 때 rollout 손실이 가장 크게 개선한 대규모 장에서 PIGT의 추가 이득이 없다는 뜻입니다.
+가장 큰 개선은 msl 24–48 h(−2.9 / −2.2 %)와 t850 전 리드(−0.9 ~ −1.7 %)입니다. 96–120 h에서 z500·msl이 +0.1 ~ +1.3 % 나빠지는 것은 stage3 때 rollout 손실이 가장 크게 개선한 대규모 장에서 PIGT의 추가 이득이 없다는 뜻입니다.
 
 ### 2.3 검증 곡선 (2018 calib, 같은 16 시각)
 
-| step | S3 1-step / 2-step | PIGT 1-step / 2-step |
+| step | stage3 1-step / 2-step | PIGT 1-step / 2-step |
 |---|---|---|
 | 250 | 0.1331 / 0.2511 | 0.1342 / 0.2510 |
 | 500 | 0.1063 / 0.2088 | 0.1059 / 0.2111 |
@@ -117,7 +117,7 @@ rollout 손실이 켜지는 500 step까지는 차이가 없고, 그 뒤 PIGT가 
 
 ### 3.2 guide 의존도와 선형 probe (24 h, 테스트 48 시각)
 
-| 항목 | PIGT | S3 (게이트 융합) |
+| 항목 | PIGT | stage3 (게이트 융합) |
 |---|---|---|
 | P를 0으로 했을 때 MSE 변화 | +69 % | +102 % |
 | P를 다른 시각으로 교체 | +114 % | +139 % |
@@ -133,11 +133,11 @@ guide를 지웠을 때의 열화가 S3보다 작은 것은 PIGT가 guide를 덜 
 - **저자 프로토콜의 ClimODE는 24–48 h의 z500·바람에서 우리 모델보다 낫고(z500 PIGT 대비 −14.5 % / −5.5 %, 10 m 바람 −3 ~ −9 %), 72 h에 역전되어(z500 −0.7 %, t850은 이미 +12 %) 96–120 h에서는 PIGT가 z500 4–9 %, t850 16–20 % 낮습니다.** 10년 학습·2.75 M 파라미터 모델에 2년 학습·0.68 M 모델이 중장기 리드에서 앞서는 것은 rollout 손실 학습의 효과로 읽힙니다(ClimODE는 1-step 수준의 학습 + 연속 적분이고, 장기 적분에서 오차가 쌓입니다).
 - **t2m은 ClimODE가 모든 리드에서 persistence보다 나쁩니다**(24 h 1.82 K vs 1.71 K). 저자 논문 수치(t2m 24 h ≈ 1.2 K)보다 훨씬 나쁜데, BatchNorm이 테스트 배치 통계를 쓰는 저자 프로토콜에서 배치 구성(저자: 같은 날짜의 2017·2018 두 해, 우리: 4일 간격의 두 초기시각)에 따라 결과가 달라지는 것으로 보입니다. 즉 논문의 t2m 수치는 재현 조건에 민감합니다.
 - **eval 모드(통상의 추론)로 돌리면 모든 리드에서 더 나쁘고, 72 h부터 일부 초기시각의 ODE 해가 발산합니다**(96 h 3개, 120 h 4개가 NaN이고 유한한 나머지도 비정상적으로 큽니다). BatchNorm의 배치 통계가 적분 중 활성값을 매 단계 재정규화해 주는 안정 장치 역할을 하고 있었다는 뜻이며, 그것이 없는 running 통계로는 장기 적분이 불안정합니다. "ClimODE 대비"는 저자 프로토콜 열을 기준으로 읽는 것이 공정합니다.
-- 우리 쪽은 세 모델(PIGT, S3, guide 없음) 모두 120 h까지 발산 없이 모든 변수에서 persistence보다 낫고, 출력이 11변수입니다.
+- 우리 쪽은 세 모델(PIGT, stage3, guide 없음) 모두 120 h까지 발산 없이 모든 변수에서 persistence보다 낫고, 출력이 11변수입니다.
 
 ## 5. 비교의 한계
 
-- PIGT는 S3보다 V-Net 파라미터가 22 % 많습니다(677,790 vs 554,665; 소스별 K/V 투영과 P 갱신 블록). 1 % 안팎의 이득이 구조 때문인지 용량 때문인지는 같은 용량의 게이트 융합(cs를 늘린 S3) 또는 두 번째 seed로 분리해야 합니다.
+- PIGT는 S3보다 V-Net 파라미터가 22 % 많습니다(677,790 vs 554,665; 소스별 K/V 투영과 P 갱신 블록). 1 % 안팎의 이득이 구조 때문인지 용량 때문인지는 같은 용량의 게이트 융합(cs를 늘린 stage3) 또는 두 번째 seed로 분리해야 합니다.
 - 학습 데이터 양(ClimODE 10년 vs 우리 2년)과 모델 크기(2.75 M vs 0.55–0.68 M)가 다릅니다. 유리한 쪽은 ClimODE이므로 우리가 앞서는 구간은 보수적으로 해석해도 됩니다. 반대로 24–48 h에서 ClimODE가 앞서는 것은 데이터 양의 효과일 수도, 구조의 효과일 수도 있어 분리되지 않습니다.
 - ClimODE의 평가 모드 의존성이 큽니다. 저자 프로토콜(배치 통계·dropout)은 결정론적 추론이 아니며 배치 구성에 따라 값이 바뀝니다. 2개 배치·고정 seed로 1회만 돌렸습니다.
 - 단일 seed, 1500 step, CPU 예산 안의 결과입니다. PIGT는 설계상 2 layer인데 1 layer로 줄였습니다.
@@ -145,6 +145,6 @@ guide를 지웠을 때의 열화가 S3보다 작은 것은 PIGT가 guide를 덜 
 
 ## 6. 다음 단계
 
-- 진행 중(자동 체인): S5a(닫힘 구조 guide) → S5b(PDE 잔차 손실) → S5c-0/S5c(Noise 층 허용조건). 각 stage는 바로 앞 stage와 비교합니다(`docs/EXPERIMENT_STAGES_KO.md`).
-- PIGT 후속: 두 번째 seed와 동일 용량 게이트 융합으로 1 % 이득의 출처 확인; GPU에서 2 layer; S5a guide(F + S_θ)를 PIGT에 결합.
-- S6(계획): 5층 기하·확률 동역학 GNN(`docs/design/Five_Layer_Geometric_Stochastic_GNN_Plan_KO.md`) — 3층 생성원 head는 PIGT 융합 특징에서 읽는 것으로 결정.
+- 진행 중(자동 체인): stage5a(닫힘 구조 guide) → stage5b(PDE 잔차 손실) → stage5c-0/stage5c(Noise 층 허용조건). 각 stage는 바로 앞 stage와 비교합니다(`docs/EXPERIMENT_STAGES_KO.md`).
+- PIGT 후속: 두 번째 seed와 동일 용량 게이트 융합으로 1 % 이득의 출처 확인; GPU에서 2 layer; stage5a guide(F + S_θ)를 PIGT에 결합.
+- stage6(계획): 5층 기하·확률 동역학 GNN(`docs/design/Five_Layer_Geometric_Stochastic_GNN_Plan_KO.md`) — 3층 생성원 head는 PIGT 융합 특징에서 읽는 것으로 결정.

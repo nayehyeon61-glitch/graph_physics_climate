@@ -44,6 +44,15 @@ class VNetConfig:
     fusion: str = "gated"  # "gated": F = H + beta Attn(H, P);  "pigt": physics-integrated graph transformer
     pigt_layers: int = 2
     pigt_ops: bool = True  # PIGT: fixed physics-operator tokens O_l as a third attention source
+    # stage S8 (graph neural ODE dynamics, Poli et al. 2019 applied on top of the learned physics):
+    #   "delta": X_bar = X_t + delta (design doc 4.4, one evaluation per lead);
+    #   "ode":   X_bar = X_t + sum_k [ T_guide(X_k) * (lead / K) + f_phi(X_k, P(X_k), c) / K ]  (K fixed sub-steps)
+    # ode_physics adds the frozen guide's 6 h tendency T_guide as the known drift, so the V-Net only learns the
+    # correction and the zero-initialised head starts from the pure physics integration instead of persistence.
+    integrator: str = "delta"  # "delta" | "ode"
+    ode_steps: int = 4  # sub-steps per lead (4 x 6 h for a 24 h lead)
+    ode_solver: str = "euler"  # "euler" | "heun" (Heun = 2 evaluations per sub-step)
+    ode_physics: bool = False
 
 
 class DynamicsVNet(nn.Module):
@@ -144,6 +153,10 @@ class LieGuidedForecaster(nn.Module):
         # per-variable scale of the normalised one-step change (set from training data)
         self.register_buffer("delta_scale_s", torch.ones(spec.n_s))
         self.register_buffer("delta_scale_v", torch.ones(spec.n_v))
+        # scale of the normalised one-data-step (6 h) tendency and data steps per lead (stage S8 physics drift)
+        self.register_buffer("tend_scale_s", torch.ones(spec.n_s))
+        self.register_buffer("tend_scale_v", torch.ones(spec.n_v))
+        self.lead_steps = 4
 
     def freeze_guide(self) -> None:
         """Freeze guide *weights*; gradients w.r.t. its inputs still flow (needed for rollout losses)."""
@@ -159,10 +172,61 @@ class LieGuidedForecaster(nn.Module):
         return self.guide(state, cond, sigma, g)
 
     def forward(self, state: Field, cond: Field, g: GraphView) -> Tuple[Field, Field]:
-        P = self.physics(state, cond, g)
-        d = self.vnet(state, cond, P, g)
-        forecast = Field(state.s + d.s * self.delta_scale_s, state.v + d.v * self.delta_scale_v)
+        """Deterministic forecast and its change in delta-scale units ``d = (X_bar - X_t) / delta_scale``."""
+        if self.vnet.cfg.integrator != "ode":
+            P = self.physics(state, cond, g)
+            d = self.vnet(state, cond, P, g)
+            forecast = Field(state.s + d.s * self.delta_scale_s, state.v + d.v * self.delta_scale_v)
+            return forecast, d
+        forecast = self.integrate(state, cond, g)
+        d = Field((forecast.s - state.s) / self.delta_scale_s, (forecast.v - state.v) / self.delta_scale_v)
         return forecast, d
+
+    # ---------------------------------------------------------------- stage S8: graph neural ODE dynamics
+    def physics_drift(self, x: Field, cond: Field, g: GraphView, P: Optional[Dict[str, Field]]) -> Field:
+        """Change of the normalised state over one sub-step from the frozen guide's 6 h tendency."""
+        assert self.guide is not None, "ode_physics needs the physics guide"
+        T = self.guide.physics_tendency(P, x, g)
+        assert T is not None, "ode_physics needs a guide with a tendency head or a closure head"
+        steps = self.lead_steps / self.vnet.cfg.ode_steps  # data steps (6 h) per sub-step
+        return Field(T.s * self.tend_scale_s * steps, T.v * self.tend_scale_v * steps)
+
+    def rate(self, x: Field, cond: Field, g: GraphView) -> Field:
+        """Increment of one sub-step: [physics drift] + learned correction (V-Net output in lead-change units / K).
+        Physics features are recomputed from the current sub-step state, so the guide and the learned dynamics stay
+        coupled along the whole integration path."""
+        cfg = self.vnet.cfg
+        P = self.physics(x, cond, g)
+        d = self.vnet(x, cond, P, g)
+        h = 1.0 / cfg.ode_steps
+        f = Field(d.s * self.delta_scale_s * h, d.v * self.delta_scale_v * h)
+        if cfg.ode_physics:
+            drift = self.physics_drift(x, cond, g, P)
+            f = Field(f.s + drift.s, f.v + drift.v)
+        return f
+
+    def integrate(self, state: Field, cond: Field, g: GraphView) -> Field:
+        """Fixed-step integration over the lead (explicit Euler or Heun); conditions are held fixed within the lead."""
+        cfg = self.vnet.cfg
+        x = state
+        for _ in range(cfg.ode_steps):
+            f1 = self.rate(x, cond, g)
+            if cfg.ode_solver == "heun":
+                x1 = Field(x.s + f1.s, x.v + f1.v)
+                f2 = self.rate(x1, cond, g)
+                x = Field(x.s + 0.5 * (f1.s + f2.s), x.v + 0.5 * (f1.v + f2.v))
+            else:
+                x = Field(x.s + f1.s, x.v + f1.v)
+        return x
+
+    def physics_only(self, state: Field, cond: Field, g: GraphView) -> Field:
+        """Forecast from the physics drift alone (V-Net switched off): diagnostic of the guide's tendency."""
+        cfg = self.vnet.cfg
+        x = state
+        for _ in range(cfg.ode_steps):
+            drift = self.physics_drift(x, cond, g, self.physics(x, cond, g))
+            x = Field(x.s + drift.s, x.v + drift.v)
+        return x
 
     def rollout(self, state: Field, conds: List[Field], g: GraphView) -> List[Field]:
         """Autoregressive deterministic rollout; physics features are recomputed from each new state."""

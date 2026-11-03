@@ -36,11 +36,11 @@ svg{position:absolute;left:0;top:0;pointer-events:none}
 <div class="note" style="right:65px;top:178px">Single input time X_t · SO(2) gauge equivariant · trained once, then frozen</div>
 <div id="x" class="box grey" style="left:65px;top:222px;width:335px;height:118px"><div class="h">ERA5 state X_t</div><div class="s">64×32 grid, 11 variables: z500 t850 q700 t2m msl, u/v at 850, 500 hPa, 10 m</div></div>
 <div id="lift" class="box green" style="left:455px;top:222px;width:350px;height:118px"><div class="h">Normalize + lift to mesh</div><div class="s">icosahedral 2562 / 642 / 162 nodes · SO(2) frames · edge features (α, φ, distance)</div></div>
-<div id="ops" class="box green" style="left:860px;top:222px;width:405px;height:118px"><div class="h">Fixed equivariant physics operators (S2)</div><div class="s">∇, div, curl, advection, Coriolis, absolute vorticity on mesh 0 · no parameters</div></div>
+<div id="ops" class="box green" style="left:860px;top:222px;width:405px;height:118px"><div class="h">Fixed equivariant physics operators (stage2)</div><div class="s">∇, div, curl, advection, Coriolis, absolute vorticity on mesh 0 · no parameters</div></div>
 <div id="guide" class="box purple" style="left:1325px;top:222px;width:610px;height:118px"><div class="h">Lie physical guide E_θ (equivariant V-GNN)</div><div class="s">fine → medium → coarse → medium → fine over the 3 mesh levels · ≈ 275 k parameters · trainable in Stage A only</div></div>
 <div id="cond" class="box grey" style="left:65px;top:375px;width:335px;height:118px"><div class="h">Conditions c_t</div><div class="s">orography, land-sea mask, ∇orog · TOA insolation at t and t + 24 h · Coriolis</div></div>
 <div id="cenc" class="box green" style="left:455px;top:375px;width:810px;height:118px"><div class="h">Condition encoding on the same mesh</div><div class="s">normalized statics + forcings, transport-interpolated to mesh 0 · shared frames and edge features for guide, V-Net and denoiser</div></div>
-<div id="pout" class="box blue" style="left:1325px;top:375px;width:610px;height:118px"><div class="h">Guide outputs {P0, P1, P2, P1u, P0u}</div><div class="s">per-level physics features · 6 h tendency = resolved dynamics F(X) + closure S_θ (S5a) · frozen after Stage A</div></div>
+<div id="pout" class="box blue" style="left:1325px;top:375px;width:610px;height:118px"><div class="h">Guide outputs {P0, P1, P2, P1u, P0u}</div><div class="s">per-level physics features · 6 h tendency = resolved dynamics F(X) + closure S_θ (stage5a) · frozen after Stage A</div></div>
 <div class="note" style="left:1325px;top:503px;color:var(--green)">Guide outputs feed the Stage B fusion and the Stage C denoiser · recomputed from X_t at every forecast step</div>
 
 <div class="sec" style="top:545px;color:var(--blue)"><span>02</span>FORECAST STEP  (Dynamics + Noise layer · 24 h)</div>
@@ -50,14 +50,14 @@ svg{position:absolute;left:0;top:0;pointer-events:none}
  <div class="it">X_t</div><div class="is">physical state, 11 variables</div>
  <div class="it">c_t</div><div class="is">statics, insolation, Coriolis</div>
  <div class="it">P_ℓ(X_t)</div><div class="is">frozen guide features, recomputed</div>
- <div class="it">O_t</div><div class="is">operator tokens from the fixed operators (PIGT, S4)</div></div>
+ <div class="it">O_t</div><div class="is">operator tokens from the fixed operators (PIGT, stage4)</div></div>
 <div id="vnet" class="box purple" style="left:450px;top:625px;width:300px;height:128px"><div class="h">Dynamics V-Net H (Stage B)</div><div class="s">gnn_0 → … → gnn_4 over levels 0-1-2-1-0, skips · cs 48 / cv 12 · ≈ 555 k params</div></div>
-<div id="fus" class="box purple" style="left:800px;top:625px;width:330px;height:128px"><div class="h">Physics fusion per level F_ℓ = fusion(H_ℓ, P_ℓ)</div><div class="s">gated H + β·Attn(H, P) (S1–S3, S5) · PIGT softmax over H / P / O (S4)</div></div>
+<div id="fus" class="box purple" style="left:800px;top:625px;width:330px;height:128px"><div class="h">Physics fusion per level F_ℓ = fusion(H_ℓ, P_ℓ)</div><div class="s">gated H + β·Attn(H, P) (stage1–stage3, stage5) · PIGT softmax over H / P / O (stage4)</div></div>
 <div id="head" class="box blue" style="left:1180px;top:625px;width:300px;height:128px"><div class="h">Deterministic delta head</div><div class="s">X̄_{t+24h} = X_t + Δ̂ · Δ̂ in calib tendency scale · mesh → grid</div></div>
-<div id="fg" class="box blue" style="left:800px;top:790px;width:330px;height:128px"><div class="h">Frozen guide E_θ + fixed operators</div><div class="s">P_ℓ(X_t) every step · tendency F(X) + S_θ (S5a) · tokens O_t (S4)</div></div>
+<div id="fg" class="box blue" style="left:800px;top:790px;width:330px;height:128px"><div class="h">Frozen guide E_θ + fixed operators</div><div class="s">P_ℓ(X_t) every step · tendency F(X) + S_θ (stage5a) · tokens O_t (stage4)</div></div>
 <div id="diff" class="box purple" style="left:450px;top:962px;width:300px;height:128px"><div class="h">Residual diffusion D_ψ (Stage C)</div><div class="s">R_0 = (X_{t+24h} − X̄)/σ_R · ε-denoiser on X_t, X̄, P0u, c_t · 118 k params</div></div>
 <div id="samp" class="box purple" style="left:800px;top:962px;width:330px;height:128px"><div class="h">DDIM sampling</div><div class="s">20 steps × 8 members · isotropic complex wind noise · residual samples R^{(k)}</div></div>
-<div id="proj" class="box green" style="left:1180px;top:962px;width:300px;height:128px"><div class="h">Feasibility projection P_C (S5c)</div><div class="s">q700 ≥ 0 · global mass · column water matched to X̄</div></div>
+<div id="proj" class="box green" style="left:1180px;top:962px;width:300px;height:128px"><div class="h">Feasibility projection P_C (stage5c)</div><div class="s">q700 ≥ 0 · global mass · column water matched to X̄</div></div>
 <div id="nxt" class="box grey tall" style="left:1540px;top:625px;width:395px;height:465px"><div class="h">Forecast at t + 24 h</div>
  <div class="it">X̄_{t+24h} = X_t + Δ̂</div><div class="is">deterministic forecast (all stages)</div>
  <div class="it">X^{(k)} = P_C(X̄ + σ_R R^{(k)})</div><div class="is">ensemble members k = 1…8 (Stage C)</div>
@@ -65,27 +65,27 @@ svg{position:absolute;left:0;top:0;pointer-events:none}
  <div class="ph">Autoregressive rollout</div>
  <div class="pp">X_t → X̄_{+24h} → X̄_{+48h} → …</div>
  <div class="is">each forecast becomes the next input · P_ℓ recomputed · up to 120 h</div></div>
-<div class="lbl" style="left:560px;top:1182px;color:var(--blue)">Carry X̄ into the next step · training: 2-step rollout loss from step 500 (S3) · evaluation: 5 steps (24–120 h)</div>
+<div class="lbl" style="left:560px;top:1182px;color:var(--blue)">Carry X̄ into the next step · training: 2-step rollout loss from step 500 (stage3) · evaluation: 5 steps (24–120 h)</div>
 
 <div class="sec" style="top:1258px;color:var(--orange)"><span>03</span>SEQUENTIAL TRAINING + EVALUATION</div>
 <div class="note" style="right:65px;top:1263px">Stage A → B → C · each stage freezes the previous one · same loss for the guide-free baseline</div>
-<div id="sa" class="box purple" style="left:65px;top:1306px;width:535px;height:120px"><div class="h">Stage A — guide E_θ trainable</div><div class="s">inputs: random gauge + Gaussian σ ≤ 0.5 (25 % clean), or the 24 h forecast state with p = 0.3 (S3) · 1000 steps</div></div>
-<div id="la" class="box orange" style="left:730px;top:1306px;width:545px;height:120px"><div class="h">L_A = L_rec + 0.5 L_aux + L_tend (S2) + L_clos (S5a)</div><div class="s">clean-state reconstruction · wind vorticity / divergence · 6 h tendency · closure S_θ = tendency − F(X), mesh 0</div></div>
+<div id="sa" class="box purple" style="left:65px;top:1306px;width:535px;height:120px"><div class="h">Stage A — guide E_θ trainable</div><div class="s">inputs: random gauge + Gaussian σ ≤ 0.5 (25 % clean), or the 24 h forecast state with p = 0.3 (stage3) · 1000 steps</div></div>
+<div id="la" class="box orange" style="left:730px;top:1306px;width:545px;height:120px"><div class="h">L_A = L_rec + 0.5 L_aux + L_tend (stage2) + L_clos (stage5a)</div><div class="s">clean-state reconstruction · wind vorticity / divergence · 6 h tendency · closure S_θ = tendency − F(X), mesh 0</div></div>
 <div id="ta" class="box grey" style="left:1475px;top:1306px;width:460px;height:120px"><div class="h">ERA5 X_t, X_{t+6h}</div><div class="s">training targets only</div></div>
-<div id="sb" class="box purple" style="left:65px;top:1466px;width:535px;height:120px"><div class="h">Stage B — V-Net trainable, guide frozen</div><div class="s">1500 steps · 2-step rollout from step 500 (S3) · gated or PIGT fusion (S4) · checkpoint by 1-step + 2-step calib error</div></div>
-<div id="lb" class="box orange" style="left:730px;top:1466px;width:545px;height:120px"><div class="h">L_B = L_field + 0.1 L_phys + L_roll (S3) + λ L_pde (S5b)</div><div class="s">area-weighted MSE of X̄ · global tendency consistency · 2-step autoregressive error · ‖(X̄−X_t)/Δt − (F+S_θ)(X̄)‖²</div></div>
+<div id="sb" class="box purple" style="left:65px;top:1466px;width:535px;height:120px"><div class="h">Stage B — V-Net trainable, guide frozen</div><div class="s">1500 steps · 2-step rollout from step 500 (stage3) · gated or PIGT fusion (stage4) · checkpoint by 1-step + 2-step calib error</div></div>
+<div id="lb" class="box orange" style="left:730px;top:1466px;width:545px;height:120px"><div class="h">L_B = L_field + 0.1 L_phys + L_roll (stage3) + λ L_pde (stage5b)</div><div class="s">area-weighted MSE of X̄ · global tendency consistency · 2-step autoregressive error · ‖(X̄−X_t)/Δt − (F+S_θ)(X̄)‖²</div></div>
 <div id="tb" class="box grey" style="left:1475px;top:1466px;width:460px;height:120px"><div class="h">ERA5 X_{t+24h}, X_{t+48h}</div><div class="s">training targets only</div></div>
-<div id="sc" class="box purple" style="left:65px;top:1626px;width:535px;height:120px"><div class="h">Stage C — denoiser D_ψ trainable, guide + V-Net frozen</div><div class="s">800 steps · σ_R from the calib year · projected DDIM samples inside the loss (S5c)</div></div>
-<div id="lc" class="box orange" style="left:730px;top:1626px;width:545px;height:120px"><div class="h">L_C = L_DSM + L_feas(x̂₀) + L_mean (S5c)</div><div class="s">‖ε̂ − ε‖² · negative q700 and mass drift of the x̂₀ prediction · unbiased pairwise ensemble-mean bias of projected samples</div></div>
+<div id="sc" class="box purple" style="left:65px;top:1626px;width:535px;height:120px"><div class="h">Stage C — denoiser D_ψ trainable, guide + V-Net frozen</div><div class="s">800 steps · σ_R from the calib year · projected DDIM samples inside the loss (stage5c)</div></div>
+<div id="lc" class="box orange" style="left:730px;top:1626px;width:545px;height:120px"><div class="h">L_C = L_DSM + L_feas(x̂₀) + L_mean (stage5c)</div><div class="s">‖ε̂ − ε‖² · negative q700 and mass drift of the x̂₀ prediction · unbiased pairwise ensemble-mean bias of projected samples</div></div>
 <div id="tc" class="box grey" style="left:1475px;top:1626px;width:460px;height:120px"><div class="h">ERA5 residual R_0 = (X_{t+24h} − X̄)/σ_R</div><div class="s">training targets only</div></div>
 <div id="opt" class="box grey" style="left:65px;top:1786px;width:535px;height:110px"><div class="h">Optimizer per stage</div><div class="s">Adam, lr 1e-3, batch 4 · checkpoint = best calib score · Stage A: new random gauge and σ every batch</div></div>
-<div id="ev" class="box green" style="left:730px;top:1786px;width:1205px;height:110px"><div class="h">Evaluation on 2019 (held out): 90 init times, WeatherBench2 area-weighted RMSE 24–120 h</div><div class="s">vs persistence, climatology, guide-free V-Net · 24 h ensemble CRPS, spread, ensemble-mean RMSE vs a Gaussian baseline · constraint violations raw vs projected (S5c) · guide diagnostics: P = 0, shuffled P, attention mass H/P/O (S4), closure share (S5a)</div></div>
+<div id="ev" class="box green" style="left:730px;top:1786px;width:1205px;height:110px"><div class="h">Evaluation on 2019 (held out): 90 init times, WeatherBench2 area-weighted RMSE 24–120 h</div><div class="s">vs persistence, climatology, guide-free V-Net · 24 h ensemble CRPS, spread, ensemble-mean RMSE vs a Gaussian baseline · constraint violations raw vs projected (stage5c) · guide diagnostics: P = 0, shuffled P, attention mass H/P/O (stage4), closure share (stage5a)</div></div>
 
 <div class="hr" style="top:1922px"></div>
 <div class="foot" style="top:1938px">Solid arrows: model flow &nbsp;&nbsp;&nbsp; Dashed arrows: training labels only &nbsp;&nbsp;&nbsp; P_ℓ: guide features at mesh level ℓ</div>
-<div class="foot" style="top:1970px">Stage tags: S2 fixed operators + 6 h tendency head · S3 input perturbation + rollout loss · S4 PIGT fusion · S5a closure guide · S5b PDE residual loss · S5c noise-layer constraints</div>
-<div class="foot" style="top:2002px">Defaults: lead 24 h = 4 × 6 h · mesh splits (4, 3, 2) · Stage A 1000 / B 1500 / C 800 steps · batch 4 · CPU 4 cores · train 2016–17 (S7: 2008–17) · calib 2018 · test 2019</div>
-<div class="note" style="right:65px;top:1938px">Architecture as of stages S1–S5c (2026-11-03) · not a forecast-skill claim</div>
+<div class="foot" style="top:1970px">Stage tags: stage2 operators + tendency head · stage3 perturbation + rollout · stage4 PIGT · stage5a closure · stage5b PDE loss · stage5c noise constraints</div>
+<div class="foot" style="top:2002px">Defaults: lead 24 h = 4 × 6 h · mesh splits (4, 3, 2) · Stage A 1000 / B 1500 / C 800 steps · batch 4 · CPU 4 cores · train 2016–17 (stage7: 2008–17) · calib 2018 · test 2019</div>
+<div class="note" style="right:65px;top:1938px">As of stage1–stage5c · 2026-11-03 · not a forecast-skill claim</div>
 <svg id="ov" width="2000" height="2040"></svg>
 </div>
 <script>

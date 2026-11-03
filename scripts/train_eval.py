@@ -74,7 +74,8 @@ class Run:
                                                       "hidden", "n_basis", "guide_cs", "guide_cv", "diff_cs",
                                                       "diff_cv", "diff_depth", "physics_ops", "tend_head", "fusion",
                                                       "pigt_layers", "pigt_ops", "closure_tend", "resolved_terms",
-                                                      "resolved_coef")}
+                                                      "resolved_coef", "integrator", "ode_steps", "ode_solver",
+                                                      "ode_physics")}
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         self.spec = DEFAULT_SPEC
@@ -103,7 +104,9 @@ class Run:
         self.vnet_kwargs = dict(cs=c["cs"], cv=c["cv"], depth=tuple(c["depth"]), heads=c["heads"], ds=c["ds"],
                                 dv=c["dv"], n_basis=c["n_basis"], hidden=c["hidden"],
                                 fusion=c.get("fusion", "gated"), pigt_layers=int(c.get("pigt_layers", 2)),
-                                pigt_ops=bool(c.get("pigt_ops", True)))
+                                pigt_ops=bool(c.get("pigt_ops", True)), integrator=c.get("integrator", "delta"),
+                                ode_steps=int(c.get("ode_steps", 4)), ode_solver=c.get("ode_solver", "euler"),
+                                ode_physics=bool(c.get("ode_physics", False)))
         self.diff_cfg = DiffusionConfig(cs=c["diff_cs"], cv=c["diff_cv"], depth=c["diff_depth"], n_basis=c["n_basis"],
                                         hidden=c["hidden"])
 
@@ -124,6 +127,10 @@ class Run:
         m = LieGuidedForecaster(self.spec, self.guide_cfg, VNetConfig(use_guide=use_guide, **self.vnet_kwargs))
         m.delta_scale_s.copy_(self.norm.delta_s)
         m.delta_scale_v.copy_(self.norm.delta_v)
+        m.lead_steps = int(self.cfg["lead"])
+        if self.norm.tend_s is not None:  # stage S8 physics drift scale (6 h tendency)
+            m.tend_scale_s.copy_(self.norm.tend_s)
+            m.tend_scale_v.copy_(self.norm.tend_v)
         if m.guide is not None and m.guide.phys_ops is not None:
             m.guide.phys_ops.v_scale.copy_(self.norm.v_scale)  # m/s per normalised unit (vorticity / 2 Omega)
         if getattr(m.vnet, "phys_ops", None) is not None:
@@ -291,6 +298,10 @@ def stage_b(run: Run, use_guide: bool):
 
     log(f"stage B[{name}]: vnet params {n_params(model.vnet)}, steps {a.steps}, batch {a.batch}, "
         f"rollout steps {K} from step {k_start} (weight {lam})" + (f", PDE residual weight {lam_pde}" if use_pde else ""))
+    if model.vnet.cfg.integrator == "ode":  # stage S8
+        vc = model.vnet.cfg
+        log(f"stage B[{name}]: graph neural ODE dynamics, {vc.ode_steps} sub-steps of {6 * lead // vc.ode_steps} h, "
+            f"solver {vc.ode_solver}, physics drift {'on' if vc.ode_physics else 'off'}")
     for step in range(a.steps):
         for pg in opt.param_groups:
             pg["lr"] = cosine_lr(step, a.steps, a.lr)
@@ -421,6 +432,19 @@ def stage_c(run: Run):
 
 
 # ---------------------------------------------------------------------------- evaluation
+class PhysicsOnlyForecaster(torch.nn.Module):
+    """Stage S8b diagnostic: integrate the frozen guide's tendency alone (same sub-steps, V-Net switched off)."""
+
+    def __init__(self, base: LieGuidedForecaster):
+        super().__init__()
+        self.base = base
+        self.guide, self.vnet = base.guide, base.vnet
+
+    def forward(self, state: Field, cond: Field, g):
+        f = self.base.physics_only(state, cond, g)
+        return f, Field((f.s - state.s) / self.base.delta_scale_s, (f.v - state.v) / self.base.delta_scale_v)
+
+
 def stage_eval(run: Run):
     a, g, test = run.args, run.g, run.test
     H, W, lead = len(test.lat), len(test.lon), run.cfg["lead"]
@@ -430,6 +454,8 @@ def stage_eval(run: Run):
     run.load_guide(m)
     run.load_vnet(m, "vnet")
     models["lie_guided"] = m.eval()
+    if m.vnet.cfg.integrator == "ode" and m.vnet.cfg.ode_physics:  # stage S8b diagnostic: drift alone, V-Net off
+        models["physics_only"] = PhysicsOnlyForecaster(m).eval()
     if (run.dir / "vnet_noguide.pt").exists():
         m2 = run.forecaster(False)
         run.load_vnet(m2, "vnet_noguide")
@@ -649,6 +675,13 @@ def main():
                     help="V-Net physics fusion: gated cross-attention or the physics-integrated graph transformer")
     ap.add_argument("--pigt-layers", type=int, default=2)
     ap.add_argument("--pigt-ops", type=int, default=1, choices=[0, 1])
+    ap.add_argument("--integrator", default="delta", choices=["delta", "ode"],
+                    help="dynamics layer (stage S8): one-shot lead-time change or a graph neural ODE integrated with "
+                         "--ode-steps fixed sub-steps (stored in config.json)")
+    ap.add_argument("--ode-steps", type=int, default=4)
+    ap.add_argument("--ode-solver", default="euler", choices=["euler", "heun"])
+    ap.add_argument("--ode-physics", type=int, default=0, choices=[0, 1],
+                    help="stage S8: add the frozen guide's 6 h tendency as the known drift of the ODE")
     ap.add_argument("--perturb-model", default=None,
                     help="Stage A: vnet state dict of a guide-free forecaster whose lead-time forecast replaces the "
                          "input with probability --perturb-prob (structured, forecast-like perturbations)")

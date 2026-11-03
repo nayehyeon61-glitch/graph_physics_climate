@@ -1,10 +1,10 @@
-# 5층 기하·확률 동역학 GNN — 현재 구조와의 대응, S6 단계 계획
+# 5층 기하·확률 동역학 GNN — 현재 구조와의 대응, stage6 단계 계획
 
-출처: 감자 첨부 「Five-Layer Geometric Stochastic Dynamics GNN Research Design」(2026.11) + 메시지(2026-11-03 02:52 UTC) — PIGT가 잘되면 physical guide를 **1 discrete → 2 Lie group → 3 Lie algebra → 4 noise form → 5 differential solver** 의 5층 통합 GNN 학습 구조로 보강하자는 제안. 이 문서는 (i) 다섯 층을 지금 코드에 대응시키고, (ii) 무엇이 이미 있고 무엇이 새로 필요한지, (iii) stage 규칙(한 run에 한 가지 변경)에 맞춘 S6a–S6f 계획과 비용·위험을 정리한다.
+출처: 감자 첨부 「Five-Layer Geometric Stochastic Dynamics GNN Research Design」(2026.11) + 메시지(2026-11-03 02:52 UTC) — PIGT가 잘되면 physical guide를 **1 discrete → 2 Lie group → 3 Lie algebra → 4 noise form → 5 differential solver** 의 5층 통합 GNN 학습 구조로 보강하자는 제안. 이 문서는 (i) 다섯 층을 지금 코드에 대응시키고, (ii) 무엇이 이미 있고 무엇이 새로 필요한지, (iii) stage 규칙(한 run에 한 가지 변경)에 맞춘 stage6a–stage6f 계획과 비용·위험을 정리한다.
 
 ## 0. 한 줄 판단
 
-가능하고, 지금 구조의 자연스러운 다음 단계다. 다섯 층 중 **2층(Lie 군 표현)은 이미 있고**(S1–S2의 SO(2) 게이지 등변 guide), **1층은 S5a의 고정 역학 F가 절반**(이류형이지 보존형 flux가 아님), **3·4·5층은 새로** 만들어야 한다. 가장 큰 구조 변화는 5층이다: 지금은 24 h를 한 번에 맞히는 사상(X_{t+24h} = X_t + V-Net 출력)인데, 5층은 6 h(또는 더 짧은) 부분단계 적분기 안에서 1·3·4층의 연산자를 **분할 적분**한다. 모든 층이 한꺼번에 바뀌므로 S6a–S6f로 나누고, 설계서의 실험 A–F가 그대로 stage가 된다. 적분기 부분단계 때문에 CPU 비용이 4–6배라 S6c부터는 GPU(KAI 1.5° 전환과 함께)를 전제로 한다.
+가능하고, 지금 구조의 자연스러운 다음 단계다. 다섯 층 중 **2층(Lie 군 표현)은 이미 있고**(stage1–S2의 SO(2) 게이지 등변 guide), **1층은 S5a의 고정 역학 F가 절반**(이류형이지 보존형 flux가 아님), **3·4·5층은 새로** 만들어야 한다. 가장 큰 구조 변화는 5층이다: 지금은 24 h를 한 번에 맞히는 사상(X_{t+24h} = X_t + V-Net 출력)인데, 5층은 6 h(또는 더 짧은) 부분단계 적분기 안에서 1·3·4층의 연산자를 **분할 적분**한다. 모든 층이 한꺼번에 바뀌므로 stage6a–S6f로 나누고, 설계서의 실험 A–F가 그대로 stage가 된다. 적분기 부분단계 때문에 CPU 비용이 4–6배라 S6c부터는 GPU(KAI 1.5° 전환과 함께)를 전제로 한다.
 
 ## 1. 층별 대응표
 
@@ -48,38 +48,38 @@
 | L_cons | flux/예산 오류 | 1·3·4층 수송은 구조적으로 보존 → 0. closure S_θ의 예산 잔차만 보고 |
 | L_eq | 변환 등변 오차 | 게이지 등변성은 구조적(테스트). SO(3) 회전+재표본화 오차를 진단으로 추가 |
 | L_prob | CRPS·spread-skill·calibration | 기존 `wb2_scores`(CRPS, spread) + rank histogram 추가 |
-| 기존 | — | P-zeroing·shuffled-P, PIGT 어텐션 질량, resolved fraction, PDE 잔차(S5b), 허용조건 위반량(S5c), S5c의 비편향 L_mean |
+| 기존 | — | P-zeroing·shuffled-P, PIGT 어텐션 질량, resolved fraction, PDE 잔차(stage5b), 허용조건 위반량(stage5c), S5c의 비편향 L_mean |
 
-## 4. Stage 계획 (설계서 실험 A–F ↔ S6a–S6f; 각 stage는 바로 앞 stage와 같은 데이터·step으로 비교)
+## 4. Stage 계획 (설계서 실험 A–F ↔ stage6a–stage6f; 각 stage는 바로 앞 stage와 같은 데이터·step으로 비교)
 
 | stage | 구성 | 가설 / 질문 | 비교 대상 | 비용(CPU 추정) |
 |---|---|---|---|---|
-| S6a | 1층 flux 형 + 5층 적분기, 학습 없음(보정계수만) | 설계서 A "필수 물리만의 기준 성능". S5a 데이터 점검으로 미리 아는 것: F는 6 h 경향 분산의 9–29 %만 설명 → persistence보다 조금 나은 정도일 것. 핵심은 **보존·안정성 검증**(10일 rollout, Δt 민감도) | persistence, S5a의 F-only | 학습 없음, 평가만(분 단위) |
-| S6b | S6a + 2층 guide 특징으로 closure S_θ(S5a/S5b guide)를 적분기 안에서 사용, V-Net 없음 | 적분기 안의 closure가 24 h 한 번 사상(S5b)보다 나은가 | S5b | Stage A 재학습 ≈ 20 min |
-| S6c | S6b + 3층 ψ_θ 생성원 head(PIGT 특징에서) | **H1** Lie drift가 같은 파라미터의 무제약 잔차 head보다 안정·정확한가. 동일 용량 residual 변형(S6c′)을 반드시 함께 | S6b, S6c′ | Stage B 재학습: 부분단계 4개 × 2-step rollout ≈ 15–20 s/step → 1500 step ≈ 7 h CPU → **GPU 권장**(또는 cs 32·1000 step 축소판) |
-| S6d | S6c + 상태 공간 잡음(Stage C diffusion = S5c-0/S5c) 적분기 안에서 | 설계서 D | S6c | ≈ 1 h |
-| S6e | S6c + 4층 수송형 잡음 ψ_r | **H2** 기하 잡음이 가우시안/상태 잡음보다 CRPS·spread-skill·스펙트럼에서 나은가, 사영 없이 q ≥ 0·질량·수분이 지켜지는가 | S6d, S5c | ≈ 1 h |
-| S6f | closure 제거 ablation(S6e − S_θ) | 설계서 F를 뒤집은 형태: 우리는 S_θ가 이미 있으므로 "closure가 필요함"을 제거로 증명. 6 h 경향의 70–90 %가 미해상이라 크게 나빠질 것으로 예상 | S6e | ≈ 1 h |
+| stage6a | 1층 flux 형 + 5층 적분기, 학습 없음(보정계수만) | 설계서 A "필수 물리만의 기준 성능". stage5a 데이터 점검으로 미리 아는 것: F는 6 h 경향 분산의 9–29 %만 설명 → persistence보다 조금 나은 정도일 것. 핵심은 **보존·안정성 검증**(10일 rollout, Δt 민감도) | persistence, S5a의 F-only | 학습 없음, 평가만(분 단위) |
+| stage6b | stage6a + 2층 guide 특징으로 closure S_θ(stage5a/stage5b guide)를 적분기 안에서 사용, V-Net 없음 | 적분기 안의 closure가 24 h 한 번 사상(stage5b)보다 나은가 | stage5b | Stage A 재학습 ≈ 20 min |
+| stage6c | stage6b + 3층 ψ_θ 생성원 head(PIGT 특징에서) | **H1** Lie drift가 같은 파라미터의 무제약 잔차 head보다 안정·정확한가. 동일 용량 residual 변형(stage6c′)을 반드시 함께 | stage6b, stage6c′ | Stage B 재학습: 부분단계 4개 × 2-step rollout ≈ 15–20 s/step → 1500 step ≈ 7 h CPU → **GPU 권장**(또는 cs 32·1000 step 축소판) |
+| stage6d | stage6c + 상태 공간 잡음(Stage C diffusion = stage5c-0/stage5c) 적분기 안에서 | 설계서 D | stage6c | ≈ 1 h |
+| stage6e | stage6c + 4층 수송형 잡음 ψ_r | **H2** 기하 잡음이 가우시안/상태 잡음보다 CRPS·spread-skill·스펙트럼에서 나은가, 사영 없이 q ≥ 0·질량·수분이 지켜지는가 | stage6d, stage5c | ≈ 1 h |
+| stage6f | closure 제거 ablation(stage6e − S_θ) | 설계서 F를 뒤집은 형태: 우리는 S_θ가 이미 있으므로 "closure가 필요함"을 제거로 증명. 6 h 경향의 70–90 %가 미해상이라 크게 나빠질 것으로 예상 | stage6e | ≈ 1 h |
 
-**H3**(통합 적분이 장기 rollout과 확률 예측을 동시에 개선)는 S6e vs S5c(같은 guide·같은 잡음 평가)로 판단한다.
+**H3**(통합 적분이 장기 rollout과 확률 예측을 동시에 개선)는 stage6e vs stage5c(같은 guide·같은 잡음 평가)로 판단한다.
 
 ## 5. 위험과 대응 (설계서 8쪽 표 + 우리 데이터에서 본 것)
 
 - **중복 dynamics**(1층 flux와 3층 drift가 같은 이류를 이중 계산): 1층은 **상태 바람**으로 수송하고 3층 u_ψ는 보정 흐름만 만든다. ‖u_ψ‖ 크기 벌칙과 var(u_ψ)/var(u) 보고로 범위를 제한한다.
-- **제약 과잉**(Lie 생성원만으로 가열·확산·습윤 표현 불가): S5a 점검에서 고정 역학이 설명하는 6 h 경향 분산은 9–29 %뿐이다. closure 없는 S6a–S6c는 약할 것이고, 설계서도 closure를 선택(F)으로 두었지만 우리 데이터에서는 필수다 → S6b부터 S_θ를 넣고 S6f로 필요성을 보인다. 설계서의 권고("논문 핵심을 보존형 동역학 + Lie drift + 구조 잡음으로 좁히고 군 표현은 공통 기반으로")에는 동의한다.
+- **제약 과잉**(Lie 생성원만으로 가열·확산·습윤 표현 불가): stage5a 점검에서 고정 역학이 설명하는 6 h 경향 분산은 9–29 %뿐이다. closure 없는 stage6a–S6c는 약할 것이고, 설계서도 closure를 선택(F)으로 두었지만 우리 데이터에서는 필수다 → S6b부터 S_θ를 넣고 S6f로 필요성을 보인다. 설계서의 권고("논문 핵심을 보존형 동역학 + Lie drift + 구조 잡음으로 좁히고 군 표현은 공통 기반으로")에는 동의한다.
 - **잡음 불일치**(CRPS는 좋아지는데 평균장·스펙트럼 훼손): S5c의 비편향 L_mean과 에너지 스펙트럼 진단을 재사용한다.
 - **수치 안정성**: ClimODE 평가에서 본 것처럼(eval 모드에서 72 h 이후 발산) 연속 적분은 정규화·CFL·limiter에 민감하다. S6a에서 학습 없이 10일 rollout 안정성을 먼저 확인한다(설계서 Phase 0–1).
-- **비용**: 적분기 부분단계가 guide·V-Net 호출을 4배로 늘린다. CPU에서는 S6a–S6b까지, S6c부터는 GPU.
+- **비용**: 적분기 부분단계가 guide·V-Net 호출을 4배로 늘린다. CPU에서는 stage6a–S6b까지, S6c부터는 GPU.
 
 ## 6. 데이터
 
-설계서는 16×32 z850/z500/z250/u850/v850/지형으로 시작할 것을 제안한다. 우리는 이미 64×32 11변수(지형·해륙·TOA 포함)로 S1–S5를 쌓았으므로 **장부 연속성을 위해 같은 데이터로 S6a–S6c**를 하고, 다층 예산(z250 등 연직 구조)은 KAI 67채널(1.5°)로 옮길 때 확장한다.
+설계서는 16×32 z850/z500/z250/u850/v850/지형으로 시작할 것을 제안한다. 우리는 이미 64×32 11변수(지형·해륙·TOA 포함)로 stage1–S5를 쌓았으므로 **장부 연속성을 위해 같은 데이터로 stage6a–stage6c**를 하고, 다층 예산(z250 등 연직 구조)은 KAI 67채널(1.5°)로 옮길 때 확장한다.
 
 ## 7. 착수 조건과 순서
 
-1. PIGT(S4)와 S5a–S5c 결과가 나온 뒤 결정(오늘 08:00 UTC 예상). PIGT가 S3보다 나으면 3층 head는 PIGT 융합 특징에서, 아니면 게이트 융합 특징에서 읽는다. (중간 신호: step 1000에서 PIGT 검증 MSE 0.0872 vs S3 0.0891, 2-step 0.159 vs 0.164.)
-2. S6a — 새 모듈 `gpclimate/nn/flux_discrete.py`(이중 셀·간선 flux·반라그랑주 수송)와 `gpclimate/models/integrator.py`(분할 적분기). 학습 없이 보존·안정성·CFL 검증.
-3. S6b → S6c(GPU) → S6d/S6e → S6f. 각 stage마다 장부(`docs/EXPERIMENT_STAGES_KO.md`)에 가설·결과를 적는다.
+1. PIGT(stage4)와 stage5a–stage5c 결과가 나온 뒤 결정(오늘 08:00 UTC 예상). PIGT가 S3보다 나으면 3층 head는 PIGT 융합 특징에서, 아니면 게이트 융합 특징에서 읽는다. (중간 신호: step 1000에서 PIGT 검증 MSE 0.0872 vs stage3 0.0891, 2-step 0.159 vs 0.164.)
+2. stage6a — 새 모듈 `gpclimate/nn/flux_discrete.py`(이중 셀·간선 flux·반라그랑주 수송)와 `gpclimate/models/integrator.py`(분할 적분기). 학습 없이 보존·안정성·CFL 검증.
+3. stage6b → stage6c(GPU) → stage6d/stage6e → stage6f. 각 stage마다 장부(`docs/EXPERIMENT_STAGES_KO.md`)에 가설·결과를 적는다.
 
 ## 8. 호몰로지 / 이산 외미분학(DEC) 보강 (감자 첨부 「homology_lie」·「homology_code」, 2026-11-03 03:42 UTC)
 
@@ -92,7 +92,7 @@
 - **2층 연결의 홀로노미 = 면적(가우스–보네).** 기존 SO(2) 게이지 연결(간선의 평행이동 각 α)을 각 삼각형 면을 따라 한 바퀴 합하면 모든 층에서 그 삼각형의 구면 면적과 2e-5 이내로 같고(부호 일정), 전구 합이 4π다(테스트). 즉 자료의 "2층 홀로노미 보정"은 **이미 정확히 만족**되며 보정할 것이 없다. 우리 연결은 Levi-Civita 연결이고, 세포 층(cellular sheaf) 용어로는 SO(2) 줄기(stalk)와 기하에서 정해진 제한 사상을 가진 층이다. 제한 사상을 학습시키는 sheaf NN은 이 정확성을 깨므로 쓰지 않고, sheaf 라플라시안은 진단으로만 쓴다.
 - **DEC 연산자는 d d = 0이 정확하다.** 원-쌍대(외심) 호지 스타 ⋆₀(꼭짓점 면적)·⋆₁(쌍대길이/원길이)·⋆₂(1/면적)와 호지 라플라시안 L₀·L₁·L₂, Helmholtz 분해(χ: L₀χ = δu, ψ: L₂ψ = d₁u)를 구현했다. 기존 1-ring 최소제곱 스텐실(`physics_ops.py`)은 curl∘grad = 0, div∘curl = 0이 근사로만 성립하지만 DEC에서는 정확하다.
 
-### 8.2 다섯 층에 넣는 방법 (S6 계획의 수정)
+### 8.2 다섯 층에 넣는 방법 (stage6 계획의 수정)
 
 | 층 | 자료의 제안 | 우리 구현 |
 |---|---|---|
@@ -104,14 +104,14 @@
 
 ### 8.3 위상을 "평가"에 쓰는 법 — persistent homology (TOGL의 아이디어)
 
-전구 구면에는 조화 성분이 없지만, **장(場)의 부분수준집합 위상**은 있다: z500·msl의 저기압(국소 최솟값, H₀ 성분의 탄생·소멸)과 고기압의 개수·지속도(persistence)는 cyclone 구조가 예보에서 보존되는지를 재는 지표가 된다. 격자 64×32의 cubical persistent homology(GUDHI, PyPI 3.13.0)는 초기시각당 수 ms라 평가에 바로 넣을 수 있다. 제안 지표: lead별 "저기압 개수 오차"와 "persistence 분포의 Wasserstein 거리"(예보 vs 관측). 손실로 쓰는 것(미분 가능 PH)은 비용이 커서 진단부터 한다. PIGT/S5 결과에 이 지표를 추가하면 RMSE가 비슷한 모델들의 구조 보존 차이를 볼 수 있다.
+전구 구면에는 조화 성분이 없지만, **장(場)의 부분수준집합 위상**은 있다: z500·msl의 저기압(국소 최솟값, H₀ 성분의 탄생·소멸)과 고기압의 개수·지속도(persistence)는 cyclone 구조가 예보에서 보존되는지를 재는 지표가 된다. 격자 64×32의 cubical persistent homology(GUDHI, PyPI 3.13.0)는 초기시각당 수 ms라 평가에 바로 넣을 수 있다. 제안 지표: lead별 "저기압 개수 오차"와 "persistence 분포의 Wasserstein 거리"(예보 vs 관측). 손실로 쓰는 것(미분 가능 PH)은 비용이 커서 진단부터 한다. PIGT/stage5 결과에 이 지표를 추가하면 RMSE가 비슷한 모델들의 구조 보존 차이를 볼 수 있다.
 
 ### 8.4 도구
 
-TopoNetX(0.4.0)·TopoModelX(0.0.1)·GUDHI는 PyPI에서 설치 가능하다. 우리 메시는 면 정보를 이미 가지고 있어 리프팅 함수는 필요 없고, DEC 연산자는 `dec.py`의 희소행렬 수십 줄로 충분하다. TopoNetX는 호지 라플라시안 교차 검증용, GUDHI는 8.3의 지표용으로 쓴다. MPSN/CWN의 고차 메시지 패싱(면→간선→꼭짓점)은 우리 등변 층과 결합하려면 면·간선 특징의 게이지 변환 규칙을 새로 정의해야 하므로 S6 이후 과제로 둔다.
+TopoNetX(0.4.0)·TopoModelX(0.0.1)·GUDHI는 PyPI에서 설치 가능하다. 우리 메시는 면 정보를 이미 가지고 있어 리프팅 함수는 필요 없고, DEC 연산자는 `dec.py`의 희소행렬 수십 줄로 충분하다. TopoNetX는 호지 라플라시안 교차 검증용, GUDHI는 8.3의 지표용으로 쓴다. MPSN/CWN의 고차 메시지 패싱(면→간선→꼭짓점)은 우리 등변 층과 결합하려면 면·간선 특징의 게이지 변환 규칙을 새로 정의해야 하므로 stage6 이후 과제로 둔다.
 
 ### 8.5 stage 반영
 
-- S6a(1층+5층)에 DEC flux 핵을 쓰고, 테스트로 d d = 0·베티 수·홀로노미를 CI에 둔다(이미 추가).
+- stage6a(1층+5층)에 DEC flux 핵을 쓰고, 테스트로 d d = 0·베티 수·홀로노미를 CI에 둔다(이미 추가).
 - S6c의 생성원 head는 ψ_θ → ⋆d₀ψ(8.2), S6e의 잡음 기저는 L₀ 고유벡터(8.2).
-- 평가 지표에 persistent-homology 저기압 통계(8.3)를 S4·S5 결과에도 소급 적용(별도 작업, 학습 불필요).
+- 평가 지표에 persistent-homology 저기압 통계(8.3)를 stage4·stage5 결과에도 소급 적용(별도 작업, 학습 불필요).

@@ -1,4 +1,4 @@
-# 층별 물리 제약으로 physical guide 보강 (stage S5a / S5b / S5c)
+# 층별 물리 제약으로 physical guide 보강 (stage5a / stage5b / stage5c)
 
 출처: 감자 첨부 제안서 「물리제안.txt」(2026-11-03) — Lie 층에는 등변성 제약, Dynamics 층에는 운동량·열역학·수분·질량 방정식의 잔차, Noise 층에는 분포 학습과 물리적 허용 조건을 두고, 전체를 `dX/dt = F_primitive(X,c) + Ψ_θ(X,Z,c)` (고정 역학 + 학습 닫힘) 구조로 쓰자는 제안.
 
@@ -7,16 +7,16 @@
 | 제안서 항목 | 우리 구현 | 방식 | stage |
 |---|---|---|---|
 | Lie 층 등변성 잔차 L_eq | SO(2) 게이지 등변성이 **구조적으로 정확**(테스트 18+2개, 상대오차 < 2e-5). 손실이 아니라 진단치로만 보고 | hard | 기존 |
-| Lie 층 입력에 δ, ζ, ∇ℓ, ∇Φ 등 물리량 | 고정 연산자(발산·회전·기울기·이류·코리올리·절대와도·라플라시안)를 메시 0 입력으로 이미 사용 (S2) | hard | 기존 |
-| Dynamics: `dX/dt = F_primitive + Ψ_θ` | **guide의 경향 head를 닫힘 head로 교체**: 경향 = F(X) + S_θ. F는 `gpclimate/nn/primitive2d.py`의 고정 등변 연산자, S_θ는 메시 0의 선형 등변 읽기(`closure_out`). Stage A 목표 = 관측 6 h 경향 − F(X_t) | 구조(hard F) + 손실 | **S5a** |
-| 운동량 방정식 잔차 R_u | u500: −(u·∇)u − f k×u − ∇Φ500; u850: Φ850 = R_d T̄ ln(msl/850 hPa) (T̄ = (t2m+t850)/2); u10: −R_d t2m ∇ln msl. 연직 이류·마찰은 닫힘 | F 항 | S5a |
-| 열역학 방정식 잔차 R_T | t850: −u850·∇T (단열항 κTω/p는 ω가 없어 닫힘), t2m: 이류항은 설명력 없어 제외 | F 항 | S5a |
-| 수분 방정식 (보존형) | q700: −u700·∇q (u700은 850/500의 log-p 보간). 플럭스 보존형은 연직 구조가 없어 이류형으로 | F 항 | S5a |
-| 질량 연속 ∂ln p_s/∂t = −∫(δ+u·∇ln p_s)dσ | 3개 바람 층 구적으로 시도 → 경향 분산의 200배(상쇄 실패)라 **제외**, 닫힘이 담당 | 제외(기록) | S5a |
+| Lie 층 입력에 δ, ζ, ∇ℓ, ∇Φ 등 물리량 | 고정 연산자(발산·회전·기울기·이류·코리올리·절대와도·라플라시안)를 메시 0 입력으로 이미 사용 (stage2) | hard | 기존 |
+| Dynamics: `dX/dt = F_primitive + Ψ_θ` | **guide의 경향 head를 닫힘 head로 교체**: 경향 = F(X) + S_θ. F는 `gpclimate/nn/primitive2d.py`의 고정 등변 연산자, S_θ는 메시 0의 선형 등변 읽기(`closure_out`). Stage A 목표 = 관측 6 h 경향 − F(X_t) | 구조(hard F) + 손실 | **stage5a** |
+| 운동량 방정식 잔차 R_u | u500: −(u·∇)u − f k×u − ∇Φ500; u850: Φ850 = R_d T̄ ln(msl/850 hPa) (T̄ = (t2m+t850)/2); u10: −R_d t2m ∇ln msl. 연직 이류·마찰은 닫힘 | F 항 | stage5a |
+| 열역학 방정식 잔차 R_T | t850: −u850·∇T (단열항 κTω/p는 ω가 없어 닫힘), t2m: 이류항은 설명력 없어 제외 | F 항 | stage5a |
+| 수분 방정식 (보존형) | q700: −u700·∇q (u700은 850/500의 log-p 보간). 플럭스 보존형은 연직 구조가 없어 이류형으로 | F 항 | stage5a |
+| 질량 연속 ∂ln p_s/∂t = −∫(δ+u·∇ln p_s)dσ | 3개 바람 층 구적으로 시도 → 경향 분산의 200배(상쇄 실패)라 **제외**, 닫힘이 담당 | 제외(기록) | stage5a |
 | 정역학 Φ = H(T_v) 하드 복원 | 기둥 온도가 없어(t850, t2m뿐) 복원 불가. z500은 닫힘 전용 | 불가(기록) | — |
-| PDE 잔차 손실 L_PDE (관측 궤적) | Stage A의 닫힘 손실이 곧 관측 궤적에서의 PDE 잔차 ‖T_obs − F − S_θ‖² | 손실 | S5a |
-| PDE 잔차를 rollout 결과에 평가 | Stage B: ‖(X̂−X_t)/Δt_lead − [F+S_θ](X̄)‖², X̄ = (X_t+X̂)/2 (사다리꼴). guide 가중치 고정, 기울기는 X̂로만 흐름 | 손실 | **S5b** |
-| Noise 층: 허용 조건 사영 P_C, L_mean, 질량 가중 보존 | Stage C(residual graph diffusion)에 **사영 P_C(μ)**: q700 ≥ 0, 전구 질량 ∫msl dA = μ의 값, p_s 가중 기둥수분 ∫msl·q700 dA = μ의 값 (hard). 손실: L_DSM + λ_feas L_feas(x̂₀ 예측의 q<0·질량 drift) + λ_mean L_mean(최종 사영 샘플의 앙상블 평균 − μ, 비편향 쌍 추정량). 6절 | 사영(hard) + 손실 | **S5c-0 / S5c** |
+| PDE 잔차 손실 L_PDE (관측 궤적) | Stage A의 닫힘 손실이 곧 관측 궤적에서의 PDE 잔차 ‖T_obs − F − S_θ‖² | 손실 | stage5a |
+| PDE 잔차를 rollout 결과에 평가 | Stage B: ‖(X̂−X_t)/Δt_lead − [F+S_θ](X̄)‖², X̄ = (X_t+X̂)/2 (사다리꼴). guide 가중치 고정, 기울기는 X̂로만 흐름 | 손실 | **stage5b** |
+| Noise 층: 허용 조건 사영 P_C, L_mean, 질량 가중 보존 | Stage C(residual graph diffusion)에 **사영 P_C(μ)**: q700 ≥ 0, 전구 질량 ∫msl dA = μ의 값, p_s 가중 기둥수분 ∫msl·q700 dA = μ의 값 (hard). 손실: L_DSM + λ_feas L_feas(x̂₀ 예측의 q<0·질량 drift) + λ_mean L_mean(최종 사영 샘플의 앙상블 평균 − μ, 비편향 쌍 추정량). 6절 | 사영(hard) + 손실 | **stage5c-0 / stage5c** |
 | 상변화 결합 (q_v+q_l+q_i, c_p s_T + L_v s_q) | q_l, q_i가 없어 불가 | 불가(기록) | — |
 
 ## 2. S5a의 식 (우리 11변수 2D 축소형)
@@ -54,10 +54,10 @@
 
 ## 5. 실행 계획
 
-1. S5a: `CLOSURE_TEND=1 RESOLVED_TERMS=adv_u,adv_t850,adv_q700,coriolis,pgf RESOLVED_COEF=runs/era5_64x32_s5a_closure/resolved_coef.json`, 나머지는 S3와 동일(섭동, 2-step rollout, guide 없음 baseline은 S3 것 재사용). 비교: S3(보강 guide+rollout) vs S5a, 같은 90 초기시각.
-2. S5b: S5a의 guide 재사용(`GUIDE_FROM`), `PDE_WEIGHT=0.1`. 비교: S5a vs S5b, PDE 잔차 진단 포함.
-3. S5c-0: S5a/S5b 중 결정론 점수가 나은 run의 guide·V-Net을 그대로 두고 Stage C(residual graph diffusion, 800 step, 제약 없음)를 얹는다 — Noise 층을 추가하는 구조 변경이므로 별도 stage(대조군). 비교: 결정론 vs 앙상블(CRPS, 앙상블평균 RMSE, spread), 24 h, 45 초기시각 × 8 멤버.
-4. S5c: 같은 forecaster, Stage C에 사영 P_C + L_feas + L_mean (6절). 비교: S5c-0 vs S5c — 허용조건 위반(q700<0 면적비, 질량·수분 drift)이 0이 되는지, 앙상블평균 RMSE가 결정론 RMSE에 가까워지는지(평균 제약), CRPS·spread가 유지되는지. 같은 샘플의 사영 전/후 점수도 함께 기록한다(`eval.md`의 "사영 전/후" 표).
+1. stage5a: `CLOSURE_TEND=1 RESOLVED_TERMS=adv_u,adv_t850,adv_q700,coriolis,pgf RESOLVED_COEF=runs/era5_64x32_s5a_closure/resolved_coef.json`, 나머지는 S3와 동일(섭동, 2-step rollout, guide 없음 baseline은 stage3 것 재사용). 비교: stage3(보강 guide+rollout) vs stage5a, 같은 90 초기시각.
+2. stage5b: S5a의 guide 재사용(`GUIDE_FROM`), `PDE_WEIGHT=0.1`. 비교: stage5a vs stage5b, PDE 잔차 진단 포함.
+3. stage5c-0: stage5a/stage5b 중 결정론 점수가 나은 run의 guide·V-Net을 그대로 두고 Stage C(residual graph diffusion, 800 step, 제약 없음)를 얹는다 — Noise 층을 추가하는 구조 변경이므로 별도 stage(대조군). 비교: 결정론 vs 앙상블(CRPS, 앙상블평균 RMSE, spread), 24 h, 45 초기시각 × 8 멤버.
+4. stage5c: 같은 forecaster, Stage C에 사영 P_C + L_feas + L_mean (6절). 비교: stage5c-0 vs stage5c — 허용조건 위반(q700<0 면적비, 질량·수분 drift)이 0이 되는지, 앙상블평균 RMSE가 결정론 RMSE에 가까워지는지(평균 제약), CRPS·spread가 유지되는지. 같은 샘플의 사영 전/후 점수도 함께 기록한다(`eval.md`의 "사영 전/후" 표).
 
 ## 6. S5c의 식 (Noise 층 허용조건)
 
@@ -83,6 +83,6 @@ Stage C의 잔차 확산(`gpclimate/models/diffusion.py`)은 제안서 5.1절 �
 
 을 쓴다(조건부 독립인 멤버에 대해 E = ‖bias‖², spread 항 없음; 테스트에서 확인). 비용 때문에 K = 2 멤버 × 4 샘플링 step으로 5 step마다 한 번 기울기를 흘린다(`--noise-mean-every 5 --noise-mean-members 2 --noise-mean-steps 4`). 제안서의 경고대로 생성된 한 시점의 상태에 PDE 잔차를 요구하지는 않는다.
 
-손실: L_Noise = L_DSM + λ_feas L_feas + λ_mean L_mean, 기본 λ_feas = λ_mean = 1. S5c-0은 λ = 0, 사영 없음(S1의 Stage C와 동일).
+손실: L_Noise = L_DSM + λ_feas L_feas + λ_mean L_mean, 기본 λ_feas = λ_mean = 1. stage5c-0은 λ = 0, 사영 없음(S1의 Stage C와 동일).
 
-S1의 Stage C 결과(`runs/era5_64x32`, 800 step)에서 앙상블평균 RMSE(z500 287)가 결정론 RMSE(249)보다 나빴고 CRPS는 독립 가우시안 잡음 baseline과 같았다. 이 "잔차 생성기가 평균을 끌고 간다"는 증상이 바로 L_mean이 겨냥하는 것이므로, S5c의 판단 기준은 (i) 위반량 0, (ii) 앙상블평균 RMSE → 결정론 RMSE, (iii) CRPS ≤ S5c-0, spread 유지이다.
+S1의 Stage C 결과(`runs/era5_64x32`, 800 step)에서 앙상블평균 RMSE(z500 287)가 결정론 RMSE(249)보다 나빴고 CRPS는 독립 가우시안 잡음 baseline과 같았다. 이 "잔차 생성기가 평균을 끌고 간다"는 증상이 바로 L_mean이 겨냥하는 것이므로, S5c의 판단 기준은 (i) 위반량 0, (ii) 앙상블평균 RMSE → 결정론 RMSE, (iii) CRPS ≤ stage5c-0, spread 유지이다.
