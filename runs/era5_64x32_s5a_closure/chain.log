@@ -1,2 +1,3 @@
 [03:37:19] PIGT pipeline finished -> S5a
 [05:35:18] S5a exit 0 -> S5b
+[07:44:27] S5b exit 0 CHAIN_DONE
