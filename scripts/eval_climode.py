@@ -201,9 +201,16 @@ def main():
         fc = {v: pred[:, k - 1, c] for c, v in enumerate(VARS)}
         pe = {v: phys_test[cases_m, c] for c, v in enumerate(VARS)}
         res["lead_hours"][k] = 6 * lead * k
-        res["finite"].setdefault("climode", {})[k] = bool(all(np.isfinite(x).all() for x in fc.values()))
+        ok = np.isfinite(pred[:, k - 1]).all(axis=(1, 2, 3))  # init times whose ODE solution has not blown up
+        res["finite"].setdefault("climode", {})[k] = bool(ok.all())
+        res.setdefault("n_finite", {})[k] = int(ok.sum())
         res["rmse"][k] = {"climode": wb2_scores(fc, tr, lat, lon, times)["rmse"],
                           "persistence": wb2_scores(pe, tr, lat, lon, times)["rmse"]}
+        if 0 < ok.sum() < len(ok):  # also score the non-diverged subset (reported with its count, not comparable 1:1)
+            sub = lambda d: {v: x[ok] for v, x in d.items()}  # noqa: E731
+            res.setdefault("rmse_finite_subset", {})[k] = {
+                "climode": wb2_scores(sub(fc), sub(tr), lat, lon, times[ok])["rmse"],
+                "persistence": wb2_scores(sub(pe), sub(tr), lat, lon, times[ok])["rmse"]}
     json.dump(res, open(out / "eval.json", "w"), indent=1, default=str)
     lines = [f"# ClimODE (published checkpoint) on the 2019 test protocol: {len(cases_m)} init times\n",
              "| lead | " + " | ".join(f"{v} ClimODE / persistence" for v in VARS) + " |", "|---|" + "---|" * len(VARS)]

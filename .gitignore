@@ -6,3 +6,4 @@ reports/*.pt
 *.egg-info/
 data/*.pt
 data/*.log
+runs/*/shard_*.npz
