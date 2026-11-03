@@ -1,0 +1,4 @@
+[20:48:28] feature matrix fcn21: 13 scalar + 4 vector-pair state channels (21 variables), 5 scalar + 1 vector conditions
+[20:50:23] run runs/era5_64x32_s10a_fcn21: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[20:50:23] stage B[vnet_noguide]: vnet params 448329, steps 1500, batch 4, rollout steps 2 from step 500 (weight 1.0)
+[20:50:36] B[vnet_noguide]     0  L_f 0.8875 L_roll 0.0000 L_phys 0.00004 | val MSE 0.3038 2-step 0.4539 (persistence 0.3048) | 12.75 s/step
