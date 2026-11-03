@@ -13,7 +13,8 @@
 | 외부 기준 | ClimODE 공개 체크포인트를 같은 2019 프로토콜로 채점 (eval 모드 / 저자 프로토콜) | `runs/climode_2019`, `runs/climode_2019_trainmode` | 저자 프로토콜: 24–48 h z500은 ClimODE 우세, 72 h 이후 우리 모델 우세; eval 모드는 72 h부터 발산 | 〃 |
 | S5a | **층별 물리 제약 1 — guide 구조 변경**: 경향 = 고정 해석(resolved) 역학 F(X) + 학습 닫힘 S_θ (메시 0), F는 보정계수가 붙은 2D 원시방정식 항 | `runs/era5_64x32_s5a_closure` | 대기 (PIGT 종료 후 시작) | `docs/design/Layerwise_Physical_Constraints_KO.md` |
 | S5b | **층별 물리 제약 2 — Dynamics 학습식 변경**: Stage B에 PDE 잔차 손실 ‖(X̂−X_t)/Δt − [F+S_θ](X̄)‖² 추가 (S5a guide 재사용) | `runs/era5_64x32_s5b_pde` | 대기 | 〃 |
-| S5c | **층별 물리 제약 3 — Noise/출력 허용조건**: q ≥ 0 사영, 앙상블 평균 제약, 질량 가중 보존 (Stage C) | 미정 | 미정 | 〃 |
+| S5c-0 | **Noise 층 추가(대조군)**: S5a/S5b 중 결정론 점수가 나은 run의 guide·V-Net 위에 Stage C residual graph diffusion(800 step, 제약 없음 = S1의 Stage C) | `runs/era5_64x32_s5c0_diffusion` | 대기 (S5b 종료 후 자동) | 〃 |
+| S5c | **층별 물리 제약 3 — Noise 층 허용조건**: 같은 forecaster, Stage C에 사영 P_C(q700 ≥ 0, 전구 질량·p_s 가중 기둥수분 = μ) + L_feas + L_mean(비편향 쌍 추정량) | `runs/era5_64x32_s5c_noise` | 대기 | 〃 |
 
 ## 데이터로 확인한 사실 (S5a 설계 근거, 2026-11-03)
 

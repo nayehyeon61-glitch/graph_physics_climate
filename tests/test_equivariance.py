@@ -353,3 +353,79 @@ def test_guide_closure_head_equivariance():
         y1 = model.guide.tendency_mesh(P1, x.gauge(tg), gv)
     assert relative_error(y1, y0.gauge(tm[0])) < TOL
     assert float(model.guide.resolved_tendency(x, g).v.abs().mean()) > 1e-6
+
+
+# ----------------------------------------------------------------------------- stage S5c: Noise-layer constraints
+def test_feasibility_projection_constraints_gauge_and_bias_estimator(graphs):
+    """P_C enforces q700 >= 0, equal total mass and column water; it is idempotent, leaves the other channels
+    untouched, commutes with gauge changes; ``pairwise_bias`` estimates the squared ensemble-mean bias without the
+    spread term."""
+    from gpclimate.models.diffusion import FeasibilityProjection, pairwise_bias
+
+    spec = VariableSpec(scalars=("z500", "q700", "msl"), vectors=(("u850", "v850"),), static_scalars=("orog",),
+                        static_vectors=(("dox", "doy"),), forcing_scalars=("toa",))
+    G, w = graphs.grid.n, graphs.grid_area_weight
+    s_mean, s_std = torch.tensor([5.4e4, 2.0e-3, 1.0e5]), torch.tensor([3.0e3, 2.0e-3, 1.0e3])
+    proj = FeasibilityProjection(spec, s_mean, s_std, water=True)
+    gen = torch.Generator().manual_seed(5)
+    mu = rand_field(2, G, 3, 1)
+    mu.s[..., 1] = 0.3 * torch.rand(2, G, generator=gen) - 0.6  # q700 in a plausible normalised range (0 kg/kg = -1)
+    x = Field(mu.s + 0.6 * torch.randn(2, G, 3, generator=gen), mu.v + 0.1 * torch.randn(2, G, 1, generator=gen))
+    assert (x.s[..., 1] < proj.q_min).float().mean() > 0.05  # the raw sample violates q >= 0 somewhere
+    y = proj(x, mu, w)
+    am = lambda t: (t * w).sum(-1) / w.sum()  # noqa: E731
+    water = lambda f: am((f.s[..., 2] * s_std[2] + s_mean[2]) * (f.s[..., 1] * s_std[1] + s_mean[1]))  # noqa: E731
+    assert (y.s[..., 1] >= proj.q_min - 1e-6).all()
+    assert torch.allclose(am(y.s[..., 2]), am(mu.s[..., 2]), atol=1e-5)
+    assert torch.allclose(water(y), water(mu), rtol=1e-4)
+    assert torch.equal(y.s[..., 0], x.s[..., 0]) and torch.equal(y.v, x.v)
+    assert relative_error(proj(y, mu, w), y) < 1e-6  # idempotent
+    tg, _ = random_gauges(graphs, torch.Generator().manual_seed(6))
+    assert relative_error(proj(x.gauge(tg), mu.gauge(tg), w), y.gauge(tg)) < TOL
+    v = proj.violations(y, mu, w)
+    assert float(v["neg_q_fraction"].max()) == 0.0 and float(v["mass_drift_pa"].abs().max()) < 1e-2
+    assert float(v["water_drift_rel"].abs().max()) < 1e-4
+    v0 = proj.violations(x, mu, w)
+    assert float(v0["neg_q_fraction"].mean()) > 0.05 and float(v0["mass_drift_pa"].abs().max()) > 1.0
+    # unbiased squared-bias estimator: zero-bias members -> ~0, biased members -> |b|^2 (not + variance / K)
+    zero = Field(torch.zeros(2, G, 3), torch.zeros(2, G, 1, dtype=torch.complex64))
+    scale_s, scale_v = torch.ones(3), torch.ones(1)
+    noise = lambda: rand_field(2, G, 3, 1)  # noqa: E731
+    members = [noise() for _ in range(6)]
+    assert abs(float(pairwise_bias(members, zero, scale_s, scale_v, w))) < 0.05
+    b = 0.5
+    biased = [Field(m.s + b, m.v) for m in members]
+    expect = 3 * b ** 2 / (3 + 2 * 1)  # per real component: scalars biased, vector components not
+    assert abs(float(pairwise_bias(biased, zero, scale_s, scale_v, w)) - expect) < 0.05
+    # the naive K-member mean error would include the spread term (variance 1 per component) / K
+    mean_s = torch.stack([m.s for m in biased]).mean(0)
+    naive = float((((mean_s - zero.s) ** 2) * w[None, :, None]).sum() / (w.sum() * 3 * 2))
+    assert naive > expect + 0.5 / 6 * 0.5
+
+
+def test_constrained_diffusion_losses_and_mean_constraint(graphs):
+    """Stage S5c losses: the feasibility penalty is finite and non-negative, the mean constraint is differentiable
+    through the sampler and the projection, and projected samples satisfy the constraints."""
+    from gpclimate.models.diffusion import FeasibilityProjection
+
+    spec = VariableSpec(scalars=("z500", "q700", "msl"), vectors=(("u850", "v850"),), static_scalars=("orog",),
+                        static_vectors=(("dox", "doy"),), forcing_scalars=("toa",))
+    G, N0, w = graphs.grid.n, graphs.mesh[0].n, graphs.grid_area_weight
+    proj = FeasibilityProjection(spec, torch.tensor([5.4e4, 2.0e-3, 1.0e5]), torch.tensor([3.0e3, 2.0e-3, 1.0e3]))
+    den = ResidualDenoiser(spec, DiffusionConfig(cs=8, cv=4, depth=1, hidden=16), guide_dims=(5, 2))
+    diff = GraphResidualDiffusion(den, 100, proj)
+    ctx = {"xbar": rand_field(2, G, 3, 1), "x": rand_field(2, G, 3, 1),
+           "cond": rand_field(1, G, spec.n_cond_s, spec.n_cond_v), "P0u": rand_field(2, N0, 5, 2)}
+    ls = diff.losses(rand_field(2, G, 3, 1), ctx, graphs.view(), w)
+    assert set(ls) == {"dsm", "feas"} and torch.isfinite(ls["dsm"]) and float(ls["feas"].detach()) >= 0
+    l_mean = diff.mean_loss(ctx, graphs.view(), w, n_members=2, steps=2, gen=torch.Generator().manual_seed(1))
+    (ls["dsm"] + ls["feas"] + l_mean).backward()
+    assert torch.isfinite(l_mean) and any(p.grad is not None and torch.isfinite(p.grad).all() for p in den.parameters())
+    res = diff.sample(ctx, graphs.view(), n_members=2, steps=3, seed=0)
+    members = diff.assemble(ctx["xbar"], res, w)
+    for m in members:
+        v = proj.violations(m, ctx["xbar"], w)
+        assert float(v["neg_q_fraction"].max()) == 0.0 and float(v["mass_drift_pa"].abs().max()) < 1e-2
+    # state dict round trip keeps the projection (eval reconstructs it from the keys)
+    sd = diff.state_dict()
+    assert "project.s_mean" in sd and bool(sd["project.water"])

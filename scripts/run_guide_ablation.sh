@@ -24,13 +24,28 @@ if [ -n "${GUIDE_FROM:-}" ]; then
 else
   python -W ignore scripts/train_eval.py $COMMON --stage a --steps "${STEPS_A:-1000}" --val-every 200 $A_EXTRA || exit 1
 fi
-python -W ignore scripts/train_eval.py $COMMON --stage b --steps "${STEPS_B:-1500}" --val-every 250 $B_EXTRA || exit 1
+# stage S5c: VNET_FROM=run_dir reuses that run's deterministic V-Nets (skips Stage B; the Noise layer is the only change)
+if [ -n "${VNET_FROM:-}" ]; then
+  for f in vnet.pt log_vnet.jsonl vnet_noguide.pt log_vnet_noguide.jsonl; do [ -f "$RUN/$f" ] || cp "$VNET_FROM/$f" "$RUN/"; done
+else
+  python -W ignore scripts/train_eval.py $COMMON --stage b --steps "${STEPS_B:-1500}" --val-every 250 $B_EXTRA || exit 1
+fi
 if [ "${TRAIN_NOGUIDE:-0}" = "1" ]; then
   python -W ignore scripts/train_eval.py $COMMON --stage b_noguide --steps "${STEPS_B:-1500}" --val-every 250 $B_EXTRA || exit 1
 else
   [ -f "$RUN/vnet_noguide.pt" ] || cp "$BASE/vnet_noguide.pt" "$BASE/log_vnet_noguide.jsonl" "$RUN/"
 fi
+# Stage C (residual graph diffusion) is optional: STAGE_C=1; NOISE_CONSTRAINTS=1 = stage S5c (projection + penalties)
+if [ "${STAGE_C:-0}" = "1" ]; then
+  python -W ignore scripts/train_eval.py $COMMON --stage c --steps "${STEPS_C:-800}" --val-every 200 \
+    --noise-constraints "${NOISE_CONSTRAINTS:-0}" --noise-water "${NOISE_WATER:-1}" \
+    --noise-feas-weight "${NOISE_FEAS_WEIGHT:-1.0}" --noise-mean-weight "${NOISE_MEAN_WEIGHT:-1.0}" \
+    --noise-mean-every "${NOISE_MEAN_EVERY:-5}" --noise-mean-members "${NOISE_MEAN_MEMBERS:-2}" \
+    --noise-mean-steps "${NOISE_MEAN_STEPS:-4}" || exit 1
+fi
 python -W ignore scripts/train_eval.py --run "$RUN" --threads "$THREADS" --stage eval --eval-stride "${EVAL_STRIDE:-16}" \
-  --max-lead-steps 5 --n-ens-cases "${N_ENS_CASES:-24}" --members 8 --sample-steps 20 || exit 1
-python -W ignore scripts/diagnose_guide.py --run "$RUN" --threads "$THREADS" || exit 1
+  --max-lead-steps 5 --n-ens-cases "${N_ENS_CASES:-24}" --members "${MEMBERS:-8}" --sample-steps "${SAMPLE_STEPS:-20}" || exit 1
+if [ "${DIAGNOSE:-1}" = "1" ]; then
+  python -W ignore scripts/diagnose_guide.py --run "$RUN" --threads "$THREADS" || exit 1
+fi
 echo PIPELINE_DONE

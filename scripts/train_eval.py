@@ -31,8 +31,8 @@ sys.path.insert(0, str(ROOT))
 from gpclimate.data.era5_wb2 import DEFAULT_SPEC, ERA5Pairs, Normalizer, fit_normalizer, fit_tendency_scale  # noqa: E402
 from gpclimate.data.variables import merge_state  # noqa: E402
 from gpclimate.geometry.graphs import SphereGraphs  # noqa: E402
-from gpclimate.models.diffusion import (DiffusionConfig, GraphResidualDiffusion, ResidualDenoiser,  # noqa: E402
-                                        assemble_ensemble)
+from gpclimate.models.diffusion import (DiffusionConfig, FeasibilityProjection, GraphResidualDiffusion,  # noqa: E402
+                                        ResidualDenoiser)
 from gpclimate.models.dynamics_vnet import LieGuidedForecaster, VNetConfig  # noqa: E402
 from gpclimate.models.lie_physical_gnn import GuideConfig  # noqa: E402
 from gpclimate.nn.primitive2d import DEFAULT_TERMS, resolved_fraction  # noqa: E402
@@ -139,9 +139,17 @@ class Run:
     def load_vnet(self, m: LieGuidedForecaster, name: str):
         m.vnet.load_state_dict(torch.load(self.dir / f"{name}.pt"))
 
-    def diffusion(self) -> GraphResidualDiffusion:
+    def diffusion(self, constraints: bool = False, water: bool = True) -> GraphResidualDiffusion:
+        """Residual diffusion; ``constraints`` (stage S5c) attaches the feasibility projection P_C."""
+        proj = FeasibilityProjection(self.spec, self.norm.s_mean, self.norm.s_std, water) if constraints else None
         return GraphResidualDiffusion(ResidualDenoiser(self.spec, self.diff_cfg,
-                                                       guide_dims=(self.guide_cfg.cs, self.guide_cfg.cv)), 1000)
+                                                       guide_dims=(self.guide_cfg.cs, self.guide_cfg.cv)), 1000, proj)
+
+    def load_diffusion(self) -> GraphResidualDiffusion:
+        sd = torch.load(self.dir / "diffusion.pt")
+        diff = self.diffusion(constraints="project.s_mean" in sd, water=bool(sd.get("project.water", True)))
+        diff.load_state_dict(sd)
+        return diff
 
     def jlog(self, stage: str, rec: dict):
         with open(self.dir / f"log_{stage}.jsonl", "a") as fh:
@@ -349,8 +357,9 @@ def stage_c(run: Run):
     model.eval()
     for p in model.parameters():
         p.requires_grad_(False)
-    diff = run.diffusion()
+    diff = run.diffusion(constraints=bool(a.noise_constraints), water=bool(a.noise_water))
     rng = np.random.default_rng(a.seed + 2)
+    gen = torch.Generator().manual_seed(a.seed + 4)
     with torch.no_grad():  # residual scale on the calib period (not seen by the deterministic model)
         idx = list(np.linspace(0, len(run.calib) - 1, 160).round().astype(int))
         rs, rv = [], []
@@ -363,6 +372,10 @@ def stage_c(run: Run):
         diff.res_scale_s.copy_(rs.std((0, 1)) + 1e-6)
         diff.res_scale_v.copy_(torch.sqrt((rv.abs() ** 2).mean((0, 1)) / 2) + 1e-6)
     log(f"stage C: denoiser params {n_params(diff.denoiser)}, residual scale s {diff.res_scale_s.tolist()}")
+    if diff.project is not None:  # stage S5c
+        log(f"stage C: feasibility projection (q700 >= 0, mass, water={bool(a.noise_water)}), "
+            f"feas weight {a.noise_feas_weight}, mean constraint weight {a.noise_mean_weight} every "
+            f"{a.noise_mean_every} steps ({a.noise_mean_members} members x {a.noise_mean_steps} sampling steps)")
 
     def context(x0n, cn):
         with torch.no_grad():
@@ -371,23 +384,38 @@ def stage_c(run: Run):
         return xbar, {"xbar": xbar, "x": x0n, "cond": cn, "P0u": P["P0u"]}
 
     opt = torch.optim.Adam(diff.denoiser.parameters(), lr=a.lr)
-    t0, hist = time.time(), []
+    t0, hist, hist_f, hist_m = time.time(), [], [], []
     for step in range(a.steps):
         for pg in opt.param_groups:
             pg["lr"] = cosine_lr(step, a.steps, a.lr)
         idx = rng.integers(0, len(run.calib), a.batch)
         x0n, x1n, cn, _ = run.prep(run.calib, idx)
         xbar, ctx = context(x0n, cn)
-        loss = diff.loss(diff.to_residual(x1n, xbar), ctx, g, w)
+        ls = diff.losses(diff.to_residual(x1n, xbar), ctx, g, w)
+        loss = ls["dsm"]
+        if diff.project is not None:  # stage S5c: L_DSM + lambda_feas L_feas + lambda_mean L_mean
+            loss = loss + a.noise_feas_weight * ls["feas"]
+            hist_f.append(float(ls["feas"]))
+            if a.noise_mean_weight > 0 and step % a.noise_mean_every == 0:
+                l_mean = diff.mean_loss(ctx, g, w, a.noise_mean_members, a.noise_mean_steps, gen)
+                loss = loss + a.noise_mean_weight * l_mean
+                hist_m.append(float(l_mean))
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(diff.parameters(), 1.0)
         opt.step()
-        hist.append(float(loss))
+        hist.append(float(ls["dsm"]))
         if step % 25 == 0:
-            run.jlog("c", {"step": step, "l_eps": float(np.mean(hist[-25:])), "t": time.time() - t0})
+            rec = {"step": step, "l_eps": float(np.mean(hist[-25:])), "t": time.time() - t0}
+            if hist_f:
+                rec["l_feas"] = float(np.mean(hist_f[-25:]))
+            if hist_m:
+                rec["l_mean"] = float(np.mean(hist_m[-5:]))
+            run.jlog("c", rec)
         if step % a.val_every == 0 or step == a.steps - 1:
-            log(f"C {step:5d}  L_eps(avg25) {np.mean(hist[-25:]):.4f} | {(time.time() - t0) / (step + 1):.2f} s/step")
+            extra = (f" L_feas {np.mean(hist_f[-25:]):.4f}" if hist_f else "") + (
+                f" L_mean {np.mean(hist_m[-5:]):+.4f}" if hist_m else "")
+            log(f"C {step:5d}  L_eps(avg25) {np.mean(hist[-25:]):.4f}{extra} | {(time.time() - t0) / (step + 1):.2f} s/step")
     torch.save(diff.state_dict(), run.dir / "diffusion.pt")
     log(f"stage C done in {(time.time() - t0) / 60:.1f} min")
 
@@ -408,9 +436,7 @@ def stage_eval(run: Run):
         models["no_guide"] = m2.eval()
     diff = None
     if (run.dir / "diffusion.pt").exists():
-        diff = run.diffusion()
-        diff.load_state_dict(torch.load(run.dir / "diffusion.pt"))
-        diff.eval()
+        diff = run.load_diffusion().eval()
     # climatology baseline: per-grid-point mean of the training years (physical units)
     clim = run.train.state.mean(0, keepdim=True)  # [1, C, H, W]
     clim_f = run.norm.state(__import__("gpclimate.data.variables", fromlist=["split_state"]).split_state(
@@ -462,17 +488,23 @@ def stage_eval(run: Run):
     if diff is not None:
         ens_cases = cases[: a.n_ens_cases]
         mdl = models["lie_guided"]
-        ens, gauss, tr, det = {}, {}, {}, {}
+        ens, ens_raw, gauss, tr, det = {}, {}, {}, {}, {}
         tt = []
         gen = torch.Generator().manual_seed(a.seed + 3)
         t1 = time.time()
+        # stage S5c diagnostics: constraint violations of raw / projected members and the ensemble-mean bias
+        viol = {k: {"neg_q_fraction": [], "mass_drift_pa": [], "water_drift_rel": []} for k in ("raw", "projected", "gaussian")}
+        viol_proj = FeasibilityProjection(run.spec, run.norm.s_mean, run.norm.s_std, True)
+        bias = {k: [] for k in ("diffusion", "gaussian")}
         with torch.no_grad():
             for i in ens_cases:
                 x0n, x1n, cn, _ = run.prep(test, [i])
                 P = mdl.physics(x0n, cn, g)
                 xbar, _ = mdl(x0n, cn, g)
                 ctx = {"xbar": xbar, "x": x0n, "cond": cn, "P0u": P["P0u"]}
-                members = assemble_ensemble(xbar, diff.sample(ctx, g, a.members, a.sample_steps, seed=int(i)))
+                res = diff.sample(ctx, g, a.members, a.sample_steps, seed=int(i))
+                raw = diff.assemble(xbar, res, run.w, project=False)
+                members = diff.assemble(xbar, res, run.w, project=True) if diff.project is not None else raw
                 noise = []
                 for _ in range(a.members):
                     es = torch.randn(xbar.s.shape, generator=gen) * diff.res_scale_s
@@ -484,19 +516,37 @@ def stage_eval(run: Run):
                     phys = merge_state(run.norm.state_inv(f), run.spec, H, W)
                     for v in EVAL_VARS:
                         store.setdefault(v, []).append(phys[v][0].numpy())
-                for store, mem in ((ens, members), (gauss, noise)):
+                stores = [(ens, members), (gauss, noise)] + ([(ens_raw, raw)] if diff.project is not None else [])
+                for store, mem in stores:
                     for mi, f in enumerate(mem):
                         phys = merge_state(run.norm.state_inv(f), run.spec, H, W)
                         for v in EVAL_VARS:
                             store.setdefault(v, [[] for _ in range(a.members)])[mi].append(phys[v][0].numpy())
+                for key, mem in (("raw", raw), ("projected", members), ("gaussian", noise)):
+                    for f in mem:
+                        for kk, val in viol_proj.violations(f, xbar, run.w).items():
+                            viol[key][kk].append(float(val.abs().mean()) if kk != "neg_q_fraction" else float(val.mean()))
+                for key, mem in (("diffusion", members), ("gaussian", noise)):
+                    mean_s = torch.stack([f.s for f in mem]).mean(0)
+                    mean_v = torch.stack([f.v for f in mem]).mean(0)
+                    # physical-unit area-weighted RMS of (ensemble mean - deterministic) per variable
+                    d = Field((mean_s - xbar.s) * run.norm.s_std, (mean_v - xbar.v) * run.norm.v_scale)
+                    phys = merge_state(d, run.spec, H, W)
+                    bias[key].append({v: float(np.sqrt(np.average((phys[v][0].numpy() ** 2).mean(-1),
+                                                                   weights=np.cos(np.deg2rad(test.lat)))))
+                                      for v in EVAL_VARS})
         times = np.asarray(tt).astype("datetime64[ns]")
         trs = stack(tr)
         out = {"n_cases": len(ens_cases), "members": a.members, "sample_steps": a.sample_steps,
                "seconds": time.time() - t1, "deterministic_rmse": wb2_scores(stack(det), trs, test.lat, test.lon, times)["rmse"]}
-        for label, store in (("diffusion", ens), ("gaussian", gauss)):
+        for label, store in (("diffusion", ens), ("gaussian", gauss)) + ((("diffusion_raw", ens_raw),) if ens_raw else ()):
             sc = wb2_scores(stack(det), trs, test.lat, test.lon, times,
                             ensemble={v: np.stack([np.stack(mm, 0) for mm in x], 0) for v, x in store.items()})
             out[label] = {"crps": sc["crps"], "ens_mean_rmse": sc["ens_mean_rmse"], "spread": sc["ens_spread"]}
+        out["constraints"] = {"projection": diff.project is not None,
+                              **{k: {kk: float(np.mean(vv)) for kk, vv in d.items()} for k, d in viol.items()}}
+        out["ens_mean_minus_det_rms"] = {k: {v: float(np.mean([b[v] for b in bl])) for v in EVAL_VARS}
+                                         for k, bl in bias.items()}
         results["ensemble_lead1"] = out
         log(f"ensemble eval done in {(time.time() - t1) / 60:.1f} min")
 
@@ -532,6 +582,21 @@ def write_markdown(run: Run, r: dict):
             d, gs = e["diffusion"], e["gaussian"]
             lines.append(f"| {v} | {e['deterministic_rmse'][v]:.4g} | {d['crps'][v]:.4g} | {d['ens_mean_rmse'][v]:.4g} | "
                          f"{d['spread'][v]:.4g} | {gs['crps'][v]:.4g} | {gs['ens_mean_rmse'][v]:.4g} | {gs['spread'][v]:.4g} |")
+        if "constraints" in e:
+            c = e["constraints"]
+            lines += ["", f"### 허용조건 진단 (사영 {'켜짐' if c['projection'] else '꺼짐'})", "",
+                      "| 멤버 | q700<0 면적비 | 질량 drift |⟨msl−μ⟩| (Pa) | 수분 drift |W/W_μ−1| |", "|---|---|---|---|"]
+            for k in ("raw", "projected", "gaussian"):
+                lines.append(f"| {k} | {c[k]['neg_q_fraction']:.4f} | {c[k]['mass_drift_pa']:.3g} | {c[k]['water_drift_rel']:.3g} |")
+            if "diffusion_raw" in e:
+                dr = e["diffusion_raw"]
+                lines += ["", "| 변수 | 사영 전 CRPS | 사영 후 CRPS | 사영 전 앙상블평균 RMSE | 사영 후 앙상블평균 RMSE |", "|---|---|---|---|---|"]
+                for v in EVAL_VARS:
+                    lines.append(f"| {v} | {dr['crps'][v]:.4g} | {d['crps'][v]:.4g} | {dr['ens_mean_rmse'][v]:.4g} | {d['ens_mean_rmse'][v]:.4g} |")
+            b = e["ens_mean_minus_det_rms"]
+            lines += ["", "| 변수 | 앙상블평균−결정론 RMS (diffusion) | 〃 (Gaussian) |", "|---|---|---|"]
+            for v in EVAL_VARS:
+                lines.append(f"| {v} | {b['diffusion'][v]:.4g} | {b['gaussian'][v]:.4g} |")
     (run.dir / "eval.md").write_text("\n".join(lines) + "\n")
 
 
@@ -571,6 +636,15 @@ def main():
     ap.add_argument("--pde-weight", type=float, default=0.0,
                     help="Stage B (stage S5b): weight of the PDE-residual loss between the forecast tendency and "
                          "the guide's F + S_theta at the midpoint state (needs a closure-head guide)")
+    ap.add_argument("--noise-constraints", type=int, default=0, choices=[0, 1],
+                    help="Stage C (stage S5c): feasibility projection P_C on generated states + feasibility penalty "
+                         "+ ensemble-mean constraint (stored in diffusion.pt)")
+    ap.add_argument("--noise-water", type=int, default=1, choices=[0, 1], help="S5c: also conserve column water")
+    ap.add_argument("--noise-feas-weight", type=float, default=1.0)
+    ap.add_argument("--noise-mean-weight", type=float, default=1.0)
+    ap.add_argument("--noise-mean-every", type=int, default=5, help="S5c: steps between mean-constraint updates")
+    ap.add_argument("--noise-mean-members", type=int, default=2)
+    ap.add_argument("--noise-mean-steps", type=int, default=4, help="S5c: sampling steps inside the mean constraint")
     ap.add_argument("--fusion", default="gated", choices=["gated", "pigt"],
                     help="V-Net physics fusion: gated cross-attention or the physics-integrated graph transformer")
     ap.add_argument("--pigt-layers", type=int, default=2)

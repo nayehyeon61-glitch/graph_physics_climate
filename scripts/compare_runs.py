@@ -63,6 +63,8 @@ def main():
                 x = get(c, l, v)
                 if x is None:
                     cells.append("—")
+                elif x != x:  # NaN: the model's forecast diverged for some init times at this lead
+                    cells.append("발산")
                 else:
                     cells.append(fmt(x) if i == a.ref else f"{fmt(x)} ({pct(x, get(ref, l, v))})")
             L.append(f"| {v} | " + " | ".join(cells) + f" | {fmt(ref['ev']['rmse'][l]['persistence'][v])} |")
@@ -75,7 +77,8 @@ def main():
             if i == a.ref:
                 continue
             L.append(f"| {ref['ev']['lead_hours'][l]} h | {c['label']} | " + " | ".join(
-                "—" if get(c, l, v) is None else pct(get(c, l, v), get(ref, l, v)) for v in KEY_VARS) + " |")
+                "—" if get(c, l, v) is None else ("발산" if get(c, l, v) != get(c, l, v) else pct(get(c, l, v), get(ref, l, v)))
+                for v in KEY_VARS) + " |")
     if any(c["dg"] for c in cols):
         L.append("\n## guide 의존도 (diagnose_guide.py, 24 h, 테스트 48 시각)\n")
         gcols = [c for c in cols if c["dg"]]
