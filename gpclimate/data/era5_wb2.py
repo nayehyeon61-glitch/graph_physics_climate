@@ -191,27 +191,74 @@ class ERA5Pairs:
         return torch.stack(out, -1)
 
 
-def fit_normalizer(ds: ERA5Pairs) -> Normalizer:
-    idx = torch.arange(len(ds))
-    x0, x1, c = ds.batch(idx)
-    s_mean, s_std = x0.s.mean((0, 1)), x0.s.std((0, 1)) + 1e-6
-    v_scale = torch.sqrt((x0.v.abs() ** 2).mean((0, 1)) / 2) + 1e-6
-    cs_mean, cs_std = c.s.mean((0, 1)), c.s.std((0, 1)) + 1e-6
-    cv_scale = torch.sqrt((c.v.abs() ** 2).mean((0, 1)) / 2) + 1e-6 if c.v.shape[-1] else torch.ones(0)
-    n0 = Field((x0.s - s_mean) / s_std, x0.v / v_scale)
-    n1 = Field((x1.s - s_mean) / s_std, x1.v / v_scale)
-    delta_s = (n1.s - n0.s).std((0, 1)) + 1e-6
-    delta_v = torch.sqrt(((n1.v - n0.v).abs() ** 2).mean((0, 1)) / 2) + 1e-6
-    aux_std = ds.aux_targets(x0).std((0, 1)) + 1e-9
+class _Moments:
+    """Running per-channel sum / sum of squares over the (sample, node) axes of ``[B, N, C]`` real tensors, so the
+    normaliser statistics of a 10-year file (14,612 x 2048 x C values per quantity) are computed in chunks instead
+    of materialising every pair at once (which needs ~9 GB for 10 years)."""
+
+    def __init__(self):
+        self.n, self.s, self.q = 0, None, None
+
+    def add(self, x: torch.Tensor) -> None:
+        x = x.double()
+        s, q = x.sum((0, 1)), (x * x).sum((0, 1))
+        self.n += x.shape[0] * x.shape[1]
+        self.s = s if self.s is None else self.s + s
+        self.q = q if self.q is None else self.q + q
+
+    def mean(self) -> torch.Tensor:
+        return (self.s / self.n).float()
+
+    def std(self) -> torch.Tensor:
+        """Unbiased standard deviation (same convention as ``torch.std``)."""
+        m = self.s / self.n
+        return ((self.q - self.n * m * m) / max(self.n - 1, 1)).clamp_min(0).sqrt().float()
+
+    def rms_half(self) -> torch.Tensor:
+        """``sqrt(mean(x) / 2)`` for ``x = |v|^2`` of a complex vector channel (per-component scale)."""
+        return (self.s / self.n / 2).sqrt().float()
+
+
+def _chunks(n: int, chunk: int):
+    for a in range(0, n, chunk):
+        yield torch.arange(a, min(n, a + chunk))
+
+
+def fit_normalizer(ds: ERA5Pairs, chunk: int = 1024) -> Normalizer:
+    """Normaliser statistics over all training pairs, accumulated in chunks of ``chunk`` samples (exact up to
+    float64 round-off; identical to a single full-dataset pass)."""
+    m_s, m_v, m_cs, m_cv, m_aux = _Moments(), _Moments(), _Moments(), _Moments(), _Moments()
+    for idx in _chunks(len(ds), chunk):
+        x0, _, c = ds.batch(idx)
+        m_s.add(x0.s)
+        m_v.add(x0.v.abs() ** 2)
+        m_cs.add(c.s)
+        if c.v.shape[-1]:
+            m_cv.add(c.v.abs() ** 2)
+        m_aux.add(ds.aux_targets(x0))
+    s_mean, s_std = m_s.mean(), m_s.std() + 1e-6
+    v_scale = m_v.rms_half() + 1e-6
+    cs_mean, cs_std = m_cs.mean(), m_cs.std() + 1e-6
+    cv_scale = m_cv.rms_half() + 1e-6 if m_cv.n else torch.ones(0)
+    aux_std = m_aux.std() + 1e-9
+    m_ds, m_dv = _Moments(), _Moments()
+    for idx in _chunks(len(ds), chunk):
+        x0, x1, _ = ds.batch(idx)
+        m_ds.add((x1.s - x0.s) / s_std)  # std of the normalised lead-time change (mean subtracted)
+        m_dv.add(((x1.v - x0.v) / v_scale).abs() ** 2)
+    delta_s, delta_v = m_ds.std() + 1e-6, m_dv.rms_half() + 1e-6
     norm = Normalizer(s_mean, s_std, v_scale, cs_mean, cs_std, cv_scale, delta_s, delta_v, aux_std)
-    return fit_tendency_scale(ds, norm)
+    return fit_tendency_scale(ds, norm, chunk)
 
 
-def fit_tendency_scale(ds: ERA5Pairs, norm: Normalizer) -> Normalizer:
+def fit_tendency_scale(ds: ERA5Pairs, norm: Normalizer, chunk: int = 1024) -> Normalizer:
     """Fill ``tend_s / tend_v`` (std of the normalised 6 h change) in place and return ``norm``."""
-    idx = torch.arange(len(ds))
-    x0 = split_state(ds.state[idx], ds.spec, ds.names)
-    x1 = ds.next_state(idx)
-    norm.tend_s = ((x1.s - x0.s) / norm.s_std).std((0, 1)) + 1e-6
-    norm.tend_v = torch.sqrt((((x1.v - x0.v) / norm.v_scale).abs() ** 2).mean((0, 1)) / 2) + 1e-6
+    m_ts, m_tv = _Moments(), _Moments()
+    for idx in _chunks(len(ds), chunk):
+        x0 = split_state(ds.state[idx], ds.spec, ds.names)
+        x1 = ds.next_state(idx)
+        m_ts.add((x1.s - x0.s) / norm.s_std)
+        m_tv.add(((x1.v - x0.v) / norm.v_scale).abs() ** 2)
+    norm.tend_s = m_ts.std() + 1e-6
+    norm.tend_v = m_tv.rms_half() + 1e-6
     return norm

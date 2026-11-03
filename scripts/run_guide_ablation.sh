@@ -10,6 +10,8 @@ BASE=${BASE:-runs/era5_64x32}
 THREADS=${THREADS:-4}
 mkdir -p "$RUN"
 COMMON="--run $RUN --threads $THREADS --batch ${BATCH:-4} --lr ${LR:-1e-3} --physics-ops ${PHYSICS_OPS:-1} --tend-head ${TEND_HEAD:-1}"
+# stage S7: DATA=path/to/other.npz trains on another data file (stored in config.json at run creation)
+[ -n "${DATA:-}" ] && COMMON="$COMMON --data $DATA"
 # stage S5a: closure-structured guide (fixed resolved dynamics + learned closure); RESOLVED_TERMS=adv_u,coriolis,...
 COMMON="$COMMON --closure-tend ${CLOSURE_TEND:-0}"
 [ -n "${RESOLVED_TERMS:-}" ] && COMMON="$COMMON --resolved-terms $RESOLVED_TERMS"

@@ -2,7 +2,7 @@
 
 원칙(감자, 2026-11-03): 모델 구조나 가설이 바뀌면 **별도 stage = 별도 run 디렉터리**로 나누고, 바로 앞 stage와 같은 데이터·step 수로 비교한다. 한 run에 두 가지 변경을 섞지 않는다.
 
-공통 조건: ERA5 5.625° (64×32) 11변수, 학습 2016–2017, calib 2018, 테스트 2019 (00 UTC 4일 간격 90개 초기시각), 메시 (4,3,2), Stage A 1000 step / Stage B 1500 step, batch 4, 단일 seed, CPU 4코어. 점수는 WeatherBench2 면적가중 RMSE.
+공통 조건: ERA5 5.625° (64×32) 11변수, 학습 2016–2017(데이터 stage S7은 예외, 행에 명시), calib 2018, 테스트 2019 (00 UTC 4일 간격 90개 초기시각), 메시 (4,3,2), Stage A 1000 step / Stage B 1500 step, batch 4, 단일 seed, CPU 4코어. 점수는 WeatherBench2 면적가중 RMSE.
 
 | stage | 가설 / 구조 변경 | run | 앞 stage 대비 결과 | 보고서 |
 |---|---|---|---|---|
@@ -15,6 +15,7 @@
 | S5b | **층별 물리 제약 2 — Dynamics 학습식 변경**: Stage B에 PDE 잔차 손실 ‖(X̂−X_t)/Δt − [F+S_θ](X̄)‖² 추가 (S5a guide 재사용) | `runs/era5_64x32_s5b_pde` | 대기 | 〃 |
 | S5c-0 | **Noise 층 추가(대조군)**: S5a/S5b 중 결정론 점수가 나은 run의 guide·V-Net 위에 Stage C residual graph diffusion(800 step, 제약 없음 = S1의 Stage C) | `runs/era5_64x32_s5c0_diffusion` | 대기 (S5b 종료 후 자동) | 〃 |
 | S5c | **층별 물리 제약 3 — Noise 층 허용조건**: 같은 forecaster, Stage C에 사영 P_C(q700 ≥ 0, 전구 질량·p_s 가중 기둥수분 = μ) + L_feas + L_mean(비편향 쌍 추정량) | `runs/era5_64x32_s5c_noise` | 대기 | 〃 |
+| S7 | **데이터 stage(구조·학습식 동일)**: S3 구성 그대로(게이트 융합, 물리 연산자, 경향 head, Stage A 예보상태 섭동, Stage B 2-step rollout, A 1000 / B 1500 step) 학습 데이터만 2년 → 10년(2008–2017, 14,612 시각; `data/era5_wb2_64x32_2008_2019.npz`). guide 없음 baseline과 섭동 모델도 10년으로 재학습. 가설: 현재 학습은 데이터·step 제한(6000 샘플 ≈ 2년 2 epoch, 검증 손실 계속 감소) → 같은 step 수에서 S3보다 좋아지면 다음은 step 3배 변형 | `runs/era5_64x32_s7_data10y` | 대기 (S5c 종료 후 자동, `runs/era5_64x32_s7_data10y/chain_data.sh`); 비교 대상 S3 | — |
 | S6 (계획) | **5층 기하·확률 동역학 GNN**(감자 설계서 2026-11): 1 discrete flux 보존형 핵 → 2 Lie 군 표현(기존 guide) → 3 Lie 대수 생성원 ψ_θ → 4 수송형 확률장 → 5 분할 적분기; S6a–S6f로 분할(설계서 실험 A–F). 호몰로지/DEC 보강(감자 자료 2건): 메시는 이미 심플리셜 복합체, b=(1,0,1)이라 조화 성분 없음, 게이지 연결의 홀로노미 = 면적(가우스–보네) 확인 → DEC flux 핵·ψ_θ=⋆d₀ 생성원·L₀ 고유기저 잡음·persistent-homology 저기압 지표(설계 문서 8절) | 미정 | PIGT·S5 결과 후 착수 | `docs/design/Five_Layer_Geometric_Stochastic_GNN_Plan_KO.md` |
 
 ## 데이터로 확인한 사실 (S5a 설계 근거, 2026-11-03)
