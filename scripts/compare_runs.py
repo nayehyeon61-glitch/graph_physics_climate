@@ -24,8 +24,10 @@ def fmt(x: float) -> str:
     return f"{x:.4g}" if abs(x) < 1000 else f"{x:.0f}"
 
 
-def pct(new: float, ref: float) -> str:
-    return f"{100 * (new / ref - 1):+.1f}%"
+def impr(ref: float, other: float) -> str:
+    """Improvement rate of the reference column over ``other`` (+ = the reference has the lower error).
+    Sign convention of the project (감자, 2026-11-04): + = better, − = worse, everywhere."""
+    return f"{100 * (1 - ref / other):+.1f}%"
 
 
 def get(c: dict, lead: str, var: str):
@@ -56,7 +58,7 @@ def main():
     rows = [v for v in VARS if v in ref_vars] + [v for v in ref_vars if v not in VARS]
     L = [f"# {a.title}\n", "열: " + "; ".join(f"**{c['label']}** = `{c['run']}` ({c['model']})" for c in cols) + "\n",
          f"2019년 테스트, 초기 시각 {ref['ev']['n_cases']}개, WeatherBench2 면적가중 RMSE(물리 단위). "
-         f"괄호는 기준열 **{ref['label']}** 대비 상대 변화.\n"]
+         f"괄호 = 기준열 **{ref['label']}**의 개선율 = 100·(1 − 기준열/해당 열): **+ = 기준열이 그 열보다 좋음, − = 나쁨**.\n"]
     for l in leads:
         L.append(f"## Lead {ref['ev']['lead_hours'][l]} h\n")
         L.append("| 변수 | " + " | ".join(c["label"] for c in cols) + " | persistence |")
@@ -70,25 +72,25 @@ def main():
                 elif x != x:  # NaN: the model's forecast diverged for some init times at this lead
                     cells.append("발산")
                 else:
-                    cells.append(fmt(x) if i == a.ref else f"{fmt(x)} ({pct(x, get(ref, l, v))})")
+                    cells.append(fmt(x) if i == a.ref else f"{fmt(x)} ({impr(get(ref, l, v), x)})")
             L.append(f"| {v} | " + " | ".join(cells) + f" | {fmt(ref['ev']['rmse'][l]['persistence'][v])} |")
         L.append("")
-    L.append("## 요약: 핵심 변수의 기준열 대비 상대 변화\n")
-    L.append("| lead | 열 | " + " | ".join(KEY_VARS) + " |")
+    L.append(f"## 요약: 기준열 **{ref['label']}**의 핵심 변수 개선율 (+ = 기준열이 비교 대상보다 좋음)\n")
+    L.append("| lead | 비교 대상 | " + " | ".join(KEY_VARS) + " |")
     L.append("|---|---|" + "---|" * len(KEY_VARS))
     for l in leads:
         for i, c in enumerate(cols):
             if i == a.ref:
                 continue
             L.append(f"| {ref['ev']['lead_hours'][l]} h | {c['label']} | " + " | ".join(
-                "—" if get(c, l, v) is None else ("발산" if get(c, l, v) != get(c, l, v) else pct(get(c, l, v), get(ref, l, v)))
+                "—" if get(c, l, v) is None else ("발산" if get(c, l, v) != get(c, l, v) else impr(get(ref, l, v), get(c, l, v)))
                 for v in KEY_VARS) + " |")
     if any(c["dg"] for c in cols):
-        L.append("\n## guide 의존도 (diagnose_guide.py, 24 h, 테스트 48 시각)\n")
+        L.append("\n## guide 의존도 (diagnose_guide.py, 24 h, 테스트 48 시각; 진단값 — 부호는 좋고 나쁨이 아니라 MSE 증가량)\n")
         gcols = [c for c in cols if c["dg"]]
         L.append("| 항목 | " + " | ".join(c["label"] for c in gcols) + " |")
         L.append("|---|" + "---|" * len(gcols))
-        for k, lab in (("zero_P", "P를 0으로 했을 때 MSE 변화"), ("shuffled_P", "P를 다른 시각으로 교체")):
+        for k, lab in (("zero_P", "P를 0으로 했을 때 MSE 증가"), ("shuffled_P", "P를 다른 시각으로 교체했을 때 MSE 증가")):
             L.append(f"| {lab} | " + " | ".join(f"{100 * (c['dg']['p_dependence_relative'][k] - 1):+.0f}%" for c in gcols) + " |")
         for k, lab in (("state_only", "probe R² 상태만"), ("guide_only", "probe R² guide만"),
                        ("state_plus_guide", "probe R² 상태+guide"), ("physics_ops_only", "probe R² 고정 연산자만")):

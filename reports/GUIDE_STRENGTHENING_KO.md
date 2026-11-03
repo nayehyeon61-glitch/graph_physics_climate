@@ -173,3 +173,6 @@ Stage B 검증 MSE의 step별 추이:
 
 기록: `runs/era5_64x32_physops/` (`eval.json`, `diagnose_guide.json`, `log_*.jsonl`, `guide.pt`, `vnet.pt`),
 재현 `bash scripts/run_guide_ablation.sh`, 비교표 `python scripts/compare_guides.py`.
+
+---
+부호 규약 주의(2026-11-04): 이 보고서는 구 규약으로 작성되었다 — 'RMSE/CRPS 상대 변화'는 − = 개선, + = 악화이고, compare 표의 괄호는 기준열 대비 상대값이다. 2026-11-04부터의 보고서·원장은 개선율(+ = 개선)을 쓴다.

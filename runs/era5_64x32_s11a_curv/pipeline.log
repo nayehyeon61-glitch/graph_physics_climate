@@ -6,3 +6,11 @@
 [23:08:44] A   200  L_rec 0.0601 L_aux 0.2048 L_tend 0.6314 L_clos 0.0000 | val rec 0.0394 aux 0.1837 tend 0.5817 clos 0.0000 (resolved only 0.0000) | 0.88 s/step
 [23:12:07] A   400  L_rec 0.0392 L_aux 0.1662 L_tend 0.4218 L_clos 0.0000 | val rec 0.0273 aux 0.1601 tend 0.4331 clos 0.0000 (resolved only 0.0000) | 0.95 s/step
 [23:14:47] A   600  L_rec 0.1075 L_aux 0.2498 L_tend 0.6540 L_clos 0.0000 | val rec 0.0235 aux 0.1515 tend 0.3865 clos 0.0000 (resolved only 0.0000) | 0.90 s/step
+[23:18:46] A   800  L_rec 0.0336 L_aux 0.1489 L_tend 0.4174 L_clos 0.0000 | val rec 0.0225 aux 0.1485 tend 0.3682 clos 0.0000 (resolved only 0.0000) | 0.97 s/step
+[23:21:17] A   999  L_rec 0.0332 L_aux 0.1546 L_tend 0.3809 L_clos 0.0000 | val rec 0.0221 aux 0.1476 tend 0.3638 clos 0.0000 (resolved only 0.0000) | 0.93 s/step
+[23:21:17] stage A done in 15.5 min, best val score 0.4597, forecast-perturbed batches 298
+[23:21:22] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[23:21:37] run runs/era5_64x32_s11a_curv: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[23:21:37] stage B[vnet]: vnet params 554665, steps 1500, batch 4, rollout steps 2 from step 500 (weight 1.0)
+[23:22:02] B[vnet]     0  L_f 0.9072 L_roll 0.0000 L_phys 0.00002 | val MSE 0.3252 2-step 0.4929 (persistence 0.3257) | 24.91 s/step
+[23:28:38] B[vnet]   250  L_f 0.3861 L_roll 0.0000 L_phys 0.00012 | val MSE 0.1333 2-step 0.2501 (persistence 0.3257) | 1.68 s/step

@@ -180,3 +180,5 @@ autoregressive 손실(가중 1.0, 두 번째 step에서 guide 특징을 예보 �
 `RUN=runs/era5_64x32_physops_roll PERTURB_MODEL=runs/era5_64x32/vnet_noguide.pt ROLLOUT_STEPS=2 ROLLOUT_START=500 TRAIN_NOGUIDE=1 bash scripts/run_guide_ablation.sh`,
 비교표 `python scripts/compare_runs.py`.
 
+---
+부호 규약 주의(2026-11-04): 이 보고서는 구 규약으로 작성되었다 — 'RMSE/CRPS 상대 변화'는 − = 개선, + = 악화이고, compare 표의 괄호는 기준열 대비 상대값이다. 2026-11-04부터의 보고서·원장은 개선율(+ = 개선)을 쓴다.

@@ -148,3 +148,6 @@ guide를 지웠을 때의 열화가 S3보다 작은 것은 PIGT가 guide를 덜 
 - 진행 중(자동 체인): stage5a(닫힘 구조 guide) → stage5b(PDE 잔차 손실) → stage5c-0/stage5c(Noise 층 허용조건). 각 stage는 바로 앞 stage와 비교합니다(`docs/EXPERIMENT_STAGES_KO.md`).
 - PIGT 후속: 두 번째 seed와 동일 용량 게이트 융합으로 1 % 이득의 출처 확인; GPU에서 2 layer; stage5a guide(F + S_θ)를 PIGT에 결합.
 - stage6(계획): 5층 기하·확률 동역학 GNN(`docs/design/Five_Layer_Geometric_Stochastic_GNN_Plan_KO.md`) — 3층 생성원 head는 PIGT 융합 특징에서 읽는 것으로 결정.
+
+---
+부호 규약 주의(2026-11-04): 이 보고서는 구 규약으로 작성되었다 — 'RMSE/CRPS 상대 변화'는 − = 개선, + = 악화이고, compare 표의 괄호는 기준열 대비 상대값이다. 2026-11-04부터의 보고서·원장은 개선율(+ = 개선)을 쓴다.

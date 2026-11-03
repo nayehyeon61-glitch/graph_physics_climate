@@ -113,3 +113,6 @@ Graph diffusion 앙상블(20 샘플링 step)과, 같은 결정론 예측에 공�
 - Stage B에 다단계 rollout 손실 추가(2–3 step), 학습 기간 확대(예: 2010–2017)
 - Stage C 학습량 확대와 잔차의 공간 상관·spread–skill·rank histogram 평가
 - GPU에서 1.5° KAI 격자(`mesh_splits=(5,4,3)` 이상)와 PG-Flow 일 평균 계약으로 이동
+
+---
+부호 규약 주의(2026-11-04): 이 보고서는 구 규약으로 작성되었다 — 'RMSE/CRPS 상대 변화'는 − = 개선, + = 악화이고, compare 표의 괄호는 기준열 대비 상대값이다. 2026-11-04부터의 보고서·원장은 개선율(+ = 개선)을 쓴다.
