@@ -16,6 +16,7 @@ from gpclimate.geometry.graphs import SphereGraphs  # noqa: E402
 from gpclimate.models.dynamics_vnet import LieGuidedForecaster, VNetConfig  # noqa: E402
 from gpclimate.models.lie_physical_gnn import GuideConfig  # noqa: E402
 from gpclimate.nn.physics_ops import PhysicsOperators  # noqa: E402
+from gpclimate.nn.so2 import Field  # noqa: E402
 
 torch.manual_seed(0)
 # NVlabs/FourCastNet config/AFNO.yaml: in_channels = out_channels = 0..19 in this order
@@ -96,3 +97,33 @@ def test_fcn21_pairs_normaliser_and_forecaster(tmp_path):
     assert T.s.shape == (2, g.n_grid, 13) and T.v.shape == (2, g.n_grid, 4)
     assert f.s.shape == xn.s.shape and f.v.shape == xn.v.shape and torch.isfinite(f.s).all()
     assert torch.allclose(f.s, xn.s) and torch.allclose(f.v, xn.v)  # zero-initialised delta head = persistence
+
+
+def test_focus_weighted_field_mse():
+    """stage10b: channel weights 1 reproduce the plain MSE; base11 focus on fcn21 down-weights the 10 new channels."""
+    import sys
+    sys.path.insert(0, "scripts")
+    from train_eval import focus_weights
+    from gpclimate.training.losses import field_mse
+    spec = SPECS["fcn21"]
+    ws, wv = focus_weights(spec, "base11", 0.2)
+    assert ws.tolist().count(1.0) == 5 and len(ws) == 13 and wv.tolist().count(1.0) == 3 and len(wv) == 4
+    assert focus_weights(spec, "", 0.2) is None
+    g = torch.Generator().manual_seed(0)
+    B, G = 2, 17
+    w = torch.rand(G, generator=g) + 0.5
+    p = Field(torch.randn(B, G, 13, generator=g), torch.randn(B, G, 4, dtype=torch.complex64))
+    t = Field(torch.randn(B, G, 13, generator=g), torch.randn(B, G, 4, dtype=torch.complex64))
+    plain = field_mse(p, t, w)
+    ones = field_mse(p, t, w, (torch.ones(13), torch.ones(4)))
+    assert torch.allclose(plain, ones)
+    # error only in the new channels: the focused loss shrinks it, the plain loss does not
+    q = Field(t.s.clone(), t.v.clone())
+    new_s = [i for i, n in enumerate(spec.scalars) if n not in SPECS["base11"].scalars]
+    q.s[..., new_s] += 1.0
+    focused = field_mse(q, t, w, (ws, wv))
+    assert focused < field_mse(q, t, w) * 0.5
+    # error only in base11 channels: the focused loss is larger than the plain loss (denominator shrinks)
+    r = Field(t.s.clone(), t.v.clone())
+    r.s[..., 0] += 1.0
+    assert field_mse(r, t, w, (ws, wv)) > field_mse(r, t, w)

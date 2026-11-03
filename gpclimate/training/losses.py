@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 import torch
 
@@ -11,11 +11,21 @@ from gpclimate.geometry.graphs import GraphView, SphereGraphs
 from gpclimate.nn.so2 import Field
 
 
-def field_mse(pred: Field, target: Field, area_w: torch.Tensor) -> torch.Tensor:
-    """Area-weighted MSE per real component (scalars and both vector components weighted equally)."""
+def field_mse(pred: Field, target: Field, area_w: torch.Tensor,
+              ch_w: Optional[Tuple[torch.Tensor, torch.Tensor]] = None) -> torch.Tensor:
+    """Area-weighted MSE per real component (scalars and both vector components weighted equally).
+
+    ``ch_w = (w_s [n_s], w_v [n_v])`` (stage10b) weights the channels: the numerator and the denominator are both
+    weighted, so with all weights 1 the value is the plain area-weighted MSE, and down-weighting a channel group
+    (e.g. the fcn21 channels outside base11) makes the loss ≈ the MSE of the remaining channels."""
     w = area_w[None, :, None]
-    num = ((pred.s - target.s) ** 2 * w).sum() + ((pred.v - target.v).abs() ** 2 * w).sum()
-    den = w.expand_as(pred.s).sum() + 2 * w.expand(pred.v.shape[0], -1, pred.v.shape[-1]).sum()
+    if ch_w is None:
+        num = ((pred.s - target.s) ** 2 * w).sum() + ((pred.v - target.v).abs() ** 2 * w).sum()
+        den = w.expand_as(pred.s).sum() + 2 * w.expand(pred.v.shape[0], -1, pred.v.shape[-1]).sum()
+        return num / den
+    ws, wv = ch_w[0].to(pred.s.dtype)[None, None, :], ch_w[1].to(pred.s.dtype)[None, None, :]
+    num = ((pred.s - target.s) ** 2 * w * ws).sum() + ((pred.v - target.v).abs() ** 2 * w * wv).sum()
+    den = (w * ws).expand_as(pred.s).sum() + 2 * (w * wv).expand(pred.v.shape[0], -1, pred.v.shape[-1]).sum()
     return num / den
 
 

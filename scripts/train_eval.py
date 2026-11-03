@@ -58,6 +58,17 @@ def cosine_lr(step: int, total: int, lr: float, warmup: int = 100, floor: float 
     return lr * (floor + (1 - floor) * 0.5 * (1 + math.cos(math.pi * min(1.0, t))))
 
 
+def focus_weights(spec, focus: str, weight: float):
+    """stage10b: per-channel loss weights — 1.0 for the state channels of the ``focus`` spec, ``weight`` for the rest.
+    Returns ``None`` (unweighted) when no focus is set."""
+    if not focus:
+        return None
+    fs = SPECS[focus]
+    ws = torch.tensor([1.0 if n in fs.scalars else weight for n in spec.scalars])
+    wv = torch.tensor([1.0 if pair in fs.vectors else weight for pair in spec.vectors])
+    return ws, wv
+
+
 class Run:
     """Everything the stages share: data, graphs, normaliser, model builders, checkpoint paths."""
 
@@ -74,12 +85,18 @@ class Run:
                                                       "diff_cv", "diff_depth", "physics_ops", "tend_head", "fusion",
                                                       "pigt_layers", "pigt_ops", "closure_tend", "resolved_terms",
                                                       "resolved_coef", "integrator", "ode_steps", "ode_solver",
-                                                      "ode_physics", "curvature_ops")}
+                                                      "ode_physics", "curvature_ops", "loss_focus",
+                                                      "loss_focus_weight")}
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         # stage10: the state feature matrix is a named spec stored in config.json (older runs: base11)
         self.spec = SPECS[c.get("spec", "base11")]
         self.eval_vars = self.spec.state_channels()  # every state channel is scored (RMSE per variable)
+        # stage10b: channel-weighted training losses (focus spec channels 1.0, the rest loss_focus_weight);
+        # validation / eval stay unweighted so runs remain comparable
+        self.loss_w = focus_weights(self.spec, c.get("loss_focus", "") or "", float(c.get("loss_focus_weight", 0.2)))
+        if self.loss_w is not None:
+            log(f"loss focus {c['loss_focus']}: scalar weights {self.loss_w[0].tolist()}, vector weights {self.loss_w[1].tolist()}")
         log(f"feature matrix {c.get('spec', 'base11')}: {self.spec.n_s} scalar + {self.spec.n_v} vector-pair state "
             f"channels ({len(self.eval_vars)} variables), {self.spec.n_cond_s} scalar + {self.spec.n_cond_v} vector conditions")
         self.train = ERA5Pairs(c["data"], "train", self.spec, c["lead"])
@@ -210,13 +227,13 @@ def stage_a(run: Run):
         sigma = sample_sigma(a.batch, a.sigma_max, generator=gen)
         feats = guide(perturb(xin.gauge(tg), sigma, gen), cg, sigma, gv)
         rec, aux, tend = guide.heads_all(feats, gv)
-        l_rec = field_mse(rec, xg, w)
+        l_rec = field_mse(rec, xg, w, run.loss_w)
         l_aux = ((aux - aux_t) ** 2 * w[None, :, None]).mean() / w.mean()
         loss = l_rec + a.aux_weight * l_aux
         l_tend = torch.zeros(())
         if tend is not None:
             tend_t = run.norm.tendency(x0, run.train.next_state(idx)).gauge(tg)
-            l_tend = field_mse(tend, tend_t, w)
+            l_tend = field_mse(tend, tend_t, w, run.loss_w)
             loss = loss + a.tend_weight * l_tend
         l_clos = torch.zeros(())
         if guide.closure_out is not None:  # S5a: closure = observed tendency - fixed resolved dynamics, on mesh 0
@@ -317,13 +334,13 @@ def stage_b(run: Run, use_guide: bool):
         xs = [run.norm.state(x) for x in states]
         cs = [run.norm.cond(c) for c in conds]
         f, d = model(xs[0], cs[0], g)
-        l_f = field_mse(scaled(f), scaled(xs[1]), w)  # == delta MSE of the one-step target
+        l_f = field_mse(scaled(f), scaled(xs[1]), w, run.loss_w)  # == delta MSE of the one-step target
         l_phys = global_tendency_consistency(d.s * model.delta_scale_s, xs[1].s - xs[0].s, w)
         l_pde = pde_residual(xs[0], f, cs[0]) if use_pde else torch.zeros(())
         l_roll = torch.zeros(())
         for k in range(2, k_now + 1):  # autoregressive steps; physics features recomputed from the forecast
             f, _ = model(f, cs[k - 1], g)
-            l_roll = l_roll + field_mse(scaled(f), scaled(xs[k]), w)
+            l_roll = l_roll + field_mse(scaled(f), scaled(xs[k]), w, run.loss_w)
         loss = l_f + a.phys_weight * l_phys + lam * l_roll + lam_pde * l_pde
         opt.zero_grad()
         loss.backward()
@@ -657,6 +674,9 @@ def main():
     ap.add_argument("--diff-depth", type=int, default=2)
     ap.add_argument("--physics-ops", type=int, default=1, choices=[0, 1],
                     help="guide: fixed equivariant physics operators as mesh-0 inputs (stored in config.json)")
+    ap.add_argument("--loss-focus", default="", choices=[""] + sorted(SPECS),
+                    help="stage10b: weight the training losses towards this spec's channels (others: --loss-focus-weight)")
+    ap.add_argument("--loss-focus-weight", type=float, default=0.2)
     ap.add_argument("--curvature-ops", type=int, default=0, choices=[0, 1],
                     help="guide: exact connection / curvature operators of the flow (DEC vorticity, divergence, "
                          "strain, Okubo-Weiss, Helmholtz potentials, Lie brackets) as extra mesh-0 inputs "

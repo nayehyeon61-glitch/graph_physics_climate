@@ -123,3 +123,10 @@ stage10a는 **FourCastNet과 같은 전처리**를 유지한다 — 가설을 "�
 | `tests/test_feature_matrix.py` | 명세가 FourCastNet 20채널을 덮고 base11이 부분집합인지, WB2 소스·바람쌍 일관성, 21채널 npz → 쌍 → 정규화 → guide/V-Net forward, base11이 같은 파일을 읽어 동일 값인지, 연산자 행렬 47+19 / 101+30 |
 | `data/era5_wb2_64x32_fcn21_2016_2019.npz` | 21채널 2016–2019(gitignore; `data/fetch_fcn21_2016_2019.log`에 통계) |
 | `runs/era5_64x32_s10a_fcn21/chain_s10.sh` | stage10a 자동 체인 |
+
+
+## 10. stage10a 결과와 stage10b (2026-11-04 추가)
+
+stage10a(같은 폭·같은 step, 비가중 21채널 손실)는 공통 11변수에서 stage3보다 +5.4 %(24 h) … +2.9 %(120 h) 나빴고, guide 없는 baseline도 +4.1 … +1.5 % 나빠졌다(`reports/compare_stage10a.md`). 즉 악화의 대부분은 9절에서 예고한 **손실 희석**(11채널 비중이 절반으로, 같은 V-Net 폭이 21채널 출력을 분담)이고, fcn21에서 guide 이득은 −0.2 %(base11 −1.4 %), P=0 +58 %(+102 %)로 기둥 정보가 guide를 강화하지 못했다. 신규 10변수 자체는 skill이 있다(24 h, 1 − RMSE/기후: z50 0.88, t500 0.68, tcwv 0.67, z850 0.66, sp·z1000 0.64, u/v1000 0.50, r 0.32–0.35).
+
+**stage10b** = 같은 fcn21 run에 채널 가중 손실만 추가: `--loss-focus base11 --loss-focus-weight 0.2`(config.json 키 `loss_focus`, `loss_focus_weight`; `field_mse(..., ch_w)`가 분자·분모를 함께 가중하므로 가중 1이면 기존 손실과 동일). 적용 범위는 Stage A 재구성·경향 head 손실, Stage B 1-step·rollout 손실, guide 없음 baseline; 검증 점수·평가는 비가중이라 stage10a와 직접 비교된다. 체인 `runs/era5_64x32_s10b_fcn21_w/chain_s10b.sh`(stage7b 뒤). 판정 기준은 stage10a와 같다(공통 11변수 평균이 stage3보다 5 lead 중 3 이상에서 낮고 P-의존도가 stage3 이상). 실패하면 fcn21은 '출력'이 아니라 **guide 입력 전용 조건**으로만 쓰는 변형(상태는 base11, 신규 채널은 t₀ 조건)을 stage9 후보로 남기고 stage10c(fcn21 + 10년)는 취소한다.
