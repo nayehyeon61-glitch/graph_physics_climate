@@ -86,7 +86,7 @@ class Run:
                                                       "pigt_layers", "pigt_ops", "closure_tend", "resolved_terms",
                                                       "resolved_coef", "integrator", "ode_steps", "ode_solver",
                                                       "ode_physics", "curvature_ops", "loss_focus",
-                                                      "loss_focus_weight")}
+                                                      "loss_focus_weight", "simplicial")}
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         # stage10: the state feature matrix is a named spec stored in config.json (older runs: base11)
@@ -121,7 +121,8 @@ class Run:
                                      closure_tend=bool(c.get("closure_tend", False)),
                                      resolved_terms=tuple(c.get("resolved_terms") or DEFAULT_TERMS),
                                      resolved_coef=c.get("resolved_coef"),
-                                     curvature_ops=bool(c.get("curvature_ops", False)))
+                                     curvature_ops=bool(c.get("curvature_ops", False)),
+                                     simplicial=int(c.get("simplicial", 0)))
         self.vnet_kwargs = dict(cs=c["cs"], cv=c["cv"], depth=tuple(c["depth"]), heads=c["heads"], ds=c["ds"],
                                 dv=c["dv"], n_basis=c["n_basis"], hidden=c["hidden"],
                                 fusion=c.get("fusion", "gated"), pigt_layers=int(c.get("pigt_layers", 2)),
@@ -677,6 +678,8 @@ def main():
     ap.add_argument("--loss-focus", default="", choices=[""] + sorted(SPECS),
                     help="stage10b: weight the training losses towards this spec's channels (others: --loss-focus-weight)")
     ap.add_argument("--loss-focus-weight", type=float, default=0.2)
+    ap.add_argument("--simplicial", type=int, default=0, choices=[0, 1, 2],
+                    help="stage11b: simplicial vertex-edge-face message passing blocks in the guide (mesh 0)")
     ap.add_argument("--curvature-ops", type=int, default=0, choices=[0, 1],
                     help="guide: exact connection / curvature operators of the flow (DEC vorticity, divergence, "
                          "strain, Okubo-Weiss, Helmholtz potentials, Lie brackets) as extra mesh-0 inputs "

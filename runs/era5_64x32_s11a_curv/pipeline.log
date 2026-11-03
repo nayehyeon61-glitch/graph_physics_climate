@@ -4,3 +4,5 @@
 [23:05:47] stage A: guide params 276716, steps 1000, batch 4
 [23:05:57] A     0  L_rec 1.8948 L_aux 0.5059 L_tend 1.4977 L_clos 0.0000 | val rec 1.9294 aux 0.4934 tend 1.4636 clos 0.0000 (resolved only 0.0000) | 10.57 s/step
 [23:08:44] A   200  L_rec 0.0601 L_aux 0.2048 L_tend 0.6314 L_clos 0.0000 | val rec 0.0394 aux 0.1837 tend 0.5817 clos 0.0000 (resolved only 0.0000) | 0.88 s/step
+[23:12:07] A   400  L_rec 0.0392 L_aux 0.1662 L_tend 0.4218 L_clos 0.0000 | val rec 0.0273 aux 0.1601 tend 0.4331 clos 0.0000 (resolved only 0.0000) | 0.95 s/step
+[23:14:47] A   600  L_rec 0.1075 L_aux 0.2498 L_tend 0.6540 L_clos 0.0000 | val rec 0.0235 aux 0.1515 tend 0.3865 clos 0.0000 (resolved only 0.0000) | 0.90 s/step

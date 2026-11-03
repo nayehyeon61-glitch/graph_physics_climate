@@ -34,6 +34,7 @@ from gpclimate.nn.gauge_conv import GaugeStack, GaugeTransfer, Merge, transport_
 from gpclimate.nn.connection_ops import ConnectionCurvatureOperators
 from gpclimate.nn.physics_ops import PhysicsOperators
 from gpclimate.nn.primitive2d import DEFAULT_TERMS, ReducedPrimitiveTendencies
+from gpclimate.nn.simplicial import SimplicialBlock
 from gpclimate.nn.so2 import EqFFN, EqLinear, EqNorm, Field
 
 LEVEL_KEYS = ("P0", "P1", "P2", "P1u", "P0u")
@@ -57,6 +58,9 @@ class GuideConfig:
     # stage11a: exact connection / curvature operators of the flow (DEC circulation, divergence, strain,
     # Okubo-Weiss, Helmholtz potentials, Lie brackets of the wind levels) as extra mesh-0 inputs
     curvature_ops: bool = False
+    # stage11b: simplicial vertex-edge-face message passing on mesh 0 (0 = off, 1 = block on the mesh-0 input,
+    # 2 = blocks on the mesh-0 input and on the decoder output P0u)
+    simplicial: int = 0
 
 
 class GridLift(nn.Module):
@@ -114,6 +118,8 @@ class LiePhysicalGNN(nn.Module):
             self.curv_embed = EqLinear(qs, qv, cs, cv)
         # Stage-A heads (graph-to-grid adapter + linear read-outs)
         self.head_dec = GaugeTransfer(cs, cv, cs, cv, nb, hd)
+        self.simp_in = SimplicialBlock(cs, cv) if cfg.simplicial >= 1 else None
+        self.simp_out = SimplicialBlock(cs, cv) if cfg.simplicial >= 2 else None
         self.rec_out = EqLinear(cs, cv, spec.n_s, spec.n_v)
         self.aux_out = EqLinear(cs, cv, len(spec.aux_names), 0)
         self.tend_out = EqLinear(cs, cv, spec.n_s, spec.n_v) if cfg.tend_head else None
@@ -156,11 +162,15 @@ class LiePhysicalGNN(nn.Module):
         if self.curv_ops is not None:
             cur = self.curv_embed(self.curv_norm(self.curvature_terms(state, g)))
             m0 = Field(m0.s + cur.s, m0.v + cur.v)
+        if self.simp_in is not None:  # stage11b
+            m0 = self.simp_in(m0, g.extras["complexes"][0], g.mesh_sinlat[0])
         P0 = self.enc0(m0, g.mesh_edges[0])
         P1 = self.enc1(self.down01(P0, g.down[0]), g.mesh_edges[1])
         P2 = self.mid(self.down12(P1, g.down[1]), g.mesh_edges[2])
         P1u = self.dec1(self.merge1(self.up21(P2, g.up[1]), P1), g.mesh_edges[1])
         P0u = self.dec0(self.merge0(self.up10(P1u, g.up[0]), P0), g.mesh_edges[0])
+        if self.simp_out is not None:
+            P0u = self.simp_out(P0u, g.extras["complexes"][0], g.mesh_sinlat[0])
         return {"P0": P0, "P1": P1, "P2": P2, "P1u": P1u, "P0u": P0u}
 
     def heads(self, feats: Dict[str, Field], g: GraphView) -> Tuple[Field, torch.Tensor]:

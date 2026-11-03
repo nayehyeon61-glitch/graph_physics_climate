@@ -81,3 +81,25 @@ stage11b가 "확장적 연결"의 본체다. 등변성은 간선·면 특징이 
 | `scripts/train_eval.py` | `--curvature-ops`(config.json), v_scale 전달 |
 | `tests/test_connection_curvature.py` | 2.3절의 사실 |
 | `runs/era5_64x32_s11a_curv/chain_s11.sh` | stage11a 자동 체인 |
+
+
+## 7. stage11b 구현 (2026-11-04 09:40 KST 추가): 심플리셜 메시지 전달 블록
+
+`gpclimate/nn/simplicial.py`의 `SimplicialBlock(cs, cv, ce=16, cf=16, hidden=32)` — 3절 표의 stage11b를 그대로 구현한 것으로, 제한 사상은 전부 기하에서 오는 고정 연산자이고 학습되는 것은 간선·면 MLP와 꼭짓점 읽기뿐이다.
+
+| 단계 | 사상 | 특징 | 게이지 성질 |
+|---|---|---|---|
+| 꼭짓점 → 간선 | d₀(스칼라), flat(벡터), 기하(ℓ, ⋆₁) | [B, E, cs + cv + 2] → MLP → h_e [B, E, ce] | 불변(1-형식) |
+| 간선 → 면 | d₁(h_e) = 순환(간선 특징의 곡률), 기하(A, sin φ·A = 코리올리 2-형식) | [B, F, ce + 2] → MLP → h_f [B, F, cf] | 불변(2-형식) |
+| 면 → 간선 | d₁ᵀ(h_f) | concat(h_e, d₁ᵀh_f) → MLP → h_e′ | 불변 |
+| 간선 → 꼭짓점 | 스칼라 d₀ᵀ(h_e′), 벡터 sharp(h_e′) | EqNorm → EqLinear(ce, ce → cs, cv), 잔차 합 | 스칼라 불변·벡터 등변 |
+
+- 기하 접속의 각 α는 게이지에 따라 변하므로(α → α − θ_dst + θ_src) 간선 특징으로 쓰지 않는다. α의 불변량은 홀로노미(= 면적)뿐이고 이는 상수라 정보가 없다(1절의 판단과 일치). 대신 면의 기하 2-형식으로 면적 A와 행성 항 sin φ·A를 넣는다.
+- 읽기 층 `v_out`은 0으로 초기화되어 블록이 항등으로 시작하고, 나머지 네트워크의 사전학습 거동(Stage A 시작점)을 깨지 않는다.
+- 위치: `GuideConfig.simplicial` = 0(없음) / 1(메시 0 입력 m0 뒤, 곡률 연산자 임베딩 다음) / 2(+ 디코더 출력 P0u 뒤). CLI `--simplicial {0,1,2}`(config.json 키 `simplicial`, 이전 run은 0).
+- 검증(`tests/test_simplicial.py`, 4개): 초기 항등; 간선·면 입력이 게이지 불변(2e-5)이고 읽기 가중을 무작위로 바꾼 블록이 등변(스칼라 불변·벡터 회전, 2e-5); d₁d₀ = 0으로 기울기 스칼라는 면에 순환 0, 강체회전 Killing 장은 면마다 2 sin φ·A의 순환(상대오차 10 % 이내); simplicial=2 guide 전체의 등변성(5e-5, P0…P0u). 전체 43개 통과.
+- 비용: 블록 하나 5,656 매개변수(stage3 guide 대비 +1.4 %), 메시 0 간선 7,680·면 5,120; Stage A fwd+bwd(batch 4, 1 thread) 2.30 s(없음) / 2.13 s(1개) / 2.29 s(2개) — 측정 잡음 안, 즉 거의 공짜.
+
+### stage11b 실험 계획
+
+stage11a 결과에 따라 기준을 정한다: stage11a가 stage3보다 좋으면 stage11b = stage11a + `simplicial=2`(비교 대상 stage11a), 아니면 stage11b = stage3 + `simplicial=2`(curvature_ops=0, 비교 대상 stage3). 나머지는 stage3 recipe(A 1000 / B 1500, 2016–2017, stage3 정규화기·guide 없음 V-Net 재사용). run `runs/era5_64x32_s11b_simp`, 체인은 stage10b 뒤. 채택 기준은 stage11a와 같다(11변수 평균 RMSE가 5 lead 중 3 이상에서 기준보다 낮고 P-의존도 유지).
