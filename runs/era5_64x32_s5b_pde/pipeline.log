@@ -1,0 +1,6 @@
+[05:35:37] run runs/era5_64x32_s5b_pde: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[05:35:38] stage B[vnet]: vnet params 554665, steps 1500, batch 4, rollout steps 2 from step 500 (weight 1.0), PDE residual weight 0.1
+[05:36:13] B[vnet]     0  L_f 0.9072 L_roll 0.0000 L_phys 0.00002 L_pde 0.4644 | val MSE 0.3252 2-step 0.4930 (persistence 0.3257) | 34.71 s/step
+[05:46:09] B[vnet]   250  L_f 0.3882 L_roll 0.0000 L_phys 0.00029 L_pde 0.2135 | val MSE 0.1365 2-step 0.2577 (persistence 0.3257) | 2.51 s/step
+[06:03:03] B[vnet]   500  L_f 0.3018 L_roll 0.6131 L_phys 0.00013 L_pde 0.2187 | val MSE 0.1066 2-step 0.2098 (persistence 0.3257) | 3.28 s/step
+[06:28:59] B[vnet]   750  L_f 0.3127 L_roll 0.5975 L_phys 0.00008 L_pde 0.2432 | val MSE 0.0991 2-step 0.1830 (persistence 0.3257) | 4.26 s/step
