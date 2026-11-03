@@ -16,6 +16,7 @@ training, residual scale), test (evaluation only).
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import sys
@@ -56,6 +57,19 @@ def cosine_lr(step: int, total: int, lr: float, warmup: int = 100, floor: float 
         return lr * (step + 1) / warmup
     t = (step - warmup) / max(1, total - warmup)
     return lr * (floor + (1 - floor) * 0.5 * (1 + math.cos(math.pi * min(1.0, t))))
+
+
+def parse_rollout_schedule(text: str):
+    """stage12: Stage B rollout curriculum ``"500:2,1000:3"`` -> [(500, 2), (1000, 3)] (from step 500 two autoregressive
+    steps in the loss, from step 1000 three).  Empty string = no schedule (``--rollout-steps/--rollout-start`` apply)."""
+    out = []
+    for item in [t for t in str(text or "").split(",") if t.strip()]:
+        step, k = item.split(":")
+        out.append((int(step), int(k)))
+    out.sort()
+    if any(k < 1 for _, k in out):
+        raise ValueError(f"rollout schedule needs k >= 1: {text}")
+    return out
 
 
 def focus_weights(spec, focus: str, weight: float):
@@ -164,8 +178,11 @@ class Run:
                                         self.norm.tend_v)
         return m
 
-    def load_guide(self, m: LieGuidedForecaster):
-        m.guide.load_state_dict(torch.load(self.dir / "guide.pt"))
+    def load_guide(self, m: LieGuidedForecaster, finetuned: bool = True):
+        """Stage A guide ``guide.pt``; when Stage B fine-tuned the guide (``--guide-lr``, stage12) the matching
+        ``guide_finetuned.pt`` is preferred for inference (Stage B itself starts from ``guide.pt``)."""
+        ft = self.dir / "guide_finetuned.pt"
+        m.guide.load_state_dict(torch.load(ft if finetuned and ft.exists() else self.dir / "guide.pt"))
 
     def load_vnet(self, m: LieGuidedForecaster, name: str):
         m.vnet.load_state_dict(torch.load(self.dir / f"{name}.pt"))
@@ -289,15 +306,56 @@ def stage_b(run: Run, use_guide: bool):
     a, g, w = run.args, run.g, run.w
     name = "vnet" if use_guide else "vnet_noguide"
     model = run.forecaster(use_guide)
+    # stage12 options (all off by default so earlier recipes are reproduced exactly):
+    #   --guide-lr      fine-tune the guide weights in Stage B with their own (smaller) cosine lr -> guide_finetuned.pt
+    #   --ema           exponential moving average of the trained weights for validation and the saved checkpoint
+    #   --rollout-schedule  curriculum of autoregressive loss steps, e.g. "500:2,1000:3"
+    guide_lr = float(getattr(a, "guide_lr", 0.0) or 0.0) if use_guide else 0.0
     if use_guide:
-        run.load_guide(model)
+        run.load_guide(model, finetuned=False)
         model.freeze_guide()
-    params = [p for p in model.vnet.parameters() if p.requires_grad]
-    opt = torch.optim.Adam(params, lr=a.lr)
+        if guide_lr > 0:  # the guide has no dropout / batch norm, so eval mode only marks it as "not Stage A"
+            for p in model.guide.parameters():
+                p.requires_grad_(True)
+    groups = [{"params": [p for p in model.vnet.parameters() if p.requires_grad], "lr": a.lr, "base_lr": a.lr}]
+    if guide_lr > 0:
+        groups.append({"params": [p for p in model.guide.parameters() if p.requires_grad], "lr": guide_lr,
+                       "base_lr": guide_lr})
+    params = [p for gp in groups for p in gp["params"]]
+    opt = torch.optim.Adam(groups, lr=a.lr)
+    ema_decay = float(getattr(a, "ema", 0.0) or 0.0)
+    ema_model = None
+    if ema_decay > 0:
+        ema_model = copy.deepcopy(model).eval()
+        for p in ema_model.parameters():
+            p.requires_grad_(False)
+
+    def ema_update(step: int):
+        d = min(ema_decay, (1.0 + step) / (10.0 + step))  # warm start so the first steps are not dominated by init
+        with torch.no_grad():
+            for mod_e, mod in ((ema_model.vnet, model.vnet),) + (((ema_model.guide, model.guide),) if guide_lr > 0 else ()):
+                for pe, pm in zip(mod_e.parameters(), mod.parameters()):
+                    pe.mul_(d).add_(pm.detach(), alpha=1.0 - d)
+                for be, bm in zip(mod_e.buffers(), mod.buffers()):
+                    be.copy_(bm)
+
     rng = np.random.default_rng(a.seed + 1)
     val_idx = list(np.linspace(0, len(run.calib) - 1, 48).round().astype(int))
     best, t0 = float("inf"), time.time()
     K, k_start, lead = int(getattr(a, "rollout_steps", 1)), int(getattr(a, "rollout_start", 0)), run.cfg["lead"]
+    sched = parse_rollout_schedule(getattr(a, "rollout_schedule", "") or "")
+    if sched:  # curriculum overrides --rollout-steps / --rollout-start
+        K, k_start = max(k for _, k in sched), sched[0][0]
+
+    def rollout_steps_at(step: int) -> int:
+        if not sched:
+            return K if step >= k_start else 1
+        k = 1
+        for s0, kk in sched:
+            if step >= s0:
+                k = kk
+        return k
+
     lam = float(getattr(a, "rollout_weight", 1.0))
     val_idx2 = [i for i in val_idx if i < len(run.calib) - lead]  # 2-step validation needs X_{t+2 lead}
 
@@ -321,15 +379,17 @@ def stage_b(run: Run, use_guide: bool):
         return field_mse(guide.resolved.pool(tend_hat, g), guide.tendency_mesh(feats, xbar, g), w_m)
 
     log(f"stage B[{name}]: vnet params {n_params(model.vnet)}, steps {a.steps}, batch {a.batch}, "
-        f"rollout steps {K} from step {k_start} (weight {lam})" + (f", PDE residual weight {lam_pde}" if use_pde else ""))
+        f"rollout steps {K} from step {k_start} (weight {lam})" + (f", PDE residual weight {lam_pde}" if use_pde else "")
+        + (f", rollout schedule {sched}" if sched else "") + (f", EMA decay {ema_decay}" if ema_model is not None else "")
+        + (f", guide fine-tuning lr {guide_lr} ({n_params(model.guide)} params)" if guide_lr > 0 else ""))
     if model.vnet.cfg.integrator == "ode":  # stage S8
         vc = model.vnet.cfg
         log(f"stage B[{name}]: graph neural ODE dynamics, {vc.ode_steps} sub-steps of {6 * lead // vc.ode_steps} h, "
             f"solver {vc.ode_solver}, physics drift {'on' if vc.ode_physics else 'off'}")
     for step in range(a.steps):
         for pg in opt.param_groups:
-            pg["lr"] = cosine_lr(step, a.steps, a.lr)
-        k_now = K if step >= k_start else 1
+            pg["lr"] = cosine_lr(step, a.steps, pg.get("base_lr", a.lr))
+        k_now = rollout_steps_at(step)
         idx = rng.integers(0, len(run.train) - (k_now - 1) * lead, a.batch)
         states, conds = run.train.sequence(idx, k_now)
         xs = [run.norm.state(x) for x in states]
@@ -347,22 +407,25 @@ def stage_b(run: Run, use_guide: bool):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(params, 1.0)
         opt.step()
+        if ema_model is not None:
+            ema_update(step)
         if step % 25 == 0:
             run.jlog(name, {"step": step, "l_f": float(l_f), "l_phys": float(l_phys), "l_roll": float(l_roll),
                             "l_pde": float(l_pde), "k": k_now, "t": time.time() - t0})
         if step % a.val_every == 0 or step == a.steps - 1:
             model.eval()
+            vm = ema_model if ema_model is not None else model  # validated / saved weights
             with torch.no_grad():
                 tot, tot2 = 0.0, 0.0
                 for i in range(0, len(val_idx), 8):
                     x0n, x1n, cn, _ = run.prep(run.calib, val_idx[i:i + 8])
-                    fc, _ = model(x0n, cn, g)
+                    fc, _ = vm(x0n, cn, g)
                     tot += float(field_mse(fc, x1n, w)) * len(val_idx[i:i + 8])
                 for i in range(0, len(val_idx2), 8):
                     states, conds = run.calib.sequence(val_idx2[i:i + 8], 2)
                     fc = run.norm.state(states[0])
                     for k in range(2):
-                        fc, _ = model(fc, run.norm.cond(conds[k]), g)
+                        fc, _ = vm(fc, run.norm.cond(conds[k]), g)
                     tot2 += float(field_mse(fc, run.norm.state(states[2]), w)) * len(val_idx2[i:i + 8])
                 v_mse, v_mse2 = tot / len(val_idx), tot2 / len(val_idx2)
                 x0n, x1n, cn, _ = run.prep(run.calib, val_idx[:8])
@@ -373,7 +436,9 @@ def stage_b(run: Run, use_guide: bool):
             score = v_mse + (v_mse2 if K >= 2 else 0.0)  # with rollout training select on 1-step + 2-step error
             if score < best:
                 best = score
-                torch.save(model.vnet.state_dict(), run.dir / f"{name}.pt")
+                torch.save(vm.vnet.state_dict(), run.dir / f"{name}.pt")
+                if guide_lr > 0:
+                    torch.save(vm.guide.state_dict(), run.dir / "guide_finetuned.pt")
             run.jlog(name, {"step": step, "val_mse": v_mse, "val_mse2": v_mse2, "val_persistence_mse": pers,
                             "best": best, "attention_mass": model.vnet.attention_mass(), "t": time.time() - t0})
             log(f"B[{name}] {step:5d}  L_f {float(l_f):.4f} L_roll {float(l_roll):.4f} L_phys {float(l_phys):.5f}"
@@ -725,6 +790,13 @@ def main():
     ap.add_argument("--rollout-steps", type=int, default=1, help="Stage B: autoregressive steps in the loss")
     ap.add_argument("--rollout-start", type=int, default=0, help="Stage B: first step that uses the rollout loss")
     ap.add_argument("--rollout-weight", type=float, default=1.0)
+    ap.add_argument("--rollout-schedule", default="",
+                    help="Stage B (stage12): rollout curriculum 'step:k,step:k', e.g. '500:2,1000:3'; overrides "
+                         "--rollout-steps/--rollout-start")
+    ap.add_argument("--ema", type=float, default=0.0,
+                    help="Stage B (stage12): EMA decay of the trained weights used for validation and the checkpoint (0 = off)")
+    ap.add_argument("--guide-lr", type=float, default=0.0,
+                    help="Stage B (stage12): fine-tune the guide with this peak lr (0 = frozen); saves guide_finetuned.pt")
     ap.add_argument("--steps", type=int, default=1000)
     ap.add_argument("--batch", type=int, default=4)
     ap.add_argument("--lr", type=float, default=1e-3)

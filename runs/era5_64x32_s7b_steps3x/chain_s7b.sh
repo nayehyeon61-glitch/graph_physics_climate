@@ -3,13 +3,13 @@
 # stage3 step-for-step, so the training is step-limited, not data-limited.  stage7b changes ONE thing: Stage B
 # 1500 -> 4500 steps (rollout start scaled 500 -> 1500, same fraction), guide reused from stage7 (GUIDE_FROM, Stage A
 # skipped); the guide-free baseline is retrained with the same 4500 steps (TRAIN_NOGUIDE=1).  Compare with stage7.
-# Queued after the stage11a chain (CPU is shared); ~6.5 h.
+# Queued after the stage11a chain, moved behind stage12a/12b on 2026-11-04 09:00 KST (improvement stages first); ~6.5 h.
 cd "$(dirname "$0")/../.."
 S7=runs/era5_64x32_s7_data10y
 RUN=runs/era5_64x32_s7b_steps3x
 LOG=$RUN/chain_s7b.log
-until grep -q CHAIN_S11_DONE runs/era5_64x32_s11a_curv/chain_s11.log 2>/dev/null; do sleep 60; done
-echo "[$(date -u +%H:%M:%S)] stage11a chain finished -> stage7b (Stage B 4500 steps on 10 y)" >> $LOG
+until grep -q CHAIN_S12B_DONE runs/era5_64x32_s12b_width64/chain_s12b.log 2>/dev/null; do sleep 60; done
+echo "[$(date -u +%H:%M:%S)] stage12b chain finished -> stage7b (Stage B 4500 steps on 10 y)" >> $LOG
 RUN=$RUN BASE=$S7 GUIDE_FROM=$S7 DATA=data/era5_wb2_64x32_2008_2019.npz STEPS_B=4500 TRAIN_NOGUIDE=1 \
   ROLLOUT_STEPS=2 ROLLOUT_START=1500 bash scripts/run_guide_ablation.sh > $RUN/pipeline.log 2>&1
 echo "[$(date -u +%H:%M:%S)] stage7b pipeline exit $? CHAIN_S7B_DONE" >> $LOG
