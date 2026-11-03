@@ -9,7 +9,7 @@
 | S1 | 기본 Lie guide(재구성·와도/발산 보조) + 게이트 융합 V-Net + rollout 없음 | `runs/era5_64x32` | guide 의존도 낮음(P=0 → MSE +19 %), guide 유무 차이 1 % 미만 | `reports/`(첫 학습 보고) |
 | S2 | guide 보강: 고정 등변 물리 연산자 입력 + 6 h 경향 head | `runs/era5_64x32_physops` | 의존도 확보(P=0 → +121 %), 24 h 일부 개선·72–120 h 1–3 % 악화(자기 예보 상태에서 오차 증폭) | `reports/GUIDE_STRENGTHENING_KO.md` |
 | S3 | 학습식 변경: Stage A 예보상태 섭동 + Stage B 2-step rollout 손실 (guide 없음 baseline도 같은 손실로 재학습) | `runs/era5_64x32_physops_roll` | guide 있음이 모든 리드에서 guide 없음보다 낫고(0.5–5 %), 72–120 h −6–9 % | `reports/ROLLOUT_LOSS_KO.md` |
-| S4 | 융합 구조 변경: 게이트 융합 → PIGT(물리 통합 graph transformer, H/P/O 세 소스 공동 softmax, 1 layer) | `runs/era5_64x32_pigt` | 학습 중 (2026-11-03) | `reports/PIGT_CLIMODE_KO.md` (예정) |
+| S4 | 융합 구조 변경: 게이트 융합 → PIGT(물리 통합 graph transformer, H/P/O 세 소스 공동 softmax, 1 layer) | `runs/era5_64x32_pigt` | S3 대비 24–72 h 11/11 변수 개선(11변수 평균 −1.0/−1.0/−0.6 %), 96–120 h 동률(−0.3/0.0 %); 검증 MSE 0.0822 vs 0.0842; 어텐션 질량 O 29–47 %·P 30–47 %·H 15–31 %; P=0 → +69 %(S3 +102 %: 연산자 토큰이 물리 일부를 직접 공급); V-Net 파라미터 +22 %, 단일 seed | `reports/PIGT_CLIMODE_KO.md` |
 | 외부 기준 | ClimODE 공개 체크포인트를 같은 2019 프로토콜로 채점 (eval 모드 / 저자 프로토콜) | `runs/climode_2019`, `runs/climode_2019_trainmode` | 저자 프로토콜: 24–48 h z500은 ClimODE 우세, 72 h 이후 우리 모델 우세; eval 모드는 72 h부터 발산 | 〃 |
 | S5a | **층별 물리 제약 1 — guide 구조 변경**: 경향 = 고정 해석(resolved) 역학 F(X) + 학습 닫힘 S_θ (메시 0), F는 보정계수가 붙은 2D 원시방정식 항 | `runs/era5_64x32_s5a_closure` | 대기 (PIGT 종료 후 시작) | `docs/design/Layerwise_Physical_Constraints_KO.md` |
 | S5b | **층별 물리 제약 2 — Dynamics 학습식 변경**: Stage B에 PDE 잔차 손실 ‖(X̂−X_t)/Δt − [F+S_θ](X̄)‖² 추가 (S5a guide 재사용) | `runs/era5_64x32_s5b_pde` | 대기 | 〃 |
