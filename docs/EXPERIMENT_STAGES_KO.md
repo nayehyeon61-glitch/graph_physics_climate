@@ -15,6 +15,7 @@
 | S5b | **층별 물리 제약 2 — Dynamics 학습식 변경**: Stage B에 PDE 잔차 손실 ‖(X̂−X_t)/Δt − [F+S_θ](X̄)‖² 추가 (S5a guide 재사용) | `runs/era5_64x32_s5b_pde` | 대기 | 〃 |
 | S5c-0 | **Noise 층 추가(대조군)**: S5a/S5b 중 결정론 점수가 나은 run의 guide·V-Net 위에 Stage C residual graph diffusion(800 step, 제약 없음 = S1의 Stage C) | `runs/era5_64x32_s5c0_diffusion` | 대기 (S5b 종료 후 자동) | 〃 |
 | S5c | **층별 물리 제약 3 — Noise 층 허용조건**: 같은 forecaster, Stage C에 사영 P_C(q700 ≥ 0, 전구 질량·p_s 가중 기둥수분 = μ) + L_feas + L_mean(비편향 쌍 추정량) | `runs/era5_64x32_s5c_noise` | 대기 | 〃 |
+| S6 (계획) | **5층 기하·확률 동역학 GNN**(감자 설계서 2026-11): 1 discrete flux 보존형 핵 → 2 Lie 군 표현(기존 guide) → 3 Lie 대수 생성원 ψ_θ → 4 수송형 확률장 → 5 분할 적분기; S6a–S6f로 분할(설계서 실험 A–F) | 미정 | PIGT·S5 결과 후 착수 | `docs/design/Five_Layer_Geometric_Stochastic_GNN_Plan_KO.md` |
 
 ## 데이터로 확인한 사실 (S5a 설계 근거, 2026-11-03)
 
