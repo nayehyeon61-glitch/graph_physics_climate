@@ -19,7 +19,8 @@ from gpclimate.nn.so2 import Field
 
 WB2_ERA5_64x32 = "gs://weatherbench2/datasets/era5/1959-2023_01_10-6h-64x32_equiangular_conservative.zarr"
 
-# internal name -> (WB2 variable, pressure level or None)
+# internal name -> (WB2 variable, pressure level or None).  The first 11 entries are the base layout of
+# DEFAULT_SPEC; the remaining ones complete the FourCastNet-20 channel set (stage10 feature-matrix stage).
 WB2_SOURCES: Dict[str, Tuple[str, Optional[int]]] = {
     "z500": ("geopotential", 500),
     "t850": ("temperature", 850),
@@ -32,27 +33,63 @@ WB2_SOURCES: Dict[str, Tuple[str, Optional[int]]] = {
     "v500": ("v_component_of_wind", 500),
     "u10": ("10m_u_component_of_wind", None),
     "v10": ("10m_v_component_of_wind", None),
+    # FourCastNet (Pathak et al. 2022; NVlabs/FourCastNet config/AFNO.yaml, channels 0-19) additions
+    "sp": ("surface_pressure", None),
+    "u1000": ("u_component_of_wind", 1000),
+    "v1000": ("v_component_of_wind", 1000),
+    "z1000": ("geopotential", 1000),
+    "z850": ("geopotential", 850),
+    "t500": ("temperature", 500),
+    "z50": ("geopotential", 50),
+    "r500": ("relative_humidity", 500),
+    "r850": ("relative_humidity", 850),
+    "tcwv": ("total_column_water_vapour", None),
 }
 WB2_STATIC = {"orog": "geopotential_at_surface", "lsm": "land_sea_mask"}
+
+# conditions shared by every state layout: statics (orography, land-sea mask, orography gradient as a vector) and
+# known forcings (insolation proxy now and at the valid time, Coriolis parameter)
+_CONDITIONS = dict(static_scalars=("orog", "lsm"), static_vectors=(("dorog_dx", "dorog_dy"),),
+                   forcing_scalars=("toa_t", "toa_t1", "coriolis"))
 
 DEFAULT_SPEC = VariableSpec(
     scalars=("z500", "t850", "q700", "t2m", "msl"),
     vectors=(("u850", "v850"), ("u500", "v500"), ("u10", "v10")),
-    static_scalars=("orog", "lsm"),
-    static_vectors=(("dorog_dx", "dorog_dy"),),
-    forcing_scalars=("toa_t", "toa_t1", "coriolis"),
+    **_CONDITIONS,
 )
+# FourCastNet's 20 channels (u10, v10, t2m, sp, msl, t850, u1000, v1000, z1000, u850, v850, z850, u500, v500, z500,
+# t500, z50, r500, r850, tcwv) in our scalar / tangent-vector split: 12 scalars + 4 wind pairs.  FCN21 adds q700 so
+# that the base layout stays a subset (identical 11 comparison variables; the stage5c water constraint keeps q700).
+FCN20_SPEC = VariableSpec(
+    scalars=("z500", "t850", "t2m", "msl", "sp", "z1000", "z850", "t500", "z50", "r500", "r850", "tcwv"),
+    vectors=(("u850", "v850"), ("u500", "v500"), ("u10", "v10"), ("u1000", "v1000")),
+    **_CONDITIONS,
+)
+FCN21_SPEC = VariableSpec(
+    scalars=("z500", "t850", "q700", "t2m", "msl", "sp", "z1000", "z850", "t500", "z50", "r500", "r850", "tcwv"),
+    vectors=(("u850", "v850"), ("u500", "v500"), ("u10", "v10"), ("u1000", "v1000")),
+    **_CONDITIONS,
+)
+# name stored in config.json (``--spec``); runs created before stage10 have no key and mean "base11"
+SPECS: Dict[str, VariableSpec] = {"base11": DEFAULT_SPEC, "fcn20": FCN20_SPEC, "fcn21": FCN21_SPEC}
 
 
-def fetch_wb2_subset(out_path: str, periods: Dict[str, Tuple[str, str]], url: str = WB2_ERA5_64x32) -> str:
-    """Download the variables of DEFAULT_SPEC for a few time windows into one ``.npz``."""
+def fetch_wb2_subset(out_path: str, periods: Dict[str, Tuple[str, str]], url: str = WB2_ERA5_64x32,
+                     names: Optional[Sequence[str]] = None) -> str:
+    """Download the state channels ``names`` (default: the 11 of DEFAULT_SPEC) for a few time windows into one
+    ``.npz`` (``{split}/{name}`` [T, lat, lon] float32, ``{split}/time`` int64 ns, ``lat``, ``lon``, ``static/*``)."""
     import xarray as xr
 
+    names = list(names) if names is not None else DEFAULT_SPEC.state_channels()
+    unknown = [n for n in names if n not in WB2_SOURCES]
+    if unknown:
+        raise KeyError(f"no WeatherBench2 source for {unknown}; known: {sorted(WB2_SOURCES)}")
     ds = xr.open_zarr(url, storage_options={"token": "anon"})
     arrays: Dict[str, np.ndarray] = {}
     # group requests by WB2 variable so each (100-step, all-level) chunk is fetched once
     by_var: Dict[str, List[Tuple[str, Optional[int]]]] = {}
-    for name, (var, level) in WB2_SOURCES.items():
+    for name in names:
+        var, level = WB2_SOURCES[name]
         by_var.setdefault(var, []).append((name, level))
     for split, (start, end) in periods.items():
         sub = ds.sel(time=slice(start, end))

@@ -28,7 +28,7 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from gpclimate.data.era5_wb2 import DEFAULT_SPEC, ERA5Pairs, Normalizer, fit_normalizer, fit_tendency_scale  # noqa: E402
+from gpclimate.data.era5_wb2 import SPECS, ERA5Pairs, Normalizer, fit_normalizer, fit_tendency_scale  # noqa: E402
 from gpclimate.data.variables import merge_state  # noqa: E402
 from gpclimate.geometry.graphs import SphereGraphs  # noqa: E402
 from gpclimate.models.diffusion import (DiffusionConfig, FeasibilityProjection, GraphResidualDiffusion,  # noqa: E402
@@ -41,7 +41,6 @@ from gpclimate.training.losses import (field_mse, global_tendency_consistency, p
                                        sample_sigma)
 from gpclimate.training.metrics import wb2_scores  # noqa: E402
 
-EVAL_VARS = ["z500", "t850", "q700", "t2m", "msl", "u850", "v850", "u500", "v500", "u10", "v10"]
 
 
 def log(msg: str) -> None:
@@ -70,7 +69,7 @@ class Run:
         if cfg_path.exists():
             self.cfg = json.load(open(cfg_path))
         else:
-            self.cfg = {k: getattr(args, k) for k in ("data", "mesh", "lead", "cs", "cv", "depth", "heads", "ds", "dv",
+            self.cfg = {k: getattr(args, k) for k in ("data", "spec", "mesh", "lead", "cs", "cv", "depth", "heads", "ds", "dv",
                                                       "hidden", "n_basis", "guide_cs", "guide_cv", "diff_cs",
                                                       "diff_cv", "diff_depth", "physics_ops", "tend_head", "fusion",
                                                       "pigt_layers", "pigt_ops", "closure_tend", "resolved_terms",
@@ -78,7 +77,11 @@ class Run:
                                                       "ode_physics")}
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
-        self.spec = DEFAULT_SPEC
+        # stage10: the state feature matrix is a named spec stored in config.json (older runs: base11)
+        self.spec = SPECS[c.get("spec", "base11")]
+        self.eval_vars = self.spec.state_channels()  # every state channel is scored (RMSE per variable)
+        log(f"feature matrix {c.get('spec', 'base11')}: {self.spec.n_s} scalar + {self.spec.n_v} vector-pair state "
+            f"channels ({len(self.eval_vars)} variables), {self.spec.n_cond_s} scalar + {self.spec.n_cond_v} vector conditions")
         self.train = ERA5Pairs(c["data"], "train", self.spec, c["lead"])
         self.calib = ERA5Pairs(c["data"], "calib", self.spec, c["lead"])
         self.test = ERA5Pairs(c["data"], "test", self.spec, c["lead"])
@@ -478,7 +481,7 @@ def stage_eval(run: Run):
 
     def add(store, k, f):
         phys = merge_state(run.norm.state_inv(f), run.spec, H, W)
-        for v in EVAL_VARS:
+        for v in run.eval_vars:
             store[k].setdefault(v, []).append(phys[v][0].numpy())
 
     with torch.no_grad():
@@ -540,13 +543,13 @@ def stage_eval(run: Run):
                 tt.append(test.times[i + lead])
                 for store, f in ((tr, x1n), (det, xbar)):
                     phys = merge_state(run.norm.state_inv(f), run.spec, H, W)
-                    for v in EVAL_VARS:
+                    for v in run.eval_vars:
                         store.setdefault(v, []).append(phys[v][0].numpy())
                 stores = [(ens, members), (gauss, noise)] + ([(ens_raw, raw)] if diff.project is not None else [])
                 for store, mem in stores:
                     for mi, f in enumerate(mem):
                         phys = merge_state(run.norm.state_inv(f), run.spec, H, W)
-                        for v in EVAL_VARS:
+                        for v in run.eval_vars:
                             store.setdefault(v, [[] for _ in range(a.members)])[mi].append(phys[v][0].numpy())
                 for key, mem in (("raw", raw), ("projected", members), ("gaussian", noise)):
                     for f in mem:
@@ -560,7 +563,7 @@ def stage_eval(run: Run):
                     phys = merge_state(d, run.spec, H, W)
                     bias[key].append({v: float(np.sqrt(np.average((phys[v][0].numpy() ** 2).mean(-1),
                                                                    weights=np.cos(np.deg2rad(test.lat)))))
-                                      for v in EVAL_VARS})
+                                      for v in run.eval_vars})
         times = np.asarray(tt).astype("datetime64[ns]")
         trs = stack(tr)
         out = {"n_cases": len(ens_cases), "members": a.members, "sample_steps": a.sample_steps,
@@ -571,7 +574,7 @@ def stage_eval(run: Run):
             out[label] = {"crps": sc["crps"], "ens_mean_rmse": sc["ens_mean_rmse"], "spread": sc["ens_spread"]}
         out["constraints"] = {"projection": diff.project is not None,
                               **{k: {kk: float(np.mean(vv)) for kk, vv in d.items()} for k, d in viol.items()}}
-        out["ens_mean_minus_det_rms"] = {k: {v: float(np.mean([b[v] for b in bl])) for v in EVAL_VARS}
+        out["ens_mean_minus_det_rms"] = {k: {v: float(np.mean([b[v] for b in bl])) for v in run.eval_vars}
                                          for k, bl in bias.items()}
         results["ensemble_lead1"] = out
         log(f"ensemble eval done in {(time.time() - t1) / 60:.1f} min")
@@ -596,7 +599,7 @@ def write_markdown(run: Run, r: dict):
     names = list(next(iter(r["rmse"].values())).keys())
     for k, lh in r["lead_hours"].items():
         lines += ["", f"## Lead {lh} h", "", "| 변수 | " + " | ".join(names) + " |", "|---|" + "---|" * len(names)]
-        for v in EVAL_VARS:
+        for v in run.eval_vars:
             lines.append(f"| {v} | " + " | ".join(f"{r['rmse'][k][n][v]:.4g}" for n in names) + " |")
     if "ensemble_lead1" in r:
         e = r["ensemble_lead1"]
@@ -604,7 +607,7 @@ def write_markdown(run: Run, r: dict):
                       f"{e['sample_steps']} 샘플링 step)", "",
                   "| 변수 | 결정론 RMSE | diffusion CRPS | diffusion 앙상블평균 RMSE | diffusion spread | "
                   "Gaussian CRPS | Gaussian 앙상블평균 RMSE | Gaussian spread |", "|---|---|---|---|---|---|---|---|"]
-        for v in EVAL_VARS:
+        for v in run.eval_vars:
             d, gs = e["diffusion"], e["gaussian"]
             lines.append(f"| {v} | {e['deterministic_rmse'][v]:.4g} | {d['crps'][v]:.4g} | {d['ens_mean_rmse'][v]:.4g} | "
                          f"{d['spread'][v]:.4g} | {gs['crps'][v]:.4g} | {gs['ens_mean_rmse'][v]:.4g} | {gs['spread'][v]:.4g} |")
@@ -617,11 +620,11 @@ def write_markdown(run: Run, r: dict):
             if "diffusion_raw" in e:
                 dr = e["diffusion_raw"]
                 lines += ["", "| 변수 | 사영 전 CRPS | 사영 후 CRPS | 사영 전 앙상블평균 RMSE | 사영 후 앙상블평균 RMSE |", "|---|---|---|---|---|"]
-                for v in EVAL_VARS:
+                for v in run.eval_vars:
                     lines.append(f"| {v} | {dr['crps'][v]:.4g} | {d['crps'][v]:.4g} | {dr['ens_mean_rmse'][v]:.4g} | {d['ens_mean_rmse'][v]:.4g} |")
             b = e["ens_mean_minus_det_rms"]
             lines += ["", "| 변수 | 앙상블평균−결정론 RMS (diffusion) | 〃 (Gaussian) |", "|---|---|---|"]
-            for v in EVAL_VARS:
+            for v in run.eval_vars:
                 lines.append(f"| {v} | {b['diffusion'][v]:.4g} | {b['gaussian'][v]:.4g} |")
     (run.dir / "eval.md").write_text("\n".join(lines) + "\n")
 
@@ -630,6 +633,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", default=str(ROOT / "runs/era5_64x32"))
     ap.add_argument("--data", default=str(ROOT / "data/era5_wb2_64x32_2016_2019.npz"))
+    ap.add_argument("--spec", default="base11", choices=sorted(SPECS),
+                    help="state feature matrix: base11 (5 scalars + 3 wind pairs) or fcn21 (FourCastNet-20 channels "
+                         "+ q700 = 13 scalars + 4 wind pairs; stage10; stored in config.json at run creation)")
     ap.add_argument("--stage", required=True, choices=["a", "b", "b_noguide", "c", "eval"])
     ap.add_argument("--mesh", type=int, nargs=3, default=[4, 3, 2])
     ap.add_argument("--lead", type=int, default=4)

@@ -50,6 +50,10 @@ def main():
                          dg=json.load(open(dg)) if (dg.exists() and model == "lie_guided") else None))
     ref = cols[a.ref]
     leads = sorted(ref["ev"]["rmse"], key=int)
+    # rows: the 11 base variables first, then any extra state channel of the reference run (stage10 feature-matrix
+    # runs score 21); a column whose run does not predict a variable shows "—"
+    ref_vars = list(ref["ev"]["rmse"][leads[0]][ref["model"]])
+    rows = [v for v in VARS if v in ref_vars] + [v for v in ref_vars if v not in VARS]
     L = [f"# {a.title}\n", "열: " + "; ".join(f"**{c['label']}** = `{c['run']}` ({c['model']})" for c in cols) + "\n",
          f"2019년 테스트, 초기 시각 {ref['ev']['n_cases']}개, WeatherBench2 면적가중 RMSE(물리 단위). "
          f"괄호는 기준열 **{ref['label']}** 대비 상대 변화.\n"]
@@ -57,7 +61,7 @@ def main():
         L.append(f"## Lead {ref['ev']['lead_hours'][l]} h\n")
         L.append("| 변수 | " + " | ".join(c["label"] for c in cols) + " | persistence |")
         L.append("|---|" + "---|" * (len(cols) + 1))
-        for v in VARS:
+        for v in rows:
             cells = []
             for i, c in enumerate(cols):
                 x = get(c, l, v)
