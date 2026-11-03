@@ -4,3 +4,13 @@
 [07:45:40] C     0  L_eps(avg25) 1.3571 | 2.29 s/step
 [07:51:26] C   200  L_eps(avg25) 0.4075 | 1.73 s/step
 [07:57:05] C   400  L_eps(avg25) 0.3087 | 1.71 s/step
+[08:02:56] C   600  L_eps(avg25) 0.3520 | 1.73 s/step
+[08:08:58] C   799  L_eps(avg25) 0.3462 | 1.75 s/step
+[08:08:58] stage C done in 23.3 min
+[08:09:05] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[08:09:22] run runs/era5_64x32_s5c0_diffusion: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[08:09:24] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[08:13:48] deterministic rollouts done in 4.4 min
+[08:23:25] ensemble eval done in 9.6 min
+[08:23:25] eval written to runs/era5_64x32_s5c0_diffusion/eval.json
+PIPELINE_DONE

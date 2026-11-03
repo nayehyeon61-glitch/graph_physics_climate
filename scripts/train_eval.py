@@ -74,7 +74,7 @@ class Run:
                                                       "diff_cv", "diff_depth", "physics_ops", "tend_head", "fusion",
                                                       "pigt_layers", "pigt_ops", "closure_tend", "resolved_terms",
                                                       "resolved_coef", "integrator", "ode_steps", "ode_solver",
-                                                      "ode_physics")}
+                                                      "ode_physics", "curvature_ops")}
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         # stage10: the state feature matrix is a named spec stored in config.json (older runs: base11)
@@ -103,7 +103,8 @@ class Run:
                                      tend_head=bool(c.get("tend_head", False)),
                                      closure_tend=bool(c.get("closure_tend", False)),
                                      resolved_terms=tuple(c.get("resolved_terms") or DEFAULT_TERMS),
-                                     resolved_coef=c.get("resolved_coef"))
+                                     resolved_coef=c.get("resolved_coef"),
+                                     curvature_ops=bool(c.get("curvature_ops", False)))
         self.vnet_kwargs = dict(cs=c["cs"], cv=c["cv"], depth=tuple(c["depth"]), heads=c["heads"], ds=c["ds"],
                                 dv=c["dv"], n_basis=c["n_basis"], hidden=c["hidden"],
                                 fusion=c.get("fusion", "gated"), pigt_layers=int(c.get("pigt_layers", 2)),
@@ -136,6 +137,8 @@ class Run:
             m.tend_scale_v.copy_(self.norm.tend_v)
         if m.guide is not None and m.guide.phys_ops is not None:
             m.guide.phys_ops.v_scale.copy_(self.norm.v_scale)  # m/s per normalised unit (vorticity / 2 Omega)
+        if m.guide is not None and getattr(m.guide, "curv_ops", None) is not None:
+            m.guide.curv_ops.v_scale.copy_(self.norm.v_scale)
         if getattr(m.vnet, "phys_ops", None) is not None:
             m.vnet.phys_ops.v_scale.copy_(self.norm.v_scale)
         if m.guide is not None and m.guide.resolved is not None:
@@ -654,6 +657,10 @@ def main():
     ap.add_argument("--diff-depth", type=int, default=2)
     ap.add_argument("--physics-ops", type=int, default=1, choices=[0, 1],
                     help="guide: fixed equivariant physics operators as mesh-0 inputs (stored in config.json)")
+    ap.add_argument("--curvature-ops", type=int, default=0, choices=[0, 1],
+                    help="guide: exact connection / curvature operators of the flow (DEC vorticity, divergence, "
+                         "strain, Okubo-Weiss, Helmholtz potentials, Lie brackets) as extra mesh-0 inputs "
+                         "(stage11a; stored in config.json)")
     ap.add_argument("--tend-head", type=int, default=1, choices=[0, 1],
                     help="guide: Stage-A one-step (6 h) tendency head (stored in config.json)")
     ap.add_argument("--tend-weight", type=float, default=1.0)

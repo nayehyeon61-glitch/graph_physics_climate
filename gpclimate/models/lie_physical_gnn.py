@@ -31,6 +31,7 @@ from torch import nn
 from gpclimate.data.variables import VariableSpec
 from gpclimate.geometry.graphs import GraphView
 from gpclimate.nn.gauge_conv import GaugeStack, GaugeTransfer, Merge, transport_interpolate
+from gpclimate.nn.connection_ops import ConnectionCurvatureOperators
 from gpclimate.nn.physics_ops import PhysicsOperators
 from gpclimate.nn.primitive2d import DEFAULT_TERMS, ReducedPrimitiveTendencies
 from gpclimate.nn.so2 import EqFFN, EqLinear, EqNorm, Field
@@ -53,6 +54,9 @@ class GuideConfig:
     closure_tend: bool = False
     resolved_terms: Tuple[str, ...] = DEFAULT_TERMS
     resolved_coef: Optional[dict] = None  # fixed calibration coefficients (scripts/resolved_fraction.py --fit)
+    # stage11a: exact connection / curvature operators of the flow (DEC circulation, divergence, strain,
+    # Okubo-Weiss, Helmholtz potentials, Lie brackets of the wind levels) as extra mesh-0 inputs
+    curvature_ops: bool = False
 
 
 class GridLift(nn.Module):
@@ -102,6 +106,12 @@ class LiePhysicalGNN(nn.Module):
             ps, pv = self.phys_ops.out_dims
             self.phys_norm = EqNorm(ps, pv)
             self.phys_embed = EqLinear(ps, pv, cs, cv)
+        self.curv_ops: Optional[ConnectionCurvatureOperators] = None
+        if cfg.curvature_ops:
+            self.curv_ops = ConnectionCurvatureOperators(spec.n_v)
+            qs, qv = self.curv_ops.out_dims
+            self.curv_norm = EqNorm(qs, qv)
+            self.curv_embed = EqLinear(qs, qv, cs, cv)
         # Stage-A heads (graph-to-grid adapter + linear read-outs)
         self.head_dec = GaugeTransfer(cs, cv, cs, cv, nb, hd)
         self.rec_out = EqLinear(cs, cv, spec.n_s, spec.n_v)
@@ -128,6 +138,12 @@ class LiePhysicalGNN(nn.Module):
         n_s = self.spec.n_s
         return self.phys_ops(raw.s[..., :n_s], raw.v, raw.s[..., n_s:], g.mesh_sinlat[0], g.mesh_edges[0])
 
+    def curvature_terms(self, state: Field, g: GraphView) -> Field:
+        """Raw connection / curvature operator outputs on mesh 0 (stage11a), for the encoder and diagnostics."""
+        assert self.curv_ops is not None
+        raw = transport_interpolate(Field(state.s[..., :0], state.v), g.grid2mesh)
+        return self.curv_ops(raw.v, g.mesh_sinlat[0], g.mesh_edges[0], g.extras["complexes"][0])
+
     def forward(self, state: Field, cond: Field, sigma: torch.Tensor, g: GraphView) -> Dict[str, Field]:
         B, G = state.s.shape[:2]
         cond = broadcast_batch(cond, B)
@@ -137,6 +153,9 @@ class LiePhysicalGNN(nn.Module):
         if self.phys_ops is not None:
             ops = self.phys_embed(self.phys_norm(self.physics_terms(state, cond, g)))
             m0 = Field(m0.s + ops.s, m0.v + ops.v)
+        if self.curv_ops is not None:
+            cur = self.curv_embed(self.curv_norm(self.curvature_terms(state, g)))
+            m0 = Field(m0.s + cur.s, m0.v + cur.v)
         P0 = self.enc0(m0, g.mesh_edges[0])
         P1 = self.enc1(self.down01(P0, g.down[0]), g.mesh_edges[1])
         P2 = self.mid(self.down12(P1, g.down[1]), g.mesh_edges[2])

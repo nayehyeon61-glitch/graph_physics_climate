@@ -28,6 +28,7 @@ from scipy.spatial import cKDTree
 
 from gpclimate.external import repos
 from gpclimate.geometry import sphere
+from gpclimate.geometry.connection import MeshComplex
 
 DIR_EPS = 1e-7  # edges shorter than this have no well-defined direction
 
@@ -265,6 +266,9 @@ class SphereGraphs:
 
         self.grid_area_weight = torch.as_tensor(self.grid.area / self.grid.area.mean(), dtype=torch.float32)
         # sin(latitude) of every mesh node: the Coriolis parameter f / (2 Omega), a gauge invariant
+        # stage11: the simplicial 2-complex of every level (oriented edges / faces, Hodge stars, edge directions in
+        # the vertex gauges) for the exact connection / curvature operators (gpclimate.geometry.connection)
+        self.complexes: List[MeshComplex] = [MeshComplex.from_level(self, l) for l in range(len(mesh_splits))]
         self.mesh_sinlat: List[torch.Tensor] = [
             torch.as_tensor(np.sin(np.deg2rad(m.lat)), dtype=torch.float32) for m in self.mesh]
 
@@ -307,7 +311,8 @@ class SphereGraphs:
         v.attn_edges = [e.gauge_transformed(tm[l], tm[l]) for l, e in enumerate(self.attn_edges)]
         v.down = [e.gauge_transformed(tm[l], tm[l + 1]) for l, e in enumerate(self.down)]
         v.up = [e.gauge_transformed(tm[l + 1], tm[l]) for l, e in enumerate(self.up)]
-        v.extras = {"grid2mesh_lin": self.grid2mesh_lin.gauge_transformed(tg, tm[0])}
+        v.extras = {"grid2mesh_lin": self.grid2mesh_lin.gauge_transformed(tg, tm[0]),
+                    "complexes": [cx.gauge_transformed(tm[l]) for l, cx in enumerate(self.complexes)]}
         return v
 
     def view(self, device=None) -> "GraphView":
@@ -335,7 +340,7 @@ class GraphView:
     def from_graphs(cls, g: SphereGraphs) -> "GraphView":
         return cls(g.grid2mesh, g.mesh2grid, list(g.mesh_edges), list(g.attn_edges), list(g.down), list(g.up),
                    g.grid.n, [m.n for m in g.mesh], g.grid_area_weight, list(g.mesh_sinlat),
-                   {"grid2mesh_lin": g.grid2mesh_lin})
+                   {"grid2mesh_lin": g.grid2mesh_lin, "complexes": list(g.complexes)})
 
     def to(self, device) -> "GraphView":
         return GraphView(self.grid2mesh.to(device), self.mesh2grid.to(device),
@@ -343,4 +348,5 @@ class GraphView:
                          [e.to(device) for e in self.down], [e.to(device) for e in self.up],
                          self.n_grid, list(self.n_mesh), self.grid_area_weight.to(device),
                          [t.to(device) for t in self.mesh_sinlat],
-                         {k: (v.to(device) if hasattr(v, "to") else v) for k, v in self.extras.items()})
+                         {k: ([x.to(device) for x in v] if isinstance(v, list) else v.to(device) if hasattr(v, "to") else v)
+                          for k, v in self.extras.items()})
