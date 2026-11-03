@@ -80,8 +80,14 @@ def main():
                 "shuffled_P": {k: Field(f.s[perm], f.v[perm]) for k, f in P.items()},
             }
             for name, PP in variants.items():
-                d = model.vnet(x0n, cn, PP, g)
-                fc = Field(x0n.s + d.s * model.delta_scale_s, x0n.v + d.v * model.delta_scale_v)
+                if model.vnet.cfg.integrator == "ode":  # stage8: apply the variant at every sub-step of the integration
+                    p_map = {"true_P": None,
+                             "zero_P": lambda P: {k: Field(torch.zeros_like(f.s), torch.zeros_like(f.v)) for k, f in P.items()},
+                             "shuffled_P": lambda P: {k: Field(f.s[perm], f.v[perm]) for k, f in P.items()}}[name]
+                    fc = model.integrate(x0n, cn, g, p_map)
+                else:
+                    d = model.vnet(x0n, cn, PP, g)
+                    fc = Field(x0n.s + d.s * model.delta_scale_s, x0n.v + d.v * model.delta_scale_v)
                 mse[name] += float(field_mse(fc, x1n, w)) * B
             mse["persistence"] += float(field_mse(x0n, x1n, w)) * B
     mse = {k: v / len(idx) for k, v in mse.items()}

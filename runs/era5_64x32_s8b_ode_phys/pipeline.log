@@ -1,0 +1,5 @@
+[17:23:12] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[17:23:26] run runs/era5_64x32_s8b_ode_phys: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[17:23:27] stage B[vnet]: vnet params 554665, steps 1500, batch 4, rollout steps 2 from step 500 (weight 1.0)
+[17:23:27] stage B[vnet]: graph neural ODE dynamics, 2 sub-steps of 12 h, solver euler, physics drift on
+[17:24:28] B[vnet]     0  L_f 1.8938 L_roll 0.0000 L_phys 0.00076 | val MSE 0.2434 2-step 0.6523 (persistence 0.3257) | 61.60 s/step

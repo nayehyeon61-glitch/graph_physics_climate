@@ -14,7 +14,7 @@ Forward order (design doc section 4.3; GNN -> fusion -> next GNN, no circular de
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
 from torch import nn
@@ -191,12 +191,15 @@ class LieGuidedForecaster(nn.Module):
         steps = self.lead_steps / self.vnet.cfg.ode_steps  # data steps (6 h) per sub-step
         return Field(T.s * self.tend_scale_s * steps, T.v * self.tend_scale_v * steps)
 
-    def rate(self, x: Field, cond: Field, g: GraphView) -> Field:
+    def rate(self, x: Field, cond: Field, g: GraphView, p_map: Optional[Callable] = None) -> Field:
         """Increment of one sub-step: [physics drift] + learned correction (V-Net output in lead-change units / K).
         Physics features are recomputed from the current sub-step state, so the guide and the learned dynamics stay
-        coupled along the whole integration path."""
+        coupled along the whole integration path.  ``p_map`` (diagnostics only) transforms the physics features
+        of every sub-step, e.g. zeroing or shuffling them to measure the guide dependence of the ODE dynamics."""
         cfg = self.vnet.cfg
         P = self.physics(x, cond, g)
+        if p_map is not None and P is not None:
+            P = p_map(P)
         d = self.vnet(x, cond, P, g)
         h = 1.0 / cfg.ode_steps
         f = Field(d.s * self.delta_scale_s * h, d.v * self.delta_scale_v * h)
@@ -205,15 +208,15 @@ class LieGuidedForecaster(nn.Module):
             f = Field(f.s + drift.s, f.v + drift.v)
         return f
 
-    def integrate(self, state: Field, cond: Field, g: GraphView) -> Field:
+    def integrate(self, state: Field, cond: Field, g: GraphView, p_map: Optional[Callable] = None) -> Field:
         """Fixed-step integration over the lead (explicit Euler or Heun); conditions are held fixed within the lead."""
         cfg = self.vnet.cfg
         x = state
         for _ in range(cfg.ode_steps):
-            f1 = self.rate(x, cond, g)
+            f1 = self.rate(x, cond, g, p_map)
             if cfg.ode_solver == "heun":
                 x1 = Field(x.s + f1.s, x.v + f1.v)
-                f2 = self.rate(x1, cond, g)
+                f2 = self.rate(x1, cond, g, p_map)
                 x = Field(x.s + 0.5 * (f1.s + f2.s), x.v + 0.5 * (f1.v + f2.v))
             else:
                 x = Field(x.s + f1.s, x.v + f1.v)
