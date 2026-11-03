@@ -86,9 +86,18 @@ def main():
     ap.add_argument("--train-mode", action="store_true", help="mimic the authors' script (no model.eval())")
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--shard", type=int, default=0, help="process init times shard::n_shards (parallel CPU processes)")
+    ap.add_argument("--n-shards", type=int, default=1)
+    ap.add_argument("--merge-only", action="store_true", help="only merge existing shard files into eval.json")
+    ap.add_argument("--batch-ics", type=int, default=1, help="init times per forward pass (authors batch 2 years)")
+    ap.add_argument("--mkldnn", action="store_true", help="keep oneDNN convolutions on (off by default, see below)")
     a = ap.parse_args()
     torch.set_num_threads(a.threads)
-    torch.backends.mkldnn.enabled = False  # PG-Flow found this ~2x faster for these convs on CPU
+    torch.backends.mkldnn.enabled = a.mkldnn  # PG-Flow found oneDNN off ~2x faster for these convs on CPU
+    # 27% of the checkpoint's conv weights are float32 subnormals (|w| < 1.2e-38); on x86 every multiply with a
+    # subnormal takes a microcode assist, which made one 128x128 3x3 conv cost 240 ms instead of 8 ms.  Flushing
+    # subnormals to zero changes the outputs by less than float32 resolution and speeds the ODE up ~30x.
+    torch.set_flush_denormal(True)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -121,6 +130,7 @@ def main():
     cases = list(range(0, last, a.eval_stride))
     if a.max_cases:
         cases = cases[: a.max_cases]
+    cases = cases[a.shard::a.n_shards]
     L = lead * K  # 6 h steps to integrate
 
     # ------------------------------------------------------------------ model
@@ -135,50 +145,67 @@ def main():
     kernel = gauss_kernel_inverse(lat, lon)
     info = {"class": type(model).__name__, "solver": model.method, "params": sum(p.numel() for p in model.parameters()),
             "eval_mode": not a.train_mode, "ckpt_url": CKPT_URL, "climode_dir": cdir}
-    print(f"ClimODE {info}; {len(cases)} init times, leads {[6 * lead * k for k in range(1, K + 1)]} h", flush=True)
+    print(f"ClimODE {info}; shard {a.shard}/{a.n_shards}: {len(cases)} init times, "
+          f"leads {[6 * lead * k for k in range(1, K + 1)]} h", flush=True)
 
-    preds = {k: [] for k in range(1, K + 1)}
-    truth = {k: [] for k in range(1, K + 1)}
-    pers = {k: [] for k in range(1, K + 1)}
-    valid = {k: [] for k in range(1, K + 1)}
-    fit_loss, t0 = [], time.time()
-    for n, i in enumerate(cases):
-        s = i + 2  # index into ``series`` / ``norm``
-        torch.manual_seed(a.seed + i)
-        past = norm[s - 2:s + 1].view(1, 3, 5, H, W)
-        delta_u = cu.get_delta_u(past, torch.tensor([i - 2, i - 1, i]))  # spline derivative at t_i (hours = idx*6)
-        x0 = norm[s].view(1, 1, 5, H, W)
-        v_x, v_y, losses, _ = cu.optimize_vel(1, x0, delta_u, model_function.Optim_velocity, kernel, H, W)
-        fit_loss.append(float(min(losses)))
-        vel = torch.cat([v_x, v_y], 1).view(1, 10, H, W).detach()
-        model.update_param([vel, const, lat_map, lon_map])
-        T = torch.arange(i, i + L + 1).float()
-        with torch.no_grad():
-            mean, std, _ = model(T, x0)
-        mean = mean.view(L + 1, 5, H, W).numpy() * (mx - mn)[:, None, None] + mn[:, None, None]
-        for k in range(1, K + 1):
-            j = i + k * lead
-            preds[k].append(mean[k * lead])
-            truth[k].append(phys_test[j])
-            pers[k].append(phys_test[i])
-            valid[k].append(test_times[j])
-        if n % 10 == 0 or n == len(cases) - 1:
-            print(f"ic {n + 1}/{len(cases)} ({time.time() - t0:.0f}s, vel-fit loss {fit_loss[-1]:.2e})", flush=True)
+    # ------------------------------------------------------------------ forecasts of this shard
+    shard_file = out / f"shard_{a.shard}of{a.n_shards}.npz"
+    if not a.merge_only:
+        preds, fit_loss, t0 = [], [], time.time()
+        for n0 in range(0, len(cases), a.batch_ics):
+            # Several init times share one forward pass exactly as the authors batch the years 2017 and 2018 at the
+            # same index: the ODE right-hand side depends on time only through the hour of day, which is 00 UTC for
+            # every init time and lead here, so the time grid of the first init time serves the whole batch.
+            chunk = cases[n0:n0 + a.batch_ics]
+            Bc, i0 = len(chunk), chunk[0]
+            torch.manual_seed(a.seed + i0)
+            past = torch.stack([norm[i:i + 3] for i in chunk], 0)  # [B, 3, 5, H, W]; series index = i + 2
+            delta_u = cu.get_delta_u(past, torch.tensor([i0 - 2, i0 - 1, i0]))  # spline derivative at t_i (6 h spacing)
+            x0 = torch.stack([norm[i + 2] for i in chunk], 0).view(Bc, 1, 5, H, W)
+            v_x, v_y, losses, _ = cu.optimize_vel(Bc, x0, delta_u, model_function.Optim_velocity, kernel, H, W)
+            fit_loss.extend([float(min(losses))] * Bc)
+            vel = torch.cat([v_x, v_y], 1).view(Bc, 10, H, W).detach()
+            model.update_param([vel, const, lat_map, lon_map])
+            T = torch.arange(i0, i0 + L + 1).float()
+            with torch.no_grad():
+                mean, std, _ = model(T, x0)
+            mean = mean.view(L + 1, Bc, 5, H, W).numpy() * (mx - mn)[None, None, :, None, None] + mn[None, None, :, None, None]
+            for b in range(Bc):
+                preds.append(np.stack([mean[k * lead, b] for k in range(1, K + 1)], 0))  # [K, 5, H, W] physical units
+            print(f"ic {n0 + Bc}/{len(cases)} ({time.time() - t0:.0f}s, vel-fit loss {fit_loss[-1]:.2e})", flush=True)
+        np.savez_compressed(shard_file, cases=np.array(cases), pred=np.stack(preds, 0).astype(np.float32),
+                            fit_loss=np.array(fit_loss), seconds=time.time() - t0)
+        print(f"shard {a.shard}/{a.n_shards} written: {shard_file}", flush=True)
 
-    res = {"n_cases": len(cases), "lead_hours": {}, "rmse": {}, "finite": {}, "model": info,
-           "init_times": [str(test_times[i]) for i in cases], "vel_fit_loss_mean": float(np.mean(fit_loss)),
-           "seconds": time.time() - t0, "notes": __doc__.split("Caveats")[1].strip()}
+    # ------------------------------------------------------------------ merge all shards and score
+    shards = [out / f"shard_{s}of{a.n_shards}.npz" for s in range(a.n_shards)]
+    missing = [s.name for s in shards if not s.exists()]
+    if missing:
+        print(f"shards {missing} not finished yet; run again with --merge-only when they are", flush=True)
+        return
+    parts = [np.load(s) for s in shards]
+    cases_m = np.concatenate([p["cases"] for p in parts])
+    order = np.argsort(cases_m)
+    cases_m = cases_m[order].tolist()
+    pred = np.concatenate([p["pred"] for p in parts], 0)[order]  # [n, K, 5, H, W]
+    fit_loss = np.concatenate([p["fit_loss"] for p in parts])[order]
+    seconds = float(sum(float(p["seconds"]) for p in parts))
+
+    res = {"n_cases": len(cases_m), "lead_hours": {}, "rmse": {}, "finite": {}, "model": info, "n_shards": a.n_shards,
+           "init_times": [str(test_times[i]) for i in cases_m], "vel_fit_loss_mean": float(np.mean(fit_loss)),
+           "seconds": seconds, "notes": __doc__.split("Caveats")[1].strip()}
     for k in range(1, K + 1):
-        times = np.asarray(valid[k])
-        tr = {v: np.stack([t[c] for t in truth[k]], 0) for c, v in enumerate(VARS)}
-        fc = {v: np.stack([p[c] for p in preds[k]], 0) for c, v in enumerate(VARS)}
-        pe = {v: np.stack([p[c] for p in pers[k]], 0) for c, v in enumerate(VARS)}
+        idx = [i + k * lead for i in cases_m]
+        times = test_times[idx]
+        tr = {v: phys_test[idx, c] for c, v in enumerate(VARS)}
+        fc = {v: pred[:, k - 1, c] for c, v in enumerate(VARS)}
+        pe = {v: phys_test[cases_m, c] for c, v in enumerate(VARS)}
         res["lead_hours"][k] = 6 * lead * k
         res["finite"].setdefault("climode", {})[k] = bool(all(np.isfinite(x).all() for x in fc.values()))
         res["rmse"][k] = {"climode": wb2_scores(fc, tr, lat, lon, times)["rmse"],
                           "persistence": wb2_scores(pe, tr, lat, lon, times)["rmse"]}
     json.dump(res, open(out / "eval.json", "w"), indent=1, default=str)
-    lines = [f"# ClimODE (published checkpoint) on the 2019 test protocol: {len(cases)} init times\n",
+    lines = [f"# ClimODE (published checkpoint) on the 2019 test protocol: {len(cases_m)} init times\n",
              "| lead | " + " | ".join(f"{v} ClimODE / persistence" for v in VARS) + " |", "|---|" + "---|" * len(VARS)]
     for k in range(1, K + 1):
         r = res["rmse"][k]

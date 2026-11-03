@@ -28,6 +28,11 @@ def pct(new: float, ref: float) -> str:
     return f"{100 * (new / ref - 1):+.1f}%"
 
 
+def get(c: dict, lead: str, var: str):
+    """RMSE of column ``c`` at ``lead`` for ``var`` or None when the run does not predict that variable."""
+    return c["ev"]["rmse"].get(lead, {}).get(c["model"], {}).get(var)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("columns", nargs="+", help="label=run_dir:model")
@@ -55,8 +60,11 @@ def main():
         for v in VARS:
             cells = []
             for i, c in enumerate(cols):
-                x = c["ev"]["rmse"][l][c["model"]][v]
-                cells.append(fmt(x) if i == a.ref else f"{fmt(x)} ({pct(x, ref['ev']['rmse'][l][ref['model']][v])})")
+                x = get(c, l, v)
+                if x is None:
+                    cells.append("—")
+                else:
+                    cells.append(fmt(x) if i == a.ref else f"{fmt(x)} ({pct(x, get(ref, l, v))})")
             L.append(f"| {v} | " + " | ".join(cells) + f" | {fmt(ref['ev']['rmse'][l]['persistence'][v])} |")
         L.append("")
     L.append("## 요약: 핵심 변수의 기준열 대비 상대 변화\n")
@@ -67,7 +75,7 @@ def main():
             if i == a.ref:
                 continue
             L.append(f"| {ref['ev']['lead_hours'][l]} h | {c['label']} | " + " | ".join(
-                pct(c["ev"]["rmse"][l][c["model"]][v], ref["ev"]["rmse"][l][ref["model"]][v]) for v in KEY_VARS) + " |")
+                "—" if get(c, l, v) is None else pct(get(c, l, v), get(ref, l, v)) for v in KEY_VARS) + " |")
     if any(c["dg"] for c in cols):
         L.append("\n## guide 의존도 (diagnose_guide.py, 24 h, 테스트 48 시각)\n")
         gcols = [c for c in cols if c["dg"]]
@@ -81,7 +89,13 @@ def main():
                 "—" if c["dg"]["linear_probe_r2_mean"].get(k) is None else f"{c['dg']['linear_probe_r2_mean'][k]:.3f}"
                 for c in gcols) + " |")
         L.append("| 융합 게이트 \\|β\\| 평균 (5레벨) | " + " | ".join(
-            " / ".join(f"{x:.2f}" for x in c["dg"]["fusion_gates_mean_abs"]) for c in gcols) + " |")
+            " / ".join(f"{x:.2f}" for x in c["dg"]["fusion_gates_mean_abs"]) if "fusion_gates_mean_abs" in c["dg"]
+            else "— (PIGT)" for c in gcols) + " |")
+        if any("pigt_attention_mass" in c["dg"] for c in gcols):
+            L.append("| PIGT 어텐션 질량 H / P / O (5레벨, 첫 layer) | " + " | ".join(
+                "; ".join(":".join(f"{x:.2f}" for x in c["dg"]["pigt_attention_mass"][lvl][0])
+                          for lvl in ("P0", "P1", "P2", "P1u", "P0u"))
+                if "pigt_attention_mass" in c["dg"] else "—" for c in gcols) + " |")
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text("\n".join(L) + "\n")
     print("\n".join(L))
