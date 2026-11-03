@@ -2,3 +2,5 @@
 [07:45:04] run runs/era5_64x32_s5c0_diffusion: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
 [07:45:38] stage C: denoiser params 118045, residual scale s [0.08812127262353897, 0.10749757289886475, 0.26080286502838135, 0.06913997232913971, 0.24710890650749207]
 [07:45:40] C     0  L_eps(avg25) 1.3571 | 2.29 s/step
+[07:51:26] C   200  L_eps(avg25) 0.4075 | 1.73 s/step
+[07:57:05] C   400  L_eps(avg25) 0.3087 | 1.71 s/step
