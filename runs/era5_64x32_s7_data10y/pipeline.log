@@ -1,1 +1,4 @@
 [09:14:39] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[09:15:52] run runs/era5_64x32_s7_data10y: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[09:15:53] stage B[vnet_noguide]: vnet params 447505, steps 1500, batch 4, rollout steps 2 from step 500 (weight 1.0)
+[09:16:06] B[vnet_noguide]     0  L_f 0.9054 L_roll 0.0000 L_phys 0.00001 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) | 13.61 s/step
