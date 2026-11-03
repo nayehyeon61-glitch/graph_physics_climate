@@ -1,0 +1,30 @@
+ClimODE {'class': 'Climate_encoder_free_uncertain', 'solver': 'euler', 'params': 2752099, 'eval_mode': False, 'ckpt_url': 'https://raw.githubusercontent.com/Aalto-QuML/ClimODE/e729d23e8799ce0e075699e76d60227d848d8d0c/checkpoints/ClimODE_global.pt', 'climode_dir': '/home/claude/nayehyeon61-glitch/physical_guide_flowmatching/third_party/climode'}; shard 0/1: 45 init times, leads [24] h
+ic 2/45 (14s, vel-fit loss 1.14e-04)
+ic 4/45 (24s, vel-fit loss 1.17e-04)
+ic 6/45 (36s, vel-fit loss 1.20e-04)
+ic 8/45 (48s, vel-fit loss 1.26e-04)
+ic 10/45 (60s, vel-fit loss 1.25e-04)
+ic 12/45 (70s, vel-fit loss 1.24e-04)
+ic 14/45 (81s, vel-fit loss 1.14e-04)
+ic 16/45 (93s, vel-fit loss 1.26e-04)
+ic 18/45 (104s, vel-fit loss 1.14e-04)
+ic 20/45 (114s, vel-fit loss 1.17e-04)
+ic 22/45 (126s, vel-fit loss 1.15e-04)
+ic 24/45 (138s, vel-fit loss 1.23e-04)
+ic 26/45 (149s, vel-fit loss 1.21e-04)
+ic 28/45 (160s, vel-fit loss 1.21e-04)
+ic 30/45 (172s, vel-fit loss 1.35e-04)
+ic 32/45 (185s, vel-fit loss 1.44e-04)
+ic 34/45 (197s, vel-fit loss 1.28e-04)
+ic 36/45 (209s, vel-fit loss 1.19e-04)
+ic 38/45 (221s, vel-fit loss 1.23e-04)
+ic 40/45 (233s, vel-fit loss 1.30e-04)
+ic 42/45 (246s, vel-fit loss 1.30e-04)
+ic 44/45 (258s, vel-fit loss 1.42e-04)
+ic 45/45 (266s, vel-fit loss 1.31e-04)
+shard 0/1 written: runs/climode_2019_trainmode_crps/shard_0of1.npz
+# ClimODE (published checkpoint) on the 2019 test protocol: 45 init times
+
+| lead | z500 ClimODE / persistence | t850 ClimODE / persistence | t2m ClimODE / persistence | u10 ClimODE / persistence | v10 ClimODE / persistence |
+|---|---|---|---|---|---|
+| 24 h | 216.6 / 581.2 | 1.331 / 2.741 | 1.674 / 1.737 | 1.682 / 3.341 | 1.754 / 4.108 |

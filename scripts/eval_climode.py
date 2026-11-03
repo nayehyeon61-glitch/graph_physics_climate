@@ -91,6 +91,9 @@ def main():
     ap.add_argument("--merge-only", action="store_true", help="only merge existing shard files into eval.json")
     ap.add_argument("--batch-ics", type=int, default=1, help="init times per forward pass (authors batch 2 years)")
     ap.add_argument("--mkldnn", action="store_true", help="keep oneDNN convolutions on (off by default, see below)")
+    ap.add_argument("--members", type=int, default=8,
+                    help="ensemble members sampled from the emission Gaussian N(mean, std) for CRPS / spread (same "
+                         "WeatherBench2 estimators as our diffusion ensemble; 0 = skip)")
     a = ap.parse_args()
     torch.set_num_threads(a.threads)
     torch.backends.mkldnn.enabled = a.mkldnn  # PG-Flow found oneDNN off ~2x faster for these convs on CPU
@@ -151,7 +154,7 @@ def main():
     # ------------------------------------------------------------------ forecasts of this shard
     shard_file = out / f"shard_{a.shard}of{a.n_shards}.npz"
     if not a.merge_only:
-        preds, fit_loss, t0 = [], [], time.time()
+        preds, stds, fit_loss, t0 = [], [], [], time.time()
         for n0 in range(0, len(cases), a.batch_ics):
             # Several init times share one forward pass exactly as the authors batch the years 2017 and 2018 at the
             # same index: the ODE right-hand side depends on time only through the hour of day, which is 00 UTC for
@@ -170,11 +173,13 @@ def main():
             with torch.no_grad():
                 mean, std, _ = model(T, x0)
             mean = mean.view(L + 1, Bc, 5, H, W).numpy() * (mx - mn)[None, None, :, None, None] + mn[None, None, :, None, None]
+            std = std.view(L + 1, Bc, 5, H, W).numpy() * (mx - mn)[None, None, :, None, None]  # emission std, physical
             for b in range(Bc):
                 preds.append(np.stack([mean[k * lead, b] for k in range(1, K + 1)], 0))  # [K, 5, H, W] physical units
+                stds.append(np.stack([std[k * lead, b] for k in range(1, K + 1)], 0))
             print(f"ic {n0 + Bc}/{len(cases)} ({time.time() - t0:.0f}s, vel-fit loss {fit_loss[-1]:.2e})", flush=True)
         np.savez_compressed(shard_file, cases=np.array(cases), pred=np.stack(preds, 0).astype(np.float32),
-                            fit_loss=np.array(fit_loss), seconds=time.time() - t0)
+                            std=np.stack(stds, 0).astype(np.float32), fit_loss=np.array(fit_loss), seconds=time.time() - t0)
         print(f"shard {a.shard}/{a.n_shards} written: {shard_file}", flush=True)
 
     # ------------------------------------------------------------------ merge all shards and score
@@ -188,6 +193,7 @@ def main():
     order = np.argsort(cases_m)
     cases_m = cases_m[order].tolist()
     pred = np.concatenate([p["pred"] for p in parts], 0)[order]  # [n, K, 5, H, W]
+    std = np.concatenate([p["std"] for p in parts], 0)[order] if all("std" in p for p in parts) else None
     fit_loss = np.concatenate([p["fit_loss"] for p in parts])[order]
     seconds = float(sum(float(p["seconds"]) for p in parts))
 
@@ -206,6 +212,19 @@ def main():
         res.setdefault("n_finite", {})[k] = int(ok.sum())
         res["rmse"][k] = {"climode": wb2_scores(fc, tr, lat, lon, times)["rmse"],
                           "persistence": wb2_scores(pe, tr, lat, lon, times)["rmse"]}
+        if std is not None and a.members > 0:
+            # probabilistic scores of the emission model: members ~ N(mean, std) in physical units, scored with the
+            # same WeatherBench2 CRPS / ensemble-mean RMSE / spread estimators as our diffusion ensemble
+            rng = np.random.default_rng(a.seed)
+            ens = {v: pred[:, k - 1, c][None] + std[:, k - 1, c][None] * rng.standard_normal((a.members,) + pred.shape[0:1] + pred.shape[3:]).astype(np.float32)
+                   for c, v in enumerate(VARS)}
+            sc = wb2_scores(fc, tr, lat, lon, times, ensemble=ens)
+            w = np.cos(np.deg2rad(lat))[None, :, None]
+            res.setdefault("ensemble", {})[k] = {"members": a.members, "note": "Gaussian emission model, sampled members",
+                                                 **{kk: vv for kk, vv in sc.items() if kk != "rmse"},
+                                                 "sigma_rms": {v: float(np.sqrt(np.average((std[:, k - 1, c] ** 2).mean(0),
+                                                                                           weights=np.broadcast_to(w[0], (H, W)))))
+                                                               for c, v in enumerate(VARS)}}
         if 0 < ok.sum() < len(ok):  # also score the non-diverged subset (reported with its count, not comparable 1:1)
             sub = lambda d: {v: x[ok] for v, x in d.items()}  # noqa: E731
             res.setdefault("rmse_finite_subset", {})[k] = {
