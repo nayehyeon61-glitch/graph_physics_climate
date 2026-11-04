@@ -2,3 +2,19 @@
 [01:44:02] run runs/era5_64x32_s12a_ema: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
 [01:44:03] stage B[vnet]: vnet params 554665, steps 1500, batch 4, rollout steps 2 from step 500 (weight 1.0), EMA decay 0.995
 [01:44:23] B[vnet]     0  L_f 0.9072 L_roll 0.0000 L_phys 0.00002 | val MSE 0.3252 2-step 0.4930 (persistence 0.3257) | 20.53 s/step
+[01:50:39] B[vnet]   250  L_f 0.3870 L_roll 0.0000 L_phys 0.00023 | val MSE 0.1362 2-step 0.2523 (persistence 0.3257) | 1.58 s/step
+[01:55:40] B[vnet]   500  L_f 0.2959 L_roll 0.6010 L_phys 0.00007 | val MSE 0.1050 2-step 0.2021 (persistence 0.3257) | 1.39 s/step
+[02:06:43] B[vnet]   750  L_f 0.3104 L_roll 0.5849 L_phys 0.00013 | val MSE 0.0955 2-step 0.1742 (persistence 0.3257) | 1.81 s/step
+[02:17:50] B[vnet]  1000  L_f 0.2309 L_roll 0.4036 L_phys 0.00004 | val MSE 0.0890 2-step 0.1625 (persistence 0.3257) | 2.03 s/step
+[02:29:08] B[vnet]  1250  L_f 0.2471 L_roll 0.4497 L_phys 0.00011 | val MSE 0.0858 2-step 0.1571 (persistence 0.3257) | 2.16 s/step
+[02:40:38] B[vnet]  1499  L_f 0.2567 L_roll 0.4676 L_phys 0.00005 | val MSE 0.0845 2-step 0.1548 (persistence 0.3257) | 2.26 s/step
+[02:40:38] stage B[vnet] done in 56.6 min, best val MSE 0.2393
+[02:40:42] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[02:40:56] run runs/era5_64x32_s12a_ema: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[02:40:57] stage B[vnet_noguide]: vnet params 447505, steps 1500, batch 4, rollout steps 2 from step 500 (weight 1.0), EMA decay 0.995
+[02:41:05] B[vnet_noguide]     0  L_f 0.9072 L_roll 0.0000 L_phys 0.00002 | val MSE 0.3252 2-step 0.4930 (persistence 0.3257) | 8.30 s/step
+[02:43:59] B[vnet_noguide]   250  L_f 0.3936 L_roll 0.0000 L_phys 0.00053 | val MSE 0.1420 2-step 0.2543 (persistence 0.3257) | 0.73 s/step
+[02:46:57] B[vnet_noguide]   500  L_f 0.3081 L_roll 0.6130 L_phys 0.00110 | val MSE 0.1065 2-step 0.2037 (persistence 0.3257) | 0.72 s/step
+[02:52:47] B[vnet_noguide]   750  L_f 0.3165 L_roll 0.6070 L_phys 0.00010 | val MSE 0.0974 2-step 0.1781 (persistence 0.3257) | 0.95 s/step
+[02:58:31] B[vnet_noguide]  1000  L_f 0.2338 L_roll 0.4123 L_phys 0.00006 | val MSE 0.0911 2-step 0.1666 (persistence 0.3257) | 1.05 s/step
+[03:04:24] B[vnet_noguide]  1250  L_f 0.2547 L_roll 0.4707 L_phys 0.00005 | val MSE 0.0879 2-step 0.1612 (persistence 0.3257) | 1.13 s/step

@@ -62,6 +62,14 @@ class VNetConfig:
     # stage14: the V-Net also sees the observed change over the previous lead, X_t - X_{t-lead} (GraphCast-style
     # two-time-step input; in a rollout the previous forecast state plays the role of X_{t-lead}); the guide does not
     prev_state: bool = False
+    # stage14b: initial-increment nudging — the first forecast step relaxes toward the model's own error over the
+    # previous lead, e_t = X_t - M(X_{t-lead}), with a learned state-dependent coefficient (gpclimate/nn/nudging.py)
+    nudge: bool = False
+    nudge_hidden: int = 32
+    # carry the added term into later rollout steps as the red-noise recursion q_k = rho q_{k-1} (Evensen 2009,
+    # Ch. 12, Sect. 12.1.4); False = first step only (incremental-analysis-update style window of one lead)
+    nudge_carry: bool = True
+    nudge_alpha_init: float = 0.12  # initial uniform coefficient = prior rho (measure it with scripts/model_error_autocorr.py)
 
 
 class DynamicsVNet(nn.Module):
@@ -102,6 +110,10 @@ class DynamicsVNet(nn.Module):
             from gpclimate.nn.neural_operator import ContinuousOperatorBlock
             self.cont_op = ContinuousOperatorBlock(spec.n_s, spec.n_v, spec.n_cond_s, spec.n_cond_v, cfg.no_hidden,
                                                    cfg.no_layers, tuple(cfg.no_modes), cfg.neural_op)
+        self.nudge_block = None
+        if cfg.nudge:
+            from gpclimate.nn.nudging import InitialNudging
+            self.nudge_block = InitialNudging(cs, cv, spec.n_s, spec.n_v, cfg.nudge_hidden, cfg.nudge_alpha_init)
         with torch.no_grad():  # start from persistence (delta = 0)
             self.head_out.lin_s.weight.zero_()
             self.head_out.lin_s.bias.zero_()
@@ -133,7 +145,7 @@ class DynamicsVNet(nn.Module):
         return out
 
     def forward(self, state: Field, cond: Field, physics: Optional[Dict[str, Field]], g: GraphView,
-                prev: Optional[Field] = None) -> Field:
+                prev: Optional[Field] = None, nudge: Optional[Field] = None) -> Field:
         B = state.s.shape[0]
         cond = broadcast_batch(cond, B)
         xs, xv = [state.s, cond.s], [state.v, cond.v]
@@ -154,10 +166,16 @@ class DynamicsVNet(nn.Module):
         F1u = self._fuse(3, H1u, physics, "P1u", g.attn_edges[1], O[1])
         H0u = self.gnn[4](self.merge0(self.up10(F1u, g.up[0]), H0), g.mesh_edges[0])
         F0u = self._fuse(4, H0u, physics, "P0u", g.attn_edges[0], O[0])
-        out = self.head_out(self.head_dec(F0u, g.mesh2grid, extra=grid_emb))
+        emb = self.head_dec(F0u, g.mesh2grid, extra=grid_emb)
+        out = self.head_out(emb)
         if self.cont_op is not None:  # stage13: Lie guide -> discrete mesh GNN -> continuous operator on the grid
             H, W = g.extras["grid_hw"]
             out = out + self.cont_op(x, out, H, W, g.extras["grid_lat"], g.extras.get("grid_gauge"))
+        if self.nudge_block is not None:  # stage14b: relax toward the (carried) initial increment
+            if nudge is not None:
+                out = out + self.nudge_block(emb, nudge)
+            else:
+                self.nudge_block.last_term = None  # nothing added -> nothing to carry
         return out
 
     def attention_mass(self) -> Optional[Dict[str, List[Optional[List[float]]]]]:
@@ -196,17 +214,38 @@ class LieGuidedForecaster(nn.Module):
         sigma = torch.zeros(state.s.shape[0], device=state.s.device)
         return self.guide(state, cond, sigma, g)
 
-    def forward(self, state: Field, cond: Field, g: GraphView, prev: Optional[Field] = None) -> Tuple[Field, Field]:
+    def forward(self, state: Field, cond: Field, g: GraphView, prev: Optional[Field] = None,
+                nudge: Optional[Field] = None) -> Tuple[Field, Field]:
         """Deterministic forecast and its change in delta-scale units ``d = (X_bar - X_t) / delta_scale``.
-        ``prev`` (stage14, ``VNetConfig.prev_state``) is the state one lead earlier; None = zero observed change."""
+        ``prev`` (stage14, ``VNetConfig.prev_state``) is the state one lead earlier; None = zero observed change.
+        ``nudge`` (stage14b, ``VNetConfig.nudge``) is the initial increment from :meth:`increment`; None = no
+        relaxation (rollout steps after the first)."""
         if self.vnet.cfg.integrator != "ode":
             P = self.physics(state, cond, g)
-            d = self.vnet(state, cond, P, g, prev=prev)
+            d = self.vnet(state, cond, P, g, prev=prev, nudge=nudge)
             forecast = Field(state.s + d.s * self.delta_scale_s, state.v + d.v * self.delta_scale_v)
             return forecast, d
         forecast = self.integrate(state, cond, g)
         d = Field((forecast.s - state.s) / self.delta_scale_s, (forecast.v - state.v) / self.delta_scale_v)
         return forecast, d
+
+    def increment(self, state: Field, prev_state: Field, prev_cond: Field, g: GraphView,
+                  prev_prev: Optional[Field] = None) -> Field:
+        """stage14b nudging increment e_t = X_t - M(X_{t-lead}) in delta-scale units: the model's own error over the
+        previous lead, from a pre-forecast started at ``prev_state`` (no gradient, itself un-nudged).  ``prev_prev``
+        is the state two leads back when the V-Net uses the previous-state input (stage14a)."""
+        with torch.no_grad():
+            fg, _ = self(prev_state, prev_cond, g, prev=prev_prev)
+        return Field((state.s - fg.s) / self.delta_scale_s, (state.v - fg.v) / self.delta_scale_v)
+
+    def carried_nudge(self) -> Optional[Field]:
+        """stage14b: the model-error estimate to carry into the next rollout step = the term the last call added
+        (red-noise recursion q_k = rho q_{k-1}, Evensen 2009 Sect. 12.1.4); None when nudging is off, not carried
+        (``nudge_carry=False``), or the last call added nothing."""
+        nb = self.vnet.nudge_block
+        if nb is None or not self.vnet.cfg.nudge_carry:
+            return None
+        return nb.last_term
 
     # ---------------------------------------------------------------- stage S8: graph neural ODE dynamics
     def physics_drift(self, x: Field, cond: Field, g: GraphView, P: Optional[Dict[str, Field]]) -> Field:
@@ -257,12 +296,14 @@ class LieGuidedForecaster(nn.Module):
             x = Field(x.s + drift.s, x.v + drift.v)
         return x
 
-    def rollout(self, state: Field, conds: List[Field], g: GraphView, prev: Optional[Field] = None) -> List[Field]:
-        """Autoregressive deterministic rollout; physics features are recomputed from each new state, and the
-        previous input state serves as ``prev`` of the next step (stage14)."""
+    def rollout(self, state: Field, conds: List[Field], g: GraphView, prev: Optional[Field] = None,
+                nudge: Optional[Field] = None) -> List[Field]:
+        """Autoregressive deterministic rollout; physics features are recomputed from each new state, the previous
+        input state serves as ``prev`` of the next step (stage14), and the nudging increment applies to the first
+        step and is then carried as the added term (stage14b, ``nudge_carry``) or dropped."""
         out = []
         for c in conds:
-            new, _ = self(state, c, g, prev=prev)
-            prev, state = state, new
+            new, _ = self(state, c, g, prev=prev, nudge=nudge)
+            prev, state, nudge = state, new, self.carried_nudge()
             out.append(state)
         return out

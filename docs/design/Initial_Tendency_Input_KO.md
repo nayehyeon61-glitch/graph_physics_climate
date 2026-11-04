@@ -28,3 +28,5 @@
 ## 4. 실행과 판정
 
 체인 `runs/era5_64x32_s14a_prev/chain_s14a.sh`(stage13b 뒤, 11-05 ≈18:45 KST 예상, ≈2.6 h): stage3 config + `prev_state=1`, Stage B 1500 step(rollout 2, 500부터) + guide 없는 baseline(같은 입력) + 평가 + 진단. 비교 기준 stage3(+ClimODE). **가설이 맞으면** 24–48 h 중위도·극 z500/t850이 눈에 띄게(≥3 %) 좋아지고 72 h 이후는 중립, 그리고 `scripts/diagnose_errors.py`에서 24 h 파수 4–15 파워비가 오른다. 채택 기준은 다른 stage와 같다(11변수 평균 5 lead 중 3개 이상 +, P=0 열화 유지).
+
+후속(2026-11-04 11:56 KST, 감자 "초기에 nudging 구조"): stage14b는 같은 이전 상태로 모델 자신의 사전 예보 증분 X_t − M(X_{t−24h})을 학습된 완화계수로 첫 step에 더한다 — `docs/design/Initial_Nudging_KO.md`.
