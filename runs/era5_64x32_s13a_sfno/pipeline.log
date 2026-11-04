@@ -1,0 +1,7 @@
+[15:33:14] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[15:33:29] run runs/era5_64x32_s13a_sfno: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[15:33:31] stage B[vnet]: vnet params 692532, steps 1500, batch 4, rollout steps 2 from step 500 (weight 1.0), neural operator sht (137867 params)
+/home/claude/graph_physics_climate/scripts/train_eval.py:491: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:820.)
+  run.jlog(name, {"step": step, "l_f": float(l_f), "l_phys": float(l_phys), "l_roll": float(l_roll),
+[15:33:55] B[vnet]     0  L_f 0.9072 L_roll 0.0000 L_phys 0.00002 | val MSE 0.3252 2-step 0.4929 (persistence 0.3257) | 24.13 s/step
