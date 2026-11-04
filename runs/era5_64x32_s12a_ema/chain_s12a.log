@@ -1,3 +1,4 @@
 [00:57:31] stage11a chain finished -> stage12a (EMA 0.995)
 [01:43:04] container restart at step ~975 of Stage B; partial files moved to partial_restart_1040kst/, chain relaunched
 [01:43:04] stage11a chain finished -> stage12a (EMA 0.995)
+[03:18:44] stage12a pipeline exit 0 CHAIN_S12A_DONE
