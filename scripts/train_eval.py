@@ -217,6 +217,11 @@ class Run:
 # ---------------------------------------------------------------------------- Stage A
 def stage_a(run: Run):
     a, g, w = run.args, run.g, run.w
+    done_path = run.dir / "a_done.json"
+    if int(getattr(a, "resume", 1)) and done_path.exists() and (run.dir / "guide.pt").exists() \
+            and int(json.load(open(done_path)).get("steps", -1)) == int(a.steps):
+        log(f"stage A already finished in this run directory; skipping (delete {done_path.name} to retrain)")
+        return
     model = run.forecaster(True)
     guide = model.guide
     opt = torch.optim.Adam(guide.parameters(), lr=a.lr)
@@ -307,6 +312,8 @@ def stage_a(run: Run):
             log(f"A {step:5d}  L_rec {float(l_rec):.4f} L_aux {float(l_aux):.4f} L_tend {float(l_tend):.4f}"
                 f" L_clos {float(l_clos):.4f} | val rec {v_rec:.4f} aux {v_aux:.4f} tend {v_tend:.4f} clos {v_clos:.4f}"
                 f" (resolved only {v_full:.4f}) | {(time.time() - t0) / (step + 1):.2f} s/step")
+    json.dump({"steps": int(a.steps), "best": best, "finished_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+              open(done_path, "w"))
     log(f"stage A done in {(time.time() - t0) / 60:.1f} min, best val score {best:.4f}"
         + (f", forecast-perturbed batches {n_fc}" if fm is not None else ""))
 
@@ -401,7 +408,33 @@ def stage_b(run: Run, use_guide: bool):
         vc = model.vnet.cfg
         log(f"stage B[{name}]: graph neural ODE dynamics, {vc.ode_steps} sub-steps of {6 * lead // vc.ode_steps} h, "
             f"solver {vc.ode_solver}, physics drift {'on' if vc.ode_physics else 'off'}")
-    for step in range(a.steps):
+    # restart safety: a finished Stage B is skipped, an interrupted one resumes from its last validation checkpoint
+    start_step = 0
+    ck_path, done_path = run.dir / f"{name}_train_state.pt", run.dir / f"{name}_done.json"
+    if int(getattr(a, "resume", 1)) and done_path.exists() and (run.dir / f"{name}.pt").exists() \
+            and int(json.load(open(done_path)).get("steps", -1)) == int(a.steps):
+        log(f"stage B[{name}] already finished in this run directory; skipping (delete {done_path.name} to retrain)")
+        return
+    if int(getattr(a, "resume", 1)) and ck_path.exists():
+        ck = torch.load(ck_path, weights_only=False)
+        model.vnet.load_state_dict(ck["vnet"])
+        if guide_lr > 0 and "guide" in ck:
+            model.guide.load_state_dict(ck["guide"])
+        if ema_model is not None and "ema_vnet" in ck:
+            ema_model.vnet.load_state_dict(ck["ema_vnet"])
+            if guide_lr > 0 and "ema_guide" in ck:
+                ema_model.guide.load_state_dict(ck["ema_guide"])
+        opt.load_state_dict(ck["opt"])
+        best, start_step = float(ck["best"]), int(ck["step"])
+        rng.bit_generator.state = ck["rng"]
+        torch.set_rng_state(ck["torch_rng"])
+        t0 = time.time() - float(ck.get("elapsed", 0.0))
+        lp = run.dir / f"log_{name}.jsonl"  # rows at or after the resume step are logged again
+        if lp.exists():
+            rows = [line for line in open(lp) if json.loads(line)["step"] < start_step]
+            open(lp, "w").writelines(rows)
+        log(f"stage B[{name}]: resumed from step {start_step} (best {best:.4f}, {time.time() - t0:.0f} s elapsed before)")
+    for step in range(start_step, a.steps):
         for pg in opt.param_groups:
             pg["lr"] = cosine_lr(step, a.steps, pg.get("base_lr", a.lr))
         k_now = rollout_steps_at(step)
@@ -467,6 +500,22 @@ def stage_b(run: Run, use_guide: bool):
                 + (f" L_pde {float(l_pde):.4f}" if use_pde else "")
                 + f" | val MSE {v_mse:.4f} 2-step {v_mse2:.4f} (persistence {pers:.4f})"
                 f" | {(time.time() - t0) / (step + 1):.2f} s/step")
+            state = {"step": step + 1, "vnet": model.vnet.state_dict(), "opt": opt.state_dict(), "best": best,
+                     "rng": rng.bit_generator.state, "torch_rng": torch.get_rng_state(), "elapsed": time.time() - t0}
+            if guide_lr > 0:
+                state["guide"] = model.guide.state_dict()
+            if ema_model is not None:
+                state["ema_vnet"] = ema_model.vnet.state_dict()
+                if guide_lr > 0:
+                    state["ema_guide"] = ema_model.guide.state_dict()
+            torch.save(state, ck_path)
+        if int(getattr(a, "stop_after", 0) or 0) and step + 1 >= int(a.stop_after):
+            log(f"stage B[{name}]: stopping after step {step} (--stop-after, testing aid)")
+            return
+    json.dump({"steps": int(a.steps), "best": best, "finished_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+              open(done_path, "w"))
+    if ck_path.exists():
+        ck_path.unlink()
     log(f"stage B[{name}] done in {(time.time() - t0) / 60:.1f} min, best val MSE {best:.4f}")
 
 
@@ -844,6 +893,10 @@ def main():
     ap.add_argument("--sample-steps", type=int, default=20)
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--resume", type=int, default=1, choices=[0, 1],
+                    help="skip a finished Stage A/B in the run directory and resume an interrupted Stage B from its "
+                         "last validation checkpoint (<name>_train_state.pt); 0 = always train from scratch")
+    ap.add_argument("--stop-after", type=int, default=0, help="testing aid: leave Stage B after this many steps")
     args = ap.parse_args()
     args.resolved_terms = [t for t in str(args.resolved_terms).split(',') if t]
     if args.resolved_coef and not isinstance(args.resolved_coef, dict):

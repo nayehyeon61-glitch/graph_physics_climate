@@ -116,3 +116,22 @@ def test_stage_b_guide_finetuning(data, tmp_path):
     assert torch.equal(m.guide.state_dict()[k], g1[k])
     run.load_guide(m, finetuned=False)
     assert torch.equal(m.guide.state_dict()[k], g0[k])
+
+
+def test_stage_b_resume_and_skip(data, tmp_path):
+    """Container-restart safety: Stage B resumes from its last validation checkpoint and a finished Stage B is skipped."""
+    run_dir = tmp_path / "run_resume"
+    args = ("--steps", "5", "--val-every", "2", "--rollout-steps", "2", "--rollout-start", "3")
+    out = _run(run_dir, data, "b_noguide", *args, "--stop-after", "3")
+    assert "stopping after step 2" in out
+    assert (run_dir / "vnet_noguide_train_state.pt").exists() and not (run_dir / "vnet_noguide_done.json").exists()
+    out = _run(run_dir, data, "b_noguide", *args)
+    assert "resumed from step 3" in out and "done in" in out
+    rows = [json.loads(l) for l in open(run_dir / "log_vnet_noguide.jsonl")]
+    assert [r["step"] for r in rows if "val_mse" in r] == [0, 2, 4]
+    assert (run_dir / "vnet_noguide_done.json").exists() and not (run_dir / "vnet_noguide_train_state.pt").exists()
+    mtime = (run_dir / "vnet_noguide.pt").stat().st_mtime
+    out = _run(run_dir, data, "b_noguide", *args)
+    assert "already finished" in out and (run_dir / "vnet_noguide.pt").stat().st_mtime == mtime
+    out = _run(run_dir, data, "b_noguide", *args, "--resume", "0")
+    assert "already finished" not in out and "resumed" not in out
