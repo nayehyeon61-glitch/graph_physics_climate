@@ -1,0 +1,6 @@
+[09:21:11] loss focus base11: scalar weights [1.0, 1.0, 1.0, 1.0, 1.0, 0.20000000298023224, 0.20000000298023224, 0.20000000298023224, 0.20000000298023224, 0.20000000298023224, 0.20000000298023224, 0.20000000298023224, 0.20000000298023224], vector weights [1.0, 1.0, 1.0, 0.20000000298023224]
+[09:21:11] feature matrix fcn21: 13 scalar + 4 vector-pair state channels (21 variables), 5 scalar + 1 vector conditions
+[09:22:47] run runs/era5_64x32_s10b_fcn21_w: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[09:22:48] stage A: forecast-state perturbation from runs/era5_64x32_s10a_fcn21/vnet_noguide.pt with p=0.3
+[09:22:48] stage A: guide params 278738, steps 1000, batch 4
+[09:22:50] A     0  L_rec 2.0125 L_aux 0.5097 L_tend 1.6497 L_clos 0.0000 | val rec 1.8562 aux 0.5008 tend 1.4875 clos 0.0000 (resolved only 0.0000) | 2.97 s/step

@@ -1,1 +1,133 @@
 [05:01:09] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[05:03:38] run runs/era5_64x32_s7b_steps3x: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[05:03:38] stage B[vnet]: vnet params 554665, steps 4500, batch 4, rollout steps 2 from step 1500 (weight 1.0)
+[05:03:57] B[vnet]     0  L_f 0.9054 L_roll 0.0000 L_phys 0.00001 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) | 18.82 s/step
+[05:09:14] B[vnet]   250  L_f 0.4144 L_roll 0.0000 L_phys 0.00126 | val MSE 0.1341 2-step 0.2498 (persistence 0.3295) | 1.34 s/step
+[05:14:00] B[vnet]   500  L_f 0.3309 L_roll 0.0000 L_phys 0.00017 | val MSE 0.1056 2-step 0.2084 (persistence 0.3295) | 1.24 s/step
+[05:18:41] B[vnet]   750  L_f 0.2720 L_roll 0.0000 L_phys 0.00042 | val MSE 0.0903 2-step 0.1813 (persistence 0.3295) | 1.20 s/step
+[05:23:23] B[vnet]  1000  L_f 0.2311 L_roll 0.0000 L_phys 0.00007 | val MSE 0.0803 2-step 0.1651 (persistence 0.3295) | 1.18 s/step
+[05:28:00] B[vnet]  1250  L_f 0.2129 L_roll 0.0000 L_phys 0.00049 | val MSE 0.0753 2-step 0.1573 (persistence 0.3295) | 1.17 s/step
+[05:32:45] B[vnet]  1500  L_f 0.2006 L_roll 0.4467 L_phys 0.00013 | val MSE 0.0710 2-step 0.1465 (persistence 0.3295) | 1.16 s/step
+[05:43:38] B[vnet]  1750  L_f 0.2250 L_roll 0.4494 L_phys 0.00007 | val MSE 0.0721 2-step 0.1426 (persistence 0.3295) | 1.37 s/step
+[05:54:31] B[vnet]  2000  L_f 0.1974 L_roll 0.4176 L_phys 0.00019 | val MSE 0.0690 2-step 0.1379 (persistence 0.3295) | 1.53 s/step
+[06:05:22] B[vnet]  2250  L_f 0.2052 L_roll 0.4144 L_phys 0.00011 | val MSE 0.0663 2-step 0.1325 (persistence 0.3295) | 1.65 s/step
+[06:16:56] B[vnet]  2500  L_f 0.1750 L_roll 0.3401 L_phys 0.00014 | val MSE 0.0644 2-step 0.1277 (persistence 0.3295) | 1.76 s/step
+[06:28:37] B[vnet]  2750  L_f 0.1743 L_roll 0.3276 L_phys 0.00004 | val MSE 0.0625 2-step 0.1249 (persistence 0.3295) | 1.85 s/step
+[06:40:03] B[vnet]  3000  L_f 0.1646 L_roll 0.3203 L_phys 0.00009 | val MSE 0.0606 2-step 0.1192 (persistence 0.3295) | 1.93 s/step
+[06:51:31] B[vnet]  3250  L_f 0.1683 L_roll 0.3205 L_phys 0.00007 | val MSE 0.0605 2-step 0.1189 (persistence 0.3295) | 1.99 s/step
+[07:02:58] B[vnet]  3500  L_f 0.1673 L_roll 0.3205 L_phys 0.00004 | val MSE 0.0594 2-step 0.1171 (persistence 0.3295) | 2.04 s/step
+[07:14:30] B[vnet]  3750  L_f 0.1640 L_roll 0.3244 L_phys 0.00006 | val MSE 0.0585 2-step 0.1135 (persistence 0.3295) | 2.09 s/step
+[07:25:47] B[vnet]  4000  L_f 0.1773 L_roll 0.3250 L_phys 0.00005 | val MSE 0.0583 2-step 0.1136 (persistence 0.3295) | 2.13 s/step
+[07:37:08] B[vnet]  4250  L_f 0.1677 L_roll 0.3151 L_phys 0.00002 | val MSE 0.0581 2-step 0.1129 (persistence 0.3295) | 2.17 s/step
+[07:48:46] B[vnet]  4499  L_f 0.1564 L_roll 0.3045 L_phys 0.00005 | val MSE 0.0578 2-step 0.1124 (persistence 0.3295) | 2.20 s/step
+[07:48:46] stage B[vnet] done in 165.1 min, best val MSE 0.1702
+[07:48:50] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[07:49:47] run runs/era5_64x32_s7b_steps3x: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[07:49:48] stage B[vnet_noguide]: vnet params 447505, steps 4500, batch 4, rollout steps 2 from step 1500 (weight 1.0)
+[07:49:57] B[vnet_noguide]     0  L_f 0.9054 L_roll 0.0000 L_phys 0.00001 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) | 9.17 s/step
+[07:52:50] B[vnet_noguide]   250  L_f 0.4210 L_roll 0.0000 L_phys 0.00122 | val MSE 0.1427 2-step 0.2624 (persistence 0.3295) | 0.73 s/step
+[07:55:47] B[vnet_noguide]   500  L_f 0.3295 L_roll 0.0000 L_phys 0.00021 | val MSE 0.1073 2-step 0.2127 (persistence 0.3295) | 0.72 s/step
+[07:58:42] B[vnet_noguide]   750  L_f 0.2737 L_roll 0.0000 L_phys 0.00027 | val MSE 0.0938 2-step 0.1877 (persistence 0.3295) | 0.71 s/step
+[08:01:30] B[vnet_noguide]  1000  L_f 0.2336 L_roll 0.0000 L_phys 0.00047 | val MSE 0.0823 2-step 0.1705 (persistence 0.3295) | 0.70 s/step
+[08:04:21] B[vnet_noguide]  1250  L_f 0.2191 L_roll 0.0000 L_phys 0.00052 | val MSE 0.0788 2-step 0.1619 (persistence 0.3295) | 0.70 s/step
+[08:07:12] B[vnet_noguide]  1500  L_f 0.2090 L_roll 0.4461 L_phys 0.00011 | val MSE 0.0749 2-step 0.1605 (persistence 0.3295) | 0.70 s/step
+[08:12:51] B[vnet_noguide]  1750  L_f 0.2324 L_roll 0.4719 L_phys 0.00074 | val MSE 0.0761 2-step 0.1511 (persistence 0.3295) | 0.79 s/step
+[08:18:42] B[vnet_noguide]  2000  L_f 0.2072 L_roll 0.4337 L_phys 0.00062 | val MSE 0.0728 2-step 0.1436 (persistence 0.3295) | 0.87 s/step
+[08:24:35] B[vnet_noguide]  2250  L_f 0.2136 L_roll 0.4303 L_phys 0.00048 | val MSE 0.0696 2-step 0.1354 (persistence 0.3295) | 0.93 s/step
+[08:30:24] B[vnet_noguide]  2500  L_f 0.1827 L_roll 0.3452 L_phys 0.00015 | val MSE 0.0683 2-step 0.1341 (persistence 0.3295) | 0.97 s/step
+[08:36:19] B[vnet_noguide]  2750  L_f 0.1815 L_roll 0.3543 L_phys 0.00008 | val MSE 0.0660 2-step 0.1293 (persistence 0.3295) | 1.01 s/step
+[08:41:47] B[vnet_noguide]  3000  L_f 0.1780 L_roll 0.3465 L_phys 0.00007 | val MSE 0.0647 2-step 0.1266 (persistence 0.3295) | 1.04 s/step
+[08:47:24] B[vnet_noguide]  3250  L_f 0.1780 L_roll 0.3422 L_phys 0.00008 | val MSE 0.0638 2-step 0.1237 (persistence 0.3295) | 1.06 s/step
+[08:53:07] B[vnet_noguide]  3500  L_f 0.1799 L_roll 0.3366 L_phys 0.00005 | val MSE 0.0630 2-step 0.1232 (persistence 0.3295) | 1.09 s/step
+[08:58:50] B[vnet_noguide]  3750  L_f 0.1786 L_roll 0.3551 L_phys 0.00009 | val MSE 0.0622 2-step 0.1199 (persistence 0.3295) | 1.10 s/step
+[09:04:37] B[vnet_noguide]  4000  L_f 0.1882 L_roll 0.3460 L_phys 0.00003 | val MSE 0.0620 2-step 0.1197 (persistence 0.3295) | 1.12 s/step
+[09:10:22] B[vnet_noguide]  4250  L_f 0.1785 L_roll 0.3369 L_phys 0.00007 | val MSE 0.0617 2-step 0.1192 (persistence 0.3295) | 1.14 s/step
+[09:15:59] B[vnet_noguide]  4499  L_f 0.1691 L_roll 0.3304 L_phys 0.00005 | val MSE 0.0615 2-step 0.1186 (persistence 0.3295) | 1.15 s/step
+[09:15:59] stage B[vnet_noguide] done in 86.2 min, best val MSE 0.1802
+[09:16:04] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[09:17:07] run runs/era5_64x32_s7b_steps3x: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[09:17:08] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[09:19:28] deterministic rollouts done in 2.3 min
+[09:19:30] eval written to runs/era5_64x32_s7b_steps3x/eval.json
+[09:19:34] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+{
+ "run": "runs/era5_64x32_s7b_steps3x",
+ "p_dependence_mse": {
+  "true_P": 0.05963986615339915,
+  "zero_P": 0.10656608641147614,
+  "shuffled_P": 0.11692480122049649,
+  "persistence": 0.349194457133611
+ },
+ "p_dependence_relative": {
+  "true_P": 1.0,
+  "zero_P": 1.786826384508954,
+  "shuffled_P": 1.9605141453496104,
+  "persistence": 5.855050986121451
+ },
+ "linear_probe_r2_24h_scalar_tendency": {
+  "channels": [
+   "z500",
+   "t850",
+   "q700",
+   "t2m",
+   "msl"
+  ],
+  "state_only": [
+   0.06653839349746704,
+   0.13508695363998413,
+   0.0911257266998291,
+   0.05969017744064331,
+   0.07599544525146484
+  ],
+  "guide_only": [
+   0.37264788150787354,
+   0.4093039035797119,
+   0.28227728605270386,
+   0.24209076166152954,
+   0.34197843074798584
+  ],
+  "state_plus_guide": [
+   0.39484310150146484,
+   0.4547082185745239,
+   0.28804004192352295,
+   0.2598641514778137,
+   0.3590138554573059
+  ],
+  "physics_ops_only": [
+   0.27005261182785034,
+   0.32458430528640747,
+   0.24744313955307007,
+   0.21593844890594482,
+   0.33570122718811035
+  ],
+  "state_plus_physics_ops": [
+   0.2782202363014221,
+   0.34189629554748535,
+   0.2526128888130188,
+   0.2219122052192688,
+   0.34223324060440063
+  ]
+ },
+ "linear_probe_r2_mean": {
+  "state_only": 0.08568733930587769,
+  "guide_only": 0.32965965270996095,
+  "state_plus_guide": 0.3512938737869263,
+  "physics_ops_only": 0.27874394655227663,
+  "state_plus_physics_ops": 0.28737497329711914
+ },
+ "fusion_gates_mean_abs": [
+  0.21193861961364746,
+  0.18735946714878082,
+  0.15590320527553558,
+  0.15514039993286133,
+  0.16991813480854034
+ ],
+ "fusion_gates_max_abs": [
+  0.3510497808456421,
+  0.4281657934188843,
+  0.29698482155799866,
+  0.25019606947898865,
+  0.2670174837112427
+ ]
+}
+PIPELINE_DONE
