@@ -77,7 +77,7 @@ ClimODE 주의: 10년 학습(2006–2015), 2.75 M 매개변수, 저자 프로토
 | 9 | stage13a 구면 neural operator 층(감자 제안 09:28 KST) | `runs/era5_64x32_s13a_sfno/chain_s13a.sh` | 완료 11-05 02:04 KST, 기각(guide 없는 쌍에서는 +) |
 | 10 | stage13b + 스펙트럼 에너지 손실 | `runs/era5_64x32_s13b_sfno_spec/chain_s13b.sh` | 완료 11-05 03:41 KST, RMSE 기각·스펙트럼 개선 |
 | 11 | stage14a 초기 경향 입력 X_t − X_{t−24h}(감자 10:03 KST) | `runs/era5_64x32_s14a_prev/chain_s14a.sh` | 완료 11-05 05:18 KST, 채택 후보 (+2.01…−0.07 %) |
-| 12 | stage14b 초기 증분 nudging e_t = X_t − M(X_{t−24h})(감자 11:56 KST) | `runs/era5_64x32_s14b_nudge/chain_s14b.sh` | 11-05 18:00 |
+| 12 | stage14b 초기 증분 nudging e_t = X_t − M(X_{t−24h})(감자 11:56 KST) | `runs/era5_64x32_s14b_nudge/chain_s14b.sh` | 완료 11-05 07:16 KST, 기각 (α가 ρ̂ 재현, 이득 ≈ 0) |
 | 13 | stage7c step 예산 9000(stage7b가 4500 step에서도 하강 중) | `runs/era5_64x32_s7c_steps6x/chain_s7c.sh` | 11-06 03:00 |
 
 stage12a/12b/12d는 guide 없는 baseline도 같은 절차로 다시 학습한다(절차가 바뀌면 baseline도 바꾼다는 규칙). stage12c는 baseline이 바뀌지 않으므로 stage3의 것을 복사한다. 모든 stage12는 stage3의 guide(`guide.pt`)·정규화기를 재사용하고 Stage A를 생략한다(Stage B만 다름).
