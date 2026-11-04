@@ -62,6 +62,8 @@ def main():
     inits = times[cases]
 
     ds = xr.open_zarr(a.zarr, storage_options={"token": "anon"}, chunks=None)  # lazy, no dask
+    # some stores carry stray whitespace in variable names (Aurora 2022: "geopotential\t")
+    ds = ds.rename({v: v.strip() for v in ds.data_vars if v != v.strip()})
     assert np.allclose(ds.latitude.values, lat) and np.allclose(ds.longitude.values, lon), "grid mismatch"
     have = set(ds.data_vars)
     names = [n for n in names if WB2_SOURCES[n][0] in have and

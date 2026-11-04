@@ -8,6 +8,7 @@
 |---|---|---|---|
 | 1 | 최신 운영·ML 예보(ECMWF HRES, Pangu-Weather, IFS ENS 평균) | WeatherBench2가 64×32로 재격자화해 공개한 예보를 우리 2019 프로토콜(90 초기시각, 24–120 h, 같은 ERA5 정답·WB2 RMSE)로 채점 — `scripts/eval_wb2_forecasts.py` | **완료(아래)** |
 | 2 | WB2 2020 리더보드 전체(GraphCast, Keisler GNN, SphericalCNN, NeuralGCM, FuXi, GenCast 앙상블평균, Pangu, HRES, IFS ENS 평균) | 2020년이 공통 시험연도라 우리 모델·ClimODE를 2020년(88 초기시각 01-01..12-14)으로 다시 채점(`train_eval.py --eval-data … --eval-tag 2020 --max-cases 88`) | **WB2 9개 모델 채점 완료(아래)**; 우리 모델·ClimODE는 대기열 끝(stage7c 뒤, `runs/bench_wb2_2020/chain_bench2020.sh`)에 자동 |
+| 2b | 2025년 모델(Aurora, FGN = WeatherNext 2) | WB2가 64×32로 공개한 연도가 2022뿐이라 2022(88 초기시각 01-02..12-16)로 채점, 우리 모델·ClimODE도 2022로 재채점 | **WB2 6개 모델 채점 완료(아래)**; 우리 모델·ClimODE는 2020 채점 뒤 자동(`runs/bench_wb2_2022/chain_bench2022.sh`) |
 | 3 | 같은 급(5.625°) 최신 논문: ClimaX, FourCastNet(5.625° 재학습), CoDiCast(2024), WeatherODE(2024), ClimPhyDM(2026 워크숍) | 이들은 2006–2015(또는 1979–2015) 학습·2017–2018 시험이고 체크포인트를 공개하지 않음 → 우리 최종 학습식(stage9)을 같은 분할로 한 번 재학습해 논문 표와 직접 비교. 그 전까지는 아래 'ClimODE 기준 지수'로 간접 비교 | stage9 뒤 |
 
 ## 1단계 결과 (2019, 90 초기시각, WB2 면적가중 RMSE)
@@ -70,6 +71,35 @@
 - GenCast는 앙상블 평균이라 결정론 모델보다 긴 lead에서 유리하다(IFS ENS 평균도 같다).
 - 2020 순위(z500 120 h): GenCast 평균 245 < NeuralGCM 249 < GraphCast 257 < FuXi 262 < IFS ENS 평균 263 < Pangu 277 < HRES 288 < SphericalCNN 318 < Keisler 323. 2019에서 본 Pangu·HRES·ENS 평균 값(277/293/266)과 거의 같아 연도 차이는 작다.
 
+## 2b단계 — 2025년 모델 (2022, 88 초기시각, WB2 면적가중 RMSE)
+
+요청: 감자 2026-11-04 22:05 KST — "25-26년도의 모델은 없나요?". WeatherBench2 버킷에서 2025년 모델은 **Aurora**(Microsoft, Nature 2025)와 **FGN**(Google DeepMind, WeatherNext 2, 2025)이 64×32로 올라와 있고, 둘 다 2022년만 있다. ECMWF AIFS(2025 운영) 등 다른 2025–26 모델은 WB2 64×32 예보가 없다. 같은 2022 초기시각으로 GraphCast·Pangu·HRES·IFS ENS 평균도 다시 채점했다. 초기시각은 2022-01-02..12-16 00 UTC 4일 간격(Aurora에 01-01 00 UTC 예보가 없어 01-02 시작), q700 단위는 g/kg.
+
+| 변수 | lead | FGN 평균 (WeatherNext 2, 2025) | Aurora (2025) | GraphCast | Pangu | IFS ENS 평균 | HRES |
+|---|---|---|---|---|---|---|---|
+| z500 | 24 h | 34 | 38 | 33 | 38 | 41 | 42 |
+| z500 | 72 h | 96 | 111 | 111 | 122 | 122 | 125 |
+| z500 | 120 h | 221 | 249 | 250 | 276 | 266 | 290 |
+| t850 | 24 h | 0.50 | 0.52 | 0.35 | 0.41 | 0.58 | 0.58 |
+| t850 | 72 h | 0.68 | 0.76 | 0.69 | 0.79 | 0.89 | 0.92 |
+| t850 | 120 h | 1.14 | 1.28 | 1.28 | 1.43 | 1.38 | 1.53 |
+| q700 | 24 h | 0.29 | 0.30 | 0.26 | 0.29 | 0.35 | 0.36 |
+| q700 | 72 h | 0.44 | 0.48 | 0.47 | 0.53 | 0.56 | 0.59 |
+| q700 | 120 h | 0.62 | 0.70 | 0.69 | 0.78 | 0.76 | 0.85 |
+| t2m | 24 h | 0.65 | 0.67 | 0.34 | 0.37 | 0.67 | 0.70 |
+| t2m | 72 h | 0.74 | 0.80 | 0.58 | 0.67 | 0.85 | 0.87 |
+| t2m | 120 h | 0.99 | 1.11 | 0.98 | 1.13 | 1.13 | 1.22 |
+| msl | 24 h | 44 | 48 | 40 | 46 | 54 | 53 |
+| msl | 72 h | 103 | 116 | 116 | 129 | 132 | 134 |
+| msl | 120 h | 218 | 248 | 251 | 274 | 266 | 290 |
+| u10 | 24 h | 0.39 | 0.42 | 0.38 | 0.43 | 0.53 | 0.53 |
+| u10 | 72 h | 0.79 | 0.88 | 0.88 | 0.96 | 1.02 | 1.07 |
+| u10 | 120 h | 1.43 | 1.61 | 1.65 | 1.80 | 1.73 | 1.94 |
+
+- FGN 평균은 64멤버 앙상블 평균이라 긴 lead에서 유리하다(120 h z500 221, 표에서 가장 낮음).
+- FGN·Aurora의 24 h t850·t2m 오차는 GraphCast보다 크고 HRES와 비슷하다. 운영 분석장(HRES)으로 초기화한 예보를 ERA5 정답으로 채점하면 이렇게 되므로(HRES와 같은 불리함), 짧은 lead 표면 변수 비교에는 쓰지 않는다(초기화 출처는 WB2 메타데이터에 없어 추정).
+- 2022 GraphCast·Pangu·HRES 값은 2020과 거의 같다(z500 120 h 250/276/290 vs 257/277/288).
+
 ## 같은 급(5.625°) 논문 수치와의 간접 비교 — ClimODE 기준 지수
 
 시험연도(논문 2017–2018, 우리 2019)와 초기시각 규약이 달라 RMSE를 직접 비교할 수 없으므로, 각 모델의 RMSE를 **같은 논문·같은 프로토콜의 ClimODE RMSE로 나눈 지수**로 맞춘다(+ = ClimODE보다 좋음). 우리 값은 2019 프로토콜에서 우리가 직접 돌린 ClimODE 대비.
@@ -80,10 +110,25 @@
 | FourCastNet 5.625° (CoDiCast 표) | 5.625°, 2006–2015 | -108.2 % | -57.8 % | -61.9 % | -43.0 % |
 | CoDiCast (2024) | 5.625°, 2006–2015, 5변수 | +3.6 % | +5.7 % | +1.9 % | +1.6 % |
 | WeatherODE (2024) | 5.625°, 1979–2015 1시간 간격, 48변수 | +40.8 % | +32.2 % | +32.9 % | +29.8 % |
+| SDECast (2026, 신경 SDE) | 5.625°, 1979–2015 1시간 간격, 5변수, 시험 2018 | +11.1 % | — | +7.1 % | — |
+| PINN-Cast (2026, Transformer+NODE+물리손실) | 5.625°, 1979–2015, 7레벨, 시험 2017–2018 | — (미보고) | — | +23.2 % | — |
 | **stage7b (우리, 2019)** | 5.625°, 2008–2017, 11변수 | **+11.0 %** | **+16.5 %** | **+10.6 %** | **+22.0 %** |
 
 ClimODE 자체 RMSE: 논문(2017–2018) z500 193.4/478.7, t850 1.55/2.58; 우리 2019 프로토콜 z500 212/518, t850 1.33/2.58. t2m은 우리 프로토콜의 ClimODE t2m이 논문보다 크게 나빠(24 h 1.82 vs 1.40) 지수가 부풀려지므로 표에서 뺐다.
 
-잠정 결론: 같은 급에서 stage7b는 ClimaX·FourCastNet(5.625°)·ClimODE·CoDiCast보다 앞서고, **WeatherODE(1시간 간격·48변수·37년 학습)만 뒤진다**(z500 24 h 지수 +41 % vs 우리 +11 %). WeatherODE와의 차이는 데이터 양(37년·시간 간격)과 입력 변수 수가 커서, step 예산(stage7c)·통합 구조(stage9)·3단계 같은 분할 재학습에서 다시 본다. ClimPhyDM은 수치 표가 없어 제외했다.
+2025–26년 같은 급 논문(5.625°)은 아래와 같다. 수치 표가 있고 ClimODE 열이 같은 표에 있는 것만 위 지수에 넣었다.
+
+| 모델 | 출처 | 학습/시험 | 공개 코드 | 위 표에 넣었나 |
+|---|---|---|---|---|
+| SDECast (신경 SDE, 연속시간 확률예보) | arXiv 2610.03313 (2026-10) | 1979–2015 / 2018, 24 h까지 표 | 언급 없음 | 넣음 (24 h) |
+| PINN-Cast (Transformer + 연속깊이 NODE + 물리손실) | arXiv 2604.27313, ICCS 2026 | 1979–2015 / 2017–2018, 36 h까지 | 언급 없음 | 넣음 (t850 24 h; 표 열 이름이 없어 ClimODE 논문값과 같은 둘째 열을 ClimODE로 봄) |
+| PASSAT (물리 보조·위상 정보) | IJCAI 2025 | 1979–2015 / 2017–2018, 144 h까지 | **있음** (github.com/Yumenomae/PASSAT) | 그림만 있어 못 넣음 → 3단계 직접 재학습 후보 |
+| ClimateLLM (주파수 LLM) | arXiv 2502.11059 (2025) | 2006–2015 / 2017–2018 | 없음 | RMSE가 6 h만 있어 못 넣음(우리는 24 h 간격) |
+| PhyDL-NWP (물리 플러그인) | KDD 2025 | 2008–2018 8:1:1 | 있음 | ClimODE 열이 없어 못 넣음 |
+| FlowCast-ODE (흐름 매칭 + ODE) | arXiv 2509.14775 (2025) | 1°, 1980–2019 / 2021 | 언급 없음 | 1°이고 그림만 있어 못 넣음 |
+
+잠정 결론: 같은 급에서 stage7b는 ClimaX·FourCastNet(5.625°)·ClimODE·CoDiCast보다 앞서고, **WeatherODE(1시간 간격·48변수·37년 학습)만 뒤진다**(z500 24 h 지수 +41 % vs 우리 +11 %). 2026년 SDECast와는 z500 24 h가 비슷하고(+11.1 % vs +11.0 %) t850 24 h는 우리가 앞선다(+10.6 % vs +7.1 %). 2026년 PINN-Cast는 t850 24 h에서 우리보다 앞선다(+23.2 % vs +10.6 %); 다만 36 h까지만 보고했고 37년·7레벨로 학습했다. WeatherODE와의 차이는 데이터 양(37년·시간 간격)과 입력 변수 수가 커서, step 예산(stage7c)·통합 구조(stage9)·3단계 같은 분할 재학습에서 다시 본다. ClimPhyDM은 수치 표가 없어 제외했다.
+
+출처(2025–26): SDECast https://arxiv.org/abs/2610.03313, PINN-Cast https://arxiv.org/abs/2604.27313, PASSAT https://www.ijcai.org/proceedings/2025/0885.pdf, ClimateLLM https://arxiv.org/abs/2502.11059, PhyDL-NWP https://arxiv.org/abs/2505.14555, FlowCast-ODE https://arxiv.org/abs/2509.14775, WB2 Aurora gs://weatherbench2/datasets/aurora/2022-64x32_equiangular_conservative.zarr, FGN gs://weatherbench2/datasets/fgn/2022-64x32_equiangular_conservative_mean.zarr.
 
 출처: ClimODE https://arxiv.org/abs/2404.10024, CoDiCast https://arxiv.org/abs/2409.05975 (표: NODE·ClimaX·FourCastNet·ClimODE·IFS 재현값 포함), WeatherODE https://arxiv.org/abs/2410.06560, ClimPhyDM https://arxiv.org/abs/2608.26907, WeatherBench2 데이터 gs://weatherbench2/datasets/ (hres/pangu/ifs_ens …64x32_equiangular_conservative.zarr).
