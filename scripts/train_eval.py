@@ -119,6 +119,8 @@ class Run:
         self.train = ERA5Pairs(c["data"], "train", self.spec, c["lead"])
         self.calib = ERA5Pairs(c["data"], "calib", self.spec, c["lead"])
         self.test = ERA5Pairs(c["data"], "test", self.spec, c["lead"])
+        if getattr(args, "eval_data", ""):  # external benchmark year (e.g. 2020 for the WeatherBench2 leaderboard)
+            self.test = ERA5Pairs(args.eval_data, "test", self.spec, c["lead"])
         self.graphs = SphereGraphs(self.train.lat, self.train.lon, mesh_splits=c["mesh"])
         self.g = self.graphs.view()
         self.w = self.g.grid_area_weight
@@ -658,6 +660,8 @@ def stage_eval(run: Run):
 
     last = len(test) - 1 - (K - 1) * lead
     cases = list(range(0, last, a.eval_stride))
+    if getattr(a, "max_cases", 0):  # common init times with external forecasts that end earlier in the year
+        cases = cases[: a.max_cases]
     log(f"eval: {len(cases)} init times, leads {[lead * 6 * k for k in range(1, K + 1)]} h, models {list(models)}")
     truth = {k: {} for k in range(1, K + 1)}
     preds = {name: {k: {} for k in range(1, K + 1)} for name in list(models) + ["persistence", "climatology"]}
@@ -775,13 +779,17 @@ def stage_eval(run: Run):
         results["params"]["diffusion"] = n_params(diff.denoiser)
     results["config"] = run.cfg
     results["args"] = vars(a)
-    with open(run.dir / "eval.json", "w") as fh:
+    tag = f"_{a.eval_tag}" if getattr(a, "eval_tag", "") else ""
+    if getattr(a, "eval_data", ""):
+        results["eval_data"] = a.eval_data
+        results["init_times"] = [str(test.times[i].astype("datetime64[ns]")) for i in cases]
+    with open(run.dir / f"eval{tag}.json", "w") as fh:
         json.dump(results, fh, indent=2, default=float)
-    write_markdown(run, results)
-    log(f"eval written to {run.dir / 'eval.json'}")
+    write_markdown(run, results, tag)
+    log(f"eval written to {run.dir / f'eval{tag}.json'}")
 
 
-def write_markdown(run: Run, r: dict):
+def write_markdown(run: Run, r: dict, tag: str = ""):
     lines = [f"# 평가 결과: {run.dir.name}", "",
              f"테스트 기간 {len(run.test.times)} 시점 중 {r['n_cases']}개 초기 시각 (stride {run.args.eval_stride} × 6 h). "
              f"지표: WeatherBench2 면적가중 RMSE (물리 단위)."]
@@ -815,7 +823,7 @@ def write_markdown(run: Run, r: dict):
             lines += ["", "| 변수 | 앙상블평균−결정론 RMS (diffusion) | 〃 (Gaussian) |", "|---|---|---|"]
             for v in run.eval_vars:
                 lines.append(f"| {v} | {b['diffusion'][v]:.4g} | {b['gaussian'][v]:.4g} |")
-    (run.dir / "eval.md").write_text("\n".join(lines) + "\n")
+    (run.dir / f"eval{tag}.md").write_text("\n".join(lines) + "\n")
 
 
 def main():
@@ -925,6 +933,10 @@ def main():
     ap.add_argument("--aux-weight", type=float, default=0.5)
     ap.add_argument("--phys-weight", type=float, default=0.1)
     ap.add_argument("--eval-stride", type=int, default=16, help="init-time stride in 6 h steps")
+    ap.add_argument("--eval-data", default="", help="score on the test split of this npz instead (benchmark year); "
+                    "normaliser, climatology and models stay those of the run")
+    ap.add_argument("--eval-tag", default="", help="write eval_<tag>.json / eval_<tag>.md instead of eval.json")
+    ap.add_argument("--max-cases", type=int, default=0, help="keep only the first N init times (0 = all)")
     ap.add_argument("--max-lead-steps", type=int, default=5)
     ap.add_argument("--n-ens-cases", type=int, default=24)
     ap.add_argument("--members", type=int, default=8)

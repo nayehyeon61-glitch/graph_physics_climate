@@ -135,3 +135,23 @@ def test_stage_b_resume_and_skip(data, tmp_path):
     assert "already finished" in out and (run_dir / "vnet_noguide.pt").stat().st_mtime == mtime
     out = _run(run_dir, data, "b_noguide", *args, "--resume", "0")
     assert "already finished" not in out and "resumed" not in out
+
+
+def test_eval_on_external_year(tmp_path):
+    """--eval-data / --eval-tag / --max-cases: score a trained run on another file's test split (benchmark year)
+    without touching eval.json."""
+    data, other = tmp_path / "synthetic.npz", tmp_path / "other_year.npz"
+    _write_data(data)
+    _write_data(other, seed=1)
+    run_dir = tmp_path / "run_ext"
+    _run(run_dir, data, "a", "--steps", "3", "--val-every", "2")
+    _run(run_dir, data, "b", "--steps", "3", "--val-every", "2")
+    _run(run_dir, data, "eval", "--eval-stride", "4", "--max-lead-steps", "2", "--n-ens-cases", "0")
+    base = json.load(open(run_dir / "eval.json"))
+    _run(run_dir, data, "eval", "--eval-stride", "4", "--max-lead-steps", "2", "--n-ens-cases", "0",
+         "--eval-data", str(other), "--eval-tag", "other", "--max-cases", "2")
+    ext = json.load(open(run_dir / "eval_other.json"))
+    assert ext["n_cases"] == 2 and ext["eval_data"] == str(other) and len(ext["init_times"]) == 2
+    assert (run_dir / "eval_other.md").exists()
+    assert json.load(open(run_dir / "eval.json")) == base  # the run's own evaluation is untouched
+    assert ext["rmse"]["1"]["lie_guided"]["z500"] != base["rmse"]["1"]["lie_guided"]["z500"]
