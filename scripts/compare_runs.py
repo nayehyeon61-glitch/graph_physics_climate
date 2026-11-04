@@ -35,6 +35,12 @@ def get(c: dict, lead: str, var: str):
     return c["ev"]["rmse"].get(lead, {}).get(c["model"], {}).get(var)
 
 
+def pers(c: dict, lead: str, var: str) -> str:
+    """Persistence RMSE stored next to the reference run, or "—" (WeatherBench2 forecast scores carry none)."""
+    x = c["ev"]["rmse"].get(lead, {}).get("persistence", {}).get(var)
+    return "—" if x is None else fmt(x)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("columns", nargs="+", help="label=run_dir:model")
@@ -46,10 +52,14 @@ def main():
     for c in a.columns:
         label, rest = c.split("=", 1)
         run, model = rest.rsplit(":", 1)
-        ev = json.load(open(Path(run) / "eval.json"))
+        # run may name an eval json directly (e.g. runs/x/eval_2020.json for the external-year benchmark)
+        ev_path = Path(run) if run.endswith(".json") else Path(run) / "eval.json"
+        run = str(ev_path.parent)
+        ev = json.load(open(ev_path))
         dg = Path(run) / "diagnose_guide.json"
         cols.append(dict(label=label, run=run, model=model, ev=ev,
-                         dg=json.load(open(dg)) if (dg.exists() and model == "lie_guided") else None))
+                         dg=json.load(open(dg)) if (dg.exists() and model == "lie_guided" and ev_path.name == "eval.json")
+                         else None))
     ref = cols[a.ref]
     leads = sorted(ref["ev"]["rmse"], key=int)
     # rows: the 11 base variables first, then any extra state channel of the reference run (stage10 feature-matrix
@@ -57,7 +67,7 @@ def main():
     ref_vars = list(ref["ev"]["rmse"][leads[0]][ref["model"]])
     rows = [v for v in VARS if v in ref_vars] + [v for v in ref_vars if v not in VARS]
     L = [f"# {a.title}\n", "열: " + "; ".join(f"**{c['label']}** = `{c['run']}` ({c['model']})" for c in cols) + "\n",
-         f"2019년 테스트, 초기 시각 {ref['ev']['n_cases']}개, WeatherBench2 면적가중 RMSE(물리 단위). "
+         f"{str(ref['ev'].get('init_times', ['2019'])[0])[:4]}년 테스트, 초기 시각 {ref['ev']['n_cases']}개, WeatherBench2 면적가중 RMSE(물리 단위). "
          f"괄호 = 기준열 **{ref['label']}**의 개선율 = 100·(1 − 기준열/해당 열): **+ = 기준열이 그 열보다 좋음, − = 나쁨**.\n"]
     for l in leads:
         L.append(f"## Lead {ref['ev']['lead_hours'][l]} h\n")
@@ -73,7 +83,7 @@ def main():
                     cells.append("발산")
                 else:
                     cells.append(fmt(x) if i == a.ref else f"{fmt(x)} ({impr(get(ref, l, v), x)})")
-            L.append(f"| {v} | " + " | ".join(cells) + f" | {fmt(ref['ev']['rmse'][l]['persistence'][v])} |")
+            L.append(f"| {v} | " + " | ".join(cells) + f" | {pers(ref, l, v)} |")
         L.append("")
     L.append(f"## 요약: 기준열 **{ref['label']}**의 핵심 변수 개선율 (+ = 기준열이 비교 대상보다 좋음)\n")
     L.append("| lead | 비교 대상 | " + " | ".join(KEY_VARS) + " |")

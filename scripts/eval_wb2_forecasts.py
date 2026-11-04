@@ -74,25 +74,40 @@ def main():
     t0 = time.time()
     res = {"n_cases": len(cases), "lead_hours": {}, "rmse": {}, "finite": {a.name: {}}, "source": a.zarr,
            "init_times": [str(t) for t in inits], "notes": __doc__.split("Caveats")[1].strip()}
+    fcs, trs = {}, {}
     for k in range(1, K + 1):
         td = np.timedelta64(6 * lead * k, "h")
         if not np.issubdtype(ds.prediction_timedelta.dtype, np.timedelta64):  # stored as plain integer hours
             assert "hour" in str(ds.prediction_timedelta.attrs.get("units", "hours")), ds.prediction_timedelta.attrs
             td = 6 * lead * k
         idx = [i + k * lead for i in cases]
-        fc, tr = {}, {}
+        fcs[k], trs[k] = {}, {}
         for n in names:
             var, level = WB2_SOURCES[n]
             da = ds[var].sel(time=inits, prediction_timedelta=td)
             if level is not None:
                 da = da.sel(level=level)
-            fc[n] = da.transpose("time", "latitude", "longitude").values.astype(np.float32)
-            tr[n] = z[f"{a.split}/{n}"][idx].astype(np.float32)
+            fcs[k][n] = da.transpose("time", "latitude", "longitude").values.astype(np.float32)
+            trs[k][n] = z[f"{a.split}/{n}"][idx].astype(np.float32)
+    # init times with a missing (NaN) forecast at any lead or variable, e.g. Keisler 2020-09-25
+    ok = np.ones(len(cases), bool)
+    for k in fcs:
+        for v in fcs[k].values():
+            ok &= np.isfinite(v).reshape(len(cases), -1).all(1)
+    if not ok.all():
+        dropped = [str(t)[:13] for t in inits[~ok]]
+        print(f"dropping {len(dropped)} init times with missing forecasts: {dropped}", flush=True)
+        res["dropped_init_times"] = dropped
+        res["n_cases"] = int(ok.sum())
+        res["init_times"] = [str(t) for t in inits[ok]]
+    for k in fcs:
+        idx = np.asarray([i + k * lead for i in cases])[ok]
+        fc = {n: v[ok] for n, v in fcs[k].items()}
+        tr = {n: v[ok] for n, v in trs[k].items()}
         res["lead_hours"][k] = 6 * lead * k
         res["finite"][a.name][k] = bool(all(np.isfinite(v).all() for v in fc.values()))
         res["rmse"][k] = {a.name: wb2_scores(fc, tr, lat, lon, times[idx])["rmse"]}
-        print(f"lead {6 * lead * k} h done ({time.time() - t0:.0f} s): z500 {res['rmse'][k][a.name].get('z500', float('nan')):.1f}",
-              flush=True)
+        print(f"lead {6 * lead * k} h: z500 {res['rmse'][k][a.name].get('z500', float('nan')):.1f}", flush=True)
     res["seconds"] = time.time() - t0
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
