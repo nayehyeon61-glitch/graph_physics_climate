@@ -72,9 +72,9 @@ ClimODE 주의: 10년 학습(2006–2015), 2.75 M 매개변수, 저자 프로토
 | 4 | stage7b 4500 step | `runs/era5_64x32_s7b_steps3x/chain_s7b.sh`(stage12b 뒤로 이동) | 11-04 23:00 |
 | 5 | stage10b 손실 가중 | `runs/era5_64x32_s10b_fcn21_w/chain_s10b.sh` | 11-05 01:30 |
 | 6 | stage11b 심플리셜 | `runs/era5_64x32_s11b_simp/chain_s11b.sh`(stage11a 결과 후 생성) | 11-05 04:30 |
-| 7 | stage12c guide 미세조정 | `runs/era5_64x32_s12c_guideft/chain_s12c.sh` | 11-05 06:10 |
-| 8 | stage12d rollout 커리큘럼 | `runs/era5_64x32_s12d_roll3/chain_s12d.sh` | 11-05 09:15 |
-| 9 | stage13a 구면 neural operator 층(감자 제안 09:28 KST) | `runs/era5_64x32_s13a_sfno/chain_s13a.sh` | 11-05 12:30 |
+| 7 | stage12c guide 미세조정 | `runs/era5_64x32_s12c_guideft/chain_s12c.sh` | 완료 11-04 22:41 KST, 기각 |
+| 8 | stage12d rollout 커리큘럼 | `runs/era5_64x32_s12d_roll3/chain_s12d.sh` | 완료 11-05 00:33 KST, 조건부 채택 후보 |
+| 9 | stage13a 구면 neural operator 층(감자 제안 09:28 KST) | `runs/era5_64x32_s13a_sfno/chain_s13a.sh` | 완료 11-05 02:04 KST, 기각(guide 없는 쌍에서는 +) |
 | 10 | stage13b + 스펙트럼 에너지 손실 | `runs/era5_64x32_s13b_sfno_spec/chain_s13b.sh` | 11-05 15:45 |
 | 11 | stage14a 초기 경향 입력 X_t − X_{t−24h}(감자 10:03 KST) | `runs/era5_64x32_s14a_prev/chain_s14a.sh` | 11-05 18:45 |
 | 12 | stage14b 초기 증분 nudging e_t = X_t − M(X_{t−24h})(감자 11:56 KST) | `runs/era5_64x32_s14b_nudge/chain_s14b.sh` | 11-05 18:00 |
