@@ -97,3 +97,32 @@ def gauge_equivariance_report(fn: Callable[[Field, Field, GraphView], Dict[str, 
         theta = tg if lvl == "grid" else tm[int(lvl)]
         rep[k] = relative_error(out1[k], f0.gauge(theta))
     return rep
+
+
+SPECTRAL_BANDS: Tuple[Tuple[int, int], ...] = ((1, 3), (4, 7), (8, 15), (16, 32))
+
+
+def zonal_band_power(f: Field, H: int, W: int, lat_deg: torch.Tensor,
+                     bands: Tuple[Tuple[int, int], ...] = SPECTRAL_BANDS) -> torch.Tensor:
+    """Area-weighted (cos phi) zonal power per channel and wavenumber band: [C_s + 2 C_v, n_bands].
+
+    Power = |rfft along longitude|^2 averaged over latitude (cos-weighted) and batch, then over the band's
+    wavenumbers.  Vector fields contribute their east and north components separately (kinetic-energy spectrum).
+    """
+    B = f.s.shape[0]
+    chans = [f.s] + ([f.v.real, f.v.imag] if f.v.shape[-1] > 0 else [])
+    img = torch.cat(chans, -1).view(B, H, W, -1).permute(0, 3, 1, 2)  # [B, C, H, W]
+    w = torch.cos(torch.deg2rad(lat_deg.to(img.dtype)))
+    w = (w / w.sum())[None, None, :, None]
+    p = (torch.fft.rfft(img, dim=-1).abs() ** 2 * w).sum(2).mean(0)  # [C, W//2 + 1]
+    kmax = p.shape[1] - 1  # bands beyond the zonal Nyquist wavenumber (coarse test grids) are dropped
+    return torch.stack([p[:, a:min(b, kmax) + 1].mean(1) for a, b in bands if a <= kmax], 1)
+
+
+def spectral_energy_loss(pred: Field, target: Field, H: int, W: int, lat_deg: torch.Tensor,
+                         bands: Tuple[Tuple[int, int], ...] = SPECTRAL_BANDS, eps: float = 1e-8) -> torch.Tensor:
+    """stage13b 'energy continuity': mean squared log-ratio of the forecast / truth zonal power per channel and band
+    (0 when the forecast carries the observed energy in every band; penalises both damping and spurious growth)."""
+    pp = zonal_band_power(pred, H, W, lat_deg, bands)
+    pt = zonal_band_power(target, H, W, lat_deg, bands)
+    return (torch.log((pp + eps) / (pt + eps)) ** 2).mean()

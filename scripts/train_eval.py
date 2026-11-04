@@ -39,7 +39,7 @@ from gpclimate.models.lie_physical_gnn import GuideConfig  # noqa: E402
 from gpclimate.nn.primitive2d import DEFAULT_TERMS, resolved_fraction  # noqa: E402
 from gpclimate.nn.so2 import Field  # noqa: E402
 from gpclimate.training.losses import (field_mse, global_tendency_consistency, perturb, random_gauges,  # noqa: E402
-                                       sample_sigma)
+                                       sample_sigma, spectral_energy_loss)
 from gpclimate.training.metrics import wb2_scores  # noqa: E402
 
 
@@ -100,7 +100,8 @@ class Run:
                                                       "pigt_layers", "pigt_ops", "closure_tend", "resolved_terms",
                                                       "resolved_coef", "integrator", "ode_steps", "ode_solver",
                                                       "ode_physics", "curvature_ops", "loss_focus",
-                                                      "loss_focus_weight", "simplicial")}
+                                                      "loss_focus_weight", "simplicial", "neural_op", "no_hidden",
+                                                      "no_layers", "no_modes")}
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         # stage10: the state feature matrix is a named spec stored in config.json (older runs: base11)
@@ -142,7 +143,9 @@ class Run:
                                 fusion=c.get("fusion", "gated"), pigt_layers=int(c.get("pigt_layers", 2)),
                                 pigt_ops=bool(c.get("pigt_ops", True)), integrator=c.get("integrator", "delta"),
                                 ode_steps=int(c.get("ode_steps", 4)), ode_solver=c.get("ode_solver", "euler"),
-                                ode_physics=bool(c.get("ode_physics", False)))
+                                ode_physics=bool(c.get("ode_physics", False)),
+                                neural_op=c.get("neural_op", "") or "", no_hidden=int(c.get("no_hidden", 16)),
+                                no_layers=int(c.get("no_layers", 2)), no_modes=tuple(c.get("no_modes") or (16, 32)))
         self.diff_cfg = DiffusionConfig(cs=c["diff_cs"], cv=c["diff_cv"], depth=c["diff_depth"], n_basis=c["n_basis"],
                                         hidden=c["hidden"])
 
@@ -363,6 +366,8 @@ def stage_b(run: Run, use_guide: bool):
         return Field(f.s / model.delta_scale_s, f.v / model.delta_scale_v)
 
     lam_pde = float(getattr(a, "pde_weight", 0.0))
+    lam_spec = float(getattr(a, "spec_energy_weight", 0.0) or 0.0)  # stage13b: spectral energy continuity
+    grid_hw, grid_lat = g.extras["grid_hw"], g.extras["grid_lat"]
     use_pde = lam_pde > 0 and use_guide and model.guide.closure_out is not None
     w_m = torch.ones(g.n_mesh[0])
 
@@ -381,7 +386,10 @@ def stage_b(run: Run, use_guide: bool):
     log(f"stage B[{name}]: vnet params {n_params(model.vnet)}, steps {a.steps}, batch {a.batch}, "
         f"rollout steps {K} from step {k_start} (weight {lam})" + (f", PDE residual weight {lam_pde}" if use_pde else "")
         + (f", rollout schedule {sched}" if sched else "") + (f", EMA decay {ema_decay}" if ema_model is not None else "")
-        + (f", guide fine-tuning lr {guide_lr} ({n_params(model.guide)} params)" if guide_lr > 0 else ""))
+        + (f", guide fine-tuning lr {guide_lr} ({n_params(model.guide)} params)" if guide_lr > 0 else "")
+        + (f", spectral energy loss weight {lam_spec}" if lam_spec > 0 else "")
+        + (f", neural operator {model.vnet.cfg.neural_op} ({n_params(model.vnet.cont_op)} params)"
+           if model.vnet.cont_op is not None else ""))
     if model.vnet.cfg.integrator == "ode":  # stage S8
         vc = model.vnet.cfg
         log(f"stage B[{name}]: graph neural ODE dynamics, {vc.ode_steps} sub-steps of {6 * lead // vc.ode_steps} h, "
@@ -399,10 +407,13 @@ def stage_b(run: Run, use_guide: bool):
         l_phys = global_tendency_consistency(d.s * model.delta_scale_s, xs[1].s - xs[0].s, w)
         l_pde = pde_residual(xs[0], f, cs[0]) if use_pde else torch.zeros(())
         l_roll = torch.zeros(())
+        l_spec = spectral_energy_loss(f, xs[1], *grid_hw, grid_lat) if lam_spec > 0 else torch.zeros(())
         for k in range(2, k_now + 1):  # autoregressive steps; physics features recomputed from the forecast
             f, _ = model(f, cs[k - 1], g)
             l_roll = l_roll + field_mse(scaled(f), scaled(xs[k]), w, run.loss_w)
-        loss = l_f + a.phys_weight * l_phys + lam * l_roll + lam_pde * l_pde
+            if lam_spec > 0:
+                l_spec = l_spec + spectral_energy_loss(f, xs[k], *grid_hw, grid_lat)
+        loss = l_f + a.phys_weight * l_phys + lam * l_roll + lam_pde * l_pde + lam_spec * l_spec
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(params, 1.0)
@@ -411,7 +422,7 @@ def stage_b(run: Run, use_guide: bool):
             ema_update(step)
         if step % 25 == 0:
             run.jlog(name, {"step": step, "l_f": float(l_f), "l_phys": float(l_phys), "l_roll": float(l_roll),
-                            "l_pde": float(l_pde), "k": k_now, "t": time.time() - t0})
+                            "l_pde": float(l_pde), "l_spec": float(l_spec), "k": k_now, "t": time.time() - t0})
         if step % a.val_every == 0 or step == a.steps - 1:
             model.eval()
             vm = ema_model if ema_model is not None else model  # validated / saved weights
@@ -781,6 +792,13 @@ def main():
                          "--ode-steps fixed sub-steps (stored in config.json)")
     ap.add_argument("--ode-steps", type=int, default=4)
     ap.add_argument("--ode-solver", default="euler", choices=["euler", "heun"])
+    ap.add_argument("--neural-op", default="", choices=["", "fft", "sht"],
+                    help="stage13: continuous neural-operator layer on the grid after the mesh V-Net ('' = off)")
+    ap.add_argument("--no-hidden", type=int, default=16, help="stage13: neural operator hidden channels")
+    ap.add_argument("--no-layers", type=int, default=2, help="stage13: number of FNO blocks")
+    ap.add_argument("--no-modes", type=int, nargs=2, default=[16, 32], help="stage13: kept modes (lat, lon)")
+    ap.add_argument("--spec-energy-weight", type=float, default=0.0,
+                    help="stage13b: Stage B weight of the zonal spectral energy loss (0 = off)")
     ap.add_argument("--ode-physics", type=int, default=0, choices=[0, 1],
                     help="stage S8: add the frozen guide's 6 h tendency as the known drift of the ODE")
     ap.add_argument("--perturb-model", default=None,

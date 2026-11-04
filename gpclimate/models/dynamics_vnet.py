@@ -53,6 +53,12 @@ class VNetConfig:
     ode_steps: int = 4  # sub-steps per lead (4 x 6 h for a 24 h lead)
     ode_solver: str = "euler"  # "euler" | "heun" (Heun = 2 evaluations per sub-step)
     ode_physics: bool = False
+    # stage13: continuous neural-operator layer on the grid after the mesh V-Net ("" = off, "fft" = Fourier
+    # neural operator, "sht" = spherical neural operator via torch_harmonics); residual on the delta, zero-initialised
+    neural_op: str = ""
+    no_hidden: int = 16
+    no_layers: int = 2
+    no_modes: Tuple[int, int] = (16, 32)
 
 
 class DynamicsVNet(nn.Module):
@@ -87,6 +93,11 @@ class DynamicsVNet(nn.Module):
         # graph-to-grid head; receiver also sees the grid embedding of X_t (local detail skip)
         self.head_dec = GaugeTransfer(cs, cv, cs, cv, nb, hd, extra_cs=cs, extra_cv=cv)
         self.head_out = EqLinear(cs, cv, spec.n_s, spec.n_v)
+        self.cont_op = None
+        if cfg.neural_op:
+            from gpclimate.nn.neural_operator import ContinuousOperatorBlock
+            self.cont_op = ContinuousOperatorBlock(spec.n_s, spec.n_v, spec.n_cond_s, spec.n_cond_v, cfg.no_hidden,
+                                                   cfg.no_layers, tuple(cfg.no_modes), cfg.neural_op)
         with torch.no_grad():  # start from persistence (delta = 0)
             self.head_out.lin_s.weight.zero_()
             self.head_out.lin_s.bias.zero_()
@@ -133,7 +144,11 @@ class DynamicsVNet(nn.Module):
         F1u = self._fuse(3, H1u, physics, "P1u", g.attn_edges[1], O[1])
         H0u = self.gnn[4](self.merge0(self.up10(F1u, g.up[0]), H0), g.mesh_edges[0])
         F0u = self._fuse(4, H0u, physics, "P0u", g.attn_edges[0], O[0])
-        return self.head_out(self.head_dec(F0u, g.mesh2grid, extra=grid_emb))
+        out = self.head_out(self.head_dec(F0u, g.mesh2grid, extra=grid_emb))
+        if self.cont_op is not None:  # stage13: Lie guide -> discrete mesh GNN -> continuous operator on the grid
+            H, W = g.extras["grid_hw"]
+            out = out + self.cont_op(x, out, H, W, g.extras["grid_lat"], g.extras.get("grid_gauge"))
+        return out
 
     def attention_mass(self) -> Optional[Dict[str, List[Optional[List[float]]]]]:
         """PIGT only: attention mass of the dynamics stream per level (P0,P1,P2,P1u,P0u), layer and source."""

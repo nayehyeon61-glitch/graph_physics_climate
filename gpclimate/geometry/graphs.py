@@ -312,7 +312,10 @@ class SphereGraphs:
         v.down = [e.gauge_transformed(tm[l], tm[l + 1]) for l, e in enumerate(self.down)]
         v.up = [e.gauge_transformed(tm[l + 1], tm[l]) for l, e in enumerate(self.up)]
         v.extras = {"grid2mesh_lin": self.grid2mesh_lin.gauge_transformed(tg, tm[0]),
-                    "complexes": [cx.gauge_transformed(tm[l]) for l, cx in enumerate(self.complexes)]}
+                    "complexes": [cx.gauge_transformed(tm[l]) for l, cx in enumerate(self.complexes)],
+                    "grid_hw": (self.n_lat, self.n_lon),
+                    "grid_lat": torch.as_tensor(self.lat, dtype=torch.float32),
+                    "grid_gauge": tg.to(torch.float32)}
         return v
 
     def view(self, device=None) -> "GraphView":
@@ -340,7 +343,11 @@ class GraphView:
     def from_graphs(cls, g: SphereGraphs) -> "GraphView":
         return cls(g.grid2mesh, g.mesh2grid, list(g.mesh_edges), list(g.attn_edges), list(g.down), list(g.up),
                    g.grid.n, [m.n for m in g.mesh], g.grid_area_weight, list(g.mesh_sinlat),
-                   {"grid2mesh_lin": g.grid2mesh_lin, "complexes": list(g.complexes)})
+                   {"grid2mesh_lin": g.grid2mesh_lin, "complexes": list(g.complexes),
+                    # stage13: the grid-space neural operator needs the lat-lon layout (row-major lat-slow nodes)
+                    "grid_hw": (g.n_lat, g.n_lon), "grid_lat": torch.as_tensor(g.lat, dtype=torch.float32),
+                    # grid frame angle w.r.t. the canonical (east, north) frame: 0 unless gauge-transformed
+                    "grid_gauge": torch.zeros(g.grid.n)})
 
     def to(self, device) -> "GraphView":
         return GraphView(self.grid2mesh.to(device), self.mesh2grid.to(device),
