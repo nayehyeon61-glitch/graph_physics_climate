@@ -1,0 +1,5 @@
+[11:02:11] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[11:02:27] run runs/era5_64x32_s11b_simp: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[11:02:28] stage A: forecast-state perturbation from runs/era5_64x32_physops_roll/vnet_noguide.pt with p=0.3
+[11:02:28] stage A: guide params 288028, steps 1000, batch 4
+[11:02:35] A     0  L_rec 1.9121 L_aux 0.4996 L_tend 2.1735 L_clos 0.0000 | val rec 1.9140 aux 0.4837 tend 2.1509 clos 0.0000 (resolved only 0.0000) | 7.33 s/step
