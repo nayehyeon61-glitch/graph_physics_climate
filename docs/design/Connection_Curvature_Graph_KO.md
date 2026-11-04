@@ -103,3 +103,10 @@ stage11b가 "확장적 연결"의 본체다. 등변성은 간선·면 특징이 
 ### stage11b 실험 계획
 
 stage11a 결과에 따라 기준을 정한다: stage11a가 stage3보다 좋으면 stage11b = stage11a + `simplicial=2`(비교 대상 stage11a), 아니면 stage11b = stage3 + `simplicial=2`(curvature_ops=0, 비교 대상 stage3). 나머지는 stage3 recipe(A 1000 / B 1500, 2016–2017, stage3 정규화기·guide 없음 V-Net 재사용). run `runs/era5_64x32_s11b_simp`, 체인은 stage10b 뒤. 채택 기준은 stage11a와 같다(11변수 평균 RMSE가 5 lead 중 3 이상에서 기준보다 낮고 P-의존도 유지).
+
+## 8. stage11a 결과와 stage11b 실행 결정 (2026-11-04 10:00 KST)
+
+stage11a(접속·곡률 연산자 21+9채널을 guide 입력에 추가, 그 외 stage3과 동일)는 2019년 90개 초기시각에서 stage3 대비 11변수 평균 **+1.52 / +0.91 / +0.38 / −0.24 / −0.42 %**(24/48/72/96/120 h; + = 개선, 24–72 h는 11변수 중 10개 개선)였다(`reports/compare_stage11a.md`). guide의 기여(guide 없는 같은 V-Net 대비)는 stage3의 +1.40/+1.32/+1.18/+1.06/+0.69 %에서 **+2.91/+2.22/+1.56/+0.83/+0.27 %**로 단기에서 두 배가 되었고, P=0 열화는 +90 %(stage3 +102 %)로 비슷하며, 비용 증가는 Stage A +1 %, Stage B 0이다. 장기(96–120 h)에서 0.2–0.4 % 뒤지는 것은 stage4(PIGT)와 같은 패턴이다 — 접속·곡률 정보는 초기 발달(와도·변형·비지균 성분)을 잘 잡지만 장기 rollout의 평활화는 바꾸지 못한다. 판정 **채택 후보**(stage9 통합: PIGT 융합 + 곡률 연산자 guide + stage5c Noise 제약).
+
+따라서 stage11b(심플리셜 블록, 7절)는 **stage11a를 기준**으로 실행한다: config = stage11a + `simplicial=2`, guide는 Stage A부터 재학습(블록이 guide 안에 있음; 섭동 모델 = stage3의 guide 없는 V-Net), Stage B는 stage3 학습식, guide 없는 V-Net은 stage3의 것을 재사용(V-Net은 바뀌지 않음). 체인 `runs/era5_64x32_s11b_simp/chain_s11b.sh`(stage10b 뒤). 가설이 맞으면 11변수 평균이 stage11a보다 24–72 h에서 더 오르고 P=0 열화가 유지되어야 한다.
+
