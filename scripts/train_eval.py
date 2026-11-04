@@ -21,6 +21,7 @@ import json
 import math
 import sys
 import time
+from typing import Optional
 from pathlib import Path
 
 import numpy as np
@@ -101,7 +102,7 @@ class Run:
                                                       "resolved_coef", "integrator", "ode_steps", "ode_solver",
                                                       "ode_physics", "curvature_ops", "loss_focus",
                                                       "loss_focus_weight", "simplicial", "neural_op", "no_hidden",
-                                                      "no_layers", "no_modes")}
+                                                      "no_layers", "no_modes", "prev_state")}
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         # stage10: the state feature matrix is a named spec stored in config.json (older runs: base11)
@@ -145,7 +146,9 @@ class Run:
                                 ode_steps=int(c.get("ode_steps", 4)), ode_solver=c.get("ode_solver", "euler"),
                                 ode_physics=bool(c.get("ode_physics", False)),
                                 neural_op=c.get("neural_op", "") or "", no_hidden=int(c.get("no_hidden", 16)),
-                                no_layers=int(c.get("no_layers", 2)), no_modes=tuple(c.get("no_modes") or (16, 32)))
+                                no_layers=int(c.get("no_layers", 2)), no_modes=tuple(c.get("no_modes") or (16, 32)),
+                                prev_state=bool(c.get("prev_state", False)))
+        self.use_prev = bool(c.get("prev_state", False))  # stage14: V-Net input includes X_t - X_{t-lead}
         self.diff_cfg = DiffusionConfig(cs=c["diff_cs"], cv=c["diff_cv"], depth=c["diff_depth"], n_basis=c["n_basis"],
                                         hidden=c["hidden"])
 
@@ -160,6 +163,10 @@ class Run:
 
     def cond_at(self, ds: ERA5Pairs, idx):
         return self.norm.cond(ds.cond_field(torch.as_tensor(idx, dtype=torch.long)))
+
+    def prev(self, ds: ERA5Pairs, idx):
+        """stage14: normalised state one lead before ``idx`` (None when the run does not use it)."""
+        return self.norm.state(ds.prev_state(idx)) if self.use_prev else None
 
     # ---------------------------------------------------------------- models / checkpoints
     def forecaster(self, use_guide: bool) -> LieGuidedForecaster:
@@ -398,18 +405,21 @@ def stage_b(run: Run, use_guide: bool):
         for pg in opt.param_groups:
             pg["lr"] = cosine_lr(step, a.steps, pg.get("base_lr", a.lr))
         k_now = rollout_steps_at(step)
-        idx = rng.integers(0, len(run.train) - (k_now - 1) * lead, a.batch)
+        idx = rng.integers(lead if run.use_prev else 0, len(run.train) - (k_now - 1) * lead, a.batch)
         states, conds = run.train.sequence(idx, k_now)
         xs = [run.norm.state(x) for x in states]
         cs = [run.norm.cond(c) for c in conds]
-        f, d = model(xs[0], cs[0], g)
+        x_prev = run.prev(run.train, idx)
+        f, d = model(xs[0], cs[0], g, prev=x_prev)
+        x_prev = xs[0]
         l_f = field_mse(scaled(f), scaled(xs[1]), w, run.loss_w)  # == delta MSE of the one-step target
         l_phys = global_tendency_consistency(d.s * model.delta_scale_s, xs[1].s - xs[0].s, w)
         l_pde = pde_residual(xs[0], f, cs[0]) if use_pde else torch.zeros(())
         l_roll = torch.zeros(())
         l_spec = spectral_energy_loss(f, xs[1], *grid_hw, grid_lat) if lam_spec > 0 else torch.zeros(())
         for k in range(2, k_now + 1):  # autoregressive steps; physics features recomputed from the forecast
-            f, _ = model(f, cs[k - 1], g)
+            f_new, _ = model(f, cs[k - 1], g, prev=x_prev)
+            x_prev, f = f, f_new
             l_roll = l_roll + field_mse(scaled(f), scaled(xs[k]), w, run.loss_w)
             if lam_spec > 0:
                 l_spec = l_spec + spectral_energy_loss(f, xs[k], *grid_hw, grid_lat)
@@ -430,13 +440,14 @@ def stage_b(run: Run, use_guide: bool):
                 tot, tot2 = 0.0, 0.0
                 for i in range(0, len(val_idx), 8):
                     x0n, x1n, cn, _ = run.prep(run.calib, val_idx[i:i + 8])
-                    fc, _ = vm(x0n, cn, g)
+                    fc, _ = vm(x0n, cn, g, prev=run.prev(run.calib, val_idx[i:i + 8]))
                     tot += float(field_mse(fc, x1n, w)) * len(val_idx[i:i + 8])
                 for i in range(0, len(val_idx2), 8):
                     states, conds = run.calib.sequence(val_idx2[i:i + 8], 2)
-                    fc = run.norm.state(states[0])
+                    fc, pv = run.norm.state(states[0]), run.prev(run.calib, val_idx2[i:i + 8])
                     for k in range(2):
-                        fc, _ = vm(fc, run.norm.cond(conds[k]), g)
+                        fc_new, _ = vm(fc, run.norm.cond(conds[k]), g, prev=pv)
+                        pv, fc = fc, fc_new
                     tot2 += float(field_mse(fc, run.norm.state(states[2]), w)) * len(val_idx2[i:i + 8])
                 v_mse, v_mse2 = tot / len(val_idx), tot2 / len(val_idx2)
                 x0n, x1n, cn, _ = run.prep(run.calib, val_idx[:8])
@@ -476,7 +487,7 @@ def stage_c(run: Run):
         rs, rv = [], []
         for i in range(0, len(idx), 8):
             x0n, x1n, cn, _ = run.prep(run.calib, idx[i:i + 8])
-            xbar, _ = model(x0n, cn, g)
+            xbar, _ = model(x0n, cn, g, prev=run.prev(run.calib, idx[i:i + 8]))
             rs.append(x1n.s - xbar.s)
             rv.append(x1n.v - xbar.v)
         rs, rv = torch.cat(rs), torch.cat(rv)
@@ -488,10 +499,10 @@ def stage_c(run: Run):
             f"feas weight {a.noise_feas_weight}, mean constraint weight {a.noise_mean_weight} every "
             f"{a.noise_mean_every} steps ({a.noise_mean_members} members x {a.noise_mean_steps} sampling steps)")
 
-    def context(x0n, cn):
+    def context(x0n, cn, prev=None):
         with torch.no_grad():
             P = model.physics(x0n, cn, g)
-            xbar, _ = model(x0n, cn, g)
+            xbar, _ = model(x0n, cn, g, prev=prev)
         return xbar, {"xbar": xbar, "x": x0n, "cond": cn, "P0u": P["P0u"]}
 
     opt = torch.optim.Adam(diff.denoiser.parameters(), lr=a.lr)
@@ -501,7 +512,7 @@ def stage_c(run: Run):
             pg["lr"] = cosine_lr(step, a.steps, a.lr)
         idx = rng.integers(0, len(run.calib), a.batch)
         x0n, x1n, cn, _ = run.prep(run.calib, idx)
-        xbar, ctx = context(x0n, cn)
+        xbar, ctx = context(x0n, cn, run.prev(run.calib, idx))
         ls = diff.losses(diff.to_residual(x1n, xbar), ctx, g, w)
         loss = ls["dsm"]
         if diff.project is not None:  # stage S5c: L_DSM + lambda_feas L_feas + lambda_mean L_mean
@@ -540,7 +551,7 @@ class PhysicsOnlyForecaster(torch.nn.Module):
         self.base = base
         self.guide, self.vnet = base.guide, base.vnet
 
-    def forward(self, state: Field, cond: Field, g):
+    def forward(self, state: Field, cond: Field, g, prev: Optional[Field] = None):  # prev unused (no V-Net)
         f = self.base.physics_only(state, cond, g)
         return f, Field((f.s - state.s) / self.base.delta_scale_s, (f.v - state.v) / self.base.delta_scale_v)
 
@@ -585,6 +596,7 @@ def stage_eval(run: Run):
         for i in cases:
             x0n, _, _, _ = run.prep(test, [i])
             states = {name: x0n for name in models}
+            prevs = {name: run.prev(test, [i]) for name in models}  # stage14 (first init time: zero change)
             for k in range(1, K + 1):
                 j = i + (k - 1) * lead
                 cn = run.cond_at(test, [j])
@@ -594,7 +606,8 @@ def stage_eval(run: Run):
                 add(preds["persistence"], k, x0n)
                 add(preds["climatology"], k, clim_f)
                 for name, mdl in models.items():
-                    states[name], _ = mdl(states[name], cn, g)
+                    new, _ = mdl(states[name], cn, g, prev=prevs[name])
+                    prevs[name], states[name] = states[name], new
                     add(preds[name], k, states[name])
     t_det = time.time() - t0
     log(f"deterministic rollouts done in {t_det / 60:.1f} min")
@@ -626,7 +639,7 @@ def stage_eval(run: Run):
             for i in ens_cases:
                 x0n, x1n, cn, _ = run.prep(test, [i])
                 P = mdl.physics(x0n, cn, g)
-                xbar, _ = mdl(x0n, cn, g)
+                xbar, _ = mdl(x0n, cn, g, prev=run.prev(test, [i]))
                 ctx = {"xbar": xbar, "x": x0n, "cond": cn, "P0u": P["P0u"]}
                 res = diff.sample(ctx, g, a.members, a.sample_steps, seed=int(i))
                 raw = diff.assemble(xbar, res, run.w, project=False)
@@ -792,6 +805,8 @@ def main():
                          "--ode-steps fixed sub-steps (stored in config.json)")
     ap.add_argument("--ode-steps", type=int, default=4)
     ap.add_argument("--ode-solver", default="euler", choices=["euler", "heun"])
+    ap.add_argument("--prev-state", type=int, default=0, choices=[0, 1],
+                    help="stage14: V-Net also sees the observed change over the previous lead (X_t - X_{t-lead})")
     ap.add_argument("--neural-op", default="", choices=["", "fft", "sht"],
                     help="stage13: continuous neural-operator layer on the grid after the mesh V-Net ('' = off)")
     ap.add_argument("--no-hidden", type=int, default=16, help="stage13: neural operator hidden channels")

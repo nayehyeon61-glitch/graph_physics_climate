@@ -142,6 +142,7 @@ def main():
         for i in cases:
             x0n, _, _, _ = run.prep(test, [i])
             st = {n: x0n for n in models}
+            pv = {n: run.prev(test, [i]) for n in models}  # stage14
             for k in range(1, K + 1):
                 j = i + (k - 1) * lead
                 cn = run.cond_at(test, [j])
@@ -149,7 +150,8 @@ def main():
                 add(truth, k, x1n)
                 add(preds["persistence"], k, x0n)
                 for n, mdl in models.items():
-                    st[n], _ = mdl(st[n], cn, g)
+                    new, _ = mdl(st[n], cn, g, prev=pv[n])
+                    pv[n], st[n] = st[n], new
                     add(preds[n], k, st[n])
     log(f"rollouts done in {(time.time() - t0) / 60:.1f} min")
     # ClimODE forecasts on the shared variables (same test split; align by case index)

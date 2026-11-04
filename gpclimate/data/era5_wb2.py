@@ -200,6 +200,12 @@ class ERA5Pairs:
         x1 = split_state(self.state[idx + self.lead], self.spec, self.names)
         return x0, x1, self.cond_field(idx)
 
+    def prev_state(self, idx: Sequence[int]) -> Field:
+        """State one lead *before* ``idx`` (stage14 input: the observed change X_t - X_{t-lead}); for the first
+        ``lead`` times of a split the state itself is returned (zero change)."""
+        idx = torch.as_tensor(idx, dtype=torch.long)
+        return split_state(self.state[torch.clamp(idx - self.lead, min=0)], self.spec, self.names)
+
     def next_state(self, idx: Sequence[int]) -> Field:
         """State one data step (6 h) after ``idx`` (always available since lead >= 1)."""
         idx = torch.as_tensor(idx, dtype=torch.long)

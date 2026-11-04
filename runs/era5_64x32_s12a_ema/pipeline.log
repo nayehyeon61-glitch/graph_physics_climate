@@ -2,3 +2,4 @@
 [00:57:51] run runs/era5_64x32_s12a_ema: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
 [00:57:52] stage B[vnet]: vnet params 554665, steps 1500, batch 4, rollout steps 2 from step 500 (weight 1.0), EMA decay 0.995
 [00:58:14] B[vnet]     0  L_f 0.9072 L_roll 0.0000 L_phys 0.00002 | val MSE 0.3252 2-step 0.4930 (persistence 0.3257) | 22.05 s/step
+[01:05:14] B[vnet]   250  L_f 0.3870 L_roll 0.0000 L_phys 0.00023 | val MSE 0.1362 2-step 0.2523 (persistence 0.3257) | 1.76 s/step

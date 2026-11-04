@@ -71,6 +71,7 @@ def main():
     with torch.no_grad():
         for i in range(0, len(idx), 8):
             x0n, x1n, cn, _ = run.prep(test, idx[i:i + 8])
+            prev = run.prev(test, idx[i:i + 8])  # stage14
             B = x0n.s.shape[0]
             P = model.physics(x0n, cn, g)
             perm = torch.roll(torch.arange(B), 1)
@@ -86,7 +87,7 @@ def main():
                              "shuffled_P": lambda P: {k: Field(f.s[perm], f.v[perm]) for k, f in P.items()}}[name]
                     fc = model.integrate(x0n, cn, g, p_map)
                 else:
-                    d = model.vnet(x0n, cn, PP, g)
+                    d = model.vnet(x0n, cn, PP, g, prev=prev)
                     fc = Field(x0n.s + d.s * model.delta_scale_s, x0n.v + d.v * model.delta_scale_v)
                 mse[name] += float(field_mse(fc, x1n, w)) * B
             mse["persistence"] += float(field_mse(x0n, x1n, w)) * B
@@ -132,7 +133,7 @@ def main():
     if model.vnet.cfg.fusion == "pigt":
         with torch.no_grad():
             x0n, _, cn, _ = run.prep(test, idx[:8])
-            model(x0n, cn, g)
+            model(x0n, cn, g, prev=run.prev(test, idx[:8]))
         rep["pigt_attention_mass"] = {"sources": model.vnet.fusion[0].source_names, **model.vnet.attention_mass()}
     else:
         rep["fusion_gates_mean_abs"] = [float(f.beta_s.abs().mean()) for f in model.vnet.fusion]
@@ -178,7 +179,7 @@ def main():
                 x0n, x1n, cn, _ = run.prep(test, idx[i:i + 8])
                 B = x0n.s.shape[0]
                 for k, m in models.items():
-                    fc, _ = m(x0n, cn, g)
+                    fc, _ = m(x0n, cn, g, prev=run.prev(test, idx[i:i + 8]))
                     res[k] += pde_residual(m, x0n, fc, cn) * B
                 res["truth"] += pde_residual(model, x0n, x1n, cn) * B
         phys["pde_residual_24h"] = {k: v / len(idx) for k, v in res.items()}

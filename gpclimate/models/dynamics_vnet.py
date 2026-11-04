@@ -59,6 +59,9 @@ class VNetConfig:
     no_hidden: int = 16
     no_layers: int = 2
     no_modes: Tuple[int, int] = (16, 32)
+    # stage14: the V-Net also sees the observed change over the previous lead, X_t - X_{t-lead} (GraphCast-style
+    # two-time-step input; in a rollout the previous forecast state plays the role of X_{t-lead}); the guide does not
+    prev_state: bool = False
 
 
 class DynamicsVNet(nn.Module):
@@ -66,7 +69,8 @@ class DynamicsVNet(nn.Module):
         super().__init__()
         self.spec, self.cfg = spec, cfg
         cs, cv, nb, hd = cfg.cs, cfg.cv, cfg.n_basis, cfg.hidden
-        self.lift = GridLift(spec.n_s + spec.n_cond_s, spec.n_v + spec.n_cond_v, cs, cv, nb, hd)
+        n_prev_s, n_prev_v = (spec.n_s, spec.n_v) if cfg.prev_state else (0, 0)
+        self.lift = GridLift(spec.n_s + spec.n_cond_s + n_prev_s, spec.n_v + spec.n_cond_v + n_prev_v, cs, cv, nb, hd)
         self.gnn = nn.ModuleList([GaugeStack(cs, cv, d, nb, hd) for d in cfg.depth])
         self.phys_ops = None
         if cfg.use_guide and cfg.fusion == "pigt":
@@ -128,10 +132,16 @@ class DynamicsVNet(nn.Module):
             out.append(self.phys_ops(raw.s[..., :n_s], raw.v, raw.s[..., n_s:], g.mesh_sinlat[lvl], g.mesh_edges[lvl]))
         return out
 
-    def forward(self, state: Field, cond: Field, physics: Optional[Dict[str, Field]], g: GraphView) -> Field:
+    def forward(self, state: Field, cond: Field, physics: Optional[Dict[str, Field]], g: GraphView,
+                prev: Optional[Field] = None) -> Field:
         B = state.s.shape[0]
         cond = broadcast_batch(cond, B)
-        x = Field(torch.cat([state.s, cond.s], -1), torch.cat([state.v, cond.v], -1))
+        xs, xv = [state.s, cond.s], [state.v, cond.v]
+        if self.cfg.prev_state:  # stage14: observed change over the previous lead (zero when no previous state)
+            prev = state if prev is None else prev
+            xs.append(state.s - prev.s)
+            xv.append(state.v - prev.v)
+        x = Field(torch.cat(xs, -1), torch.cat(xv, -1))
         grid_emb, m0 = self.lift(x, g)
         O = self.operator_tokens(state, cond, g) if (physics is not None and self.cfg.fusion == "pigt") else [None] * 3
         H0 = self.gnn[0](m0, g.mesh_edges[0])
@@ -186,11 +196,12 @@ class LieGuidedForecaster(nn.Module):
         sigma = torch.zeros(state.s.shape[0], device=state.s.device)
         return self.guide(state, cond, sigma, g)
 
-    def forward(self, state: Field, cond: Field, g: GraphView) -> Tuple[Field, Field]:
-        """Deterministic forecast and its change in delta-scale units ``d = (X_bar - X_t) / delta_scale``."""
+    def forward(self, state: Field, cond: Field, g: GraphView, prev: Optional[Field] = None) -> Tuple[Field, Field]:
+        """Deterministic forecast and its change in delta-scale units ``d = (X_bar - X_t) / delta_scale``.
+        ``prev`` (stage14, ``VNetConfig.prev_state``) is the state one lead earlier; None = zero observed change."""
         if self.vnet.cfg.integrator != "ode":
             P = self.physics(state, cond, g)
-            d = self.vnet(state, cond, P, g)
+            d = self.vnet(state, cond, P, g, prev=prev)
             forecast = Field(state.s + d.s * self.delta_scale_s, state.v + d.v * self.delta_scale_v)
             return forecast, d
         forecast = self.integrate(state, cond, g)
@@ -246,10 +257,12 @@ class LieGuidedForecaster(nn.Module):
             x = Field(x.s + drift.s, x.v + drift.v)
         return x
 
-    def rollout(self, state: Field, conds: List[Field], g: GraphView) -> List[Field]:
-        """Autoregressive deterministic rollout; physics features are recomputed from each new state."""
+    def rollout(self, state: Field, conds: List[Field], g: GraphView, prev: Optional[Field] = None) -> List[Field]:
+        """Autoregressive deterministic rollout; physics features are recomputed from each new state, and the
+        previous input state serves as ``prev`` of the next step (stage14)."""
         out = []
         for c in conds:
-            state, _ = self(state, c, g)
+            new, _ = self(state, c, g, prev=prev)
+            prev, state = state, new
             out.append(state)
         return out
