@@ -20,6 +20,8 @@ dependencies = [
 [project.optional-dependencies]
 data = ["xarray", "zarr", "gcsfs", "pandas"]
 test = ["pytest"]
+# stage13 continuous neural-operator layer (SphericalConv needs torch-harmonics)
+neural_op = ["neuraloperator>=2.0", "torch-harmonics"]
 
 [tool.setuptools.packages.find]
 include = ["gpclimate*"]
