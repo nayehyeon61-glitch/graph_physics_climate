@@ -143,6 +143,7 @@ def main():
             x0n, _, _, _ = run.prep(test, [i])
             st = {n: x0n for n in models}
             pv = {n: run.prev(test, [i]) for n in models}  # stage14
+            col0 = run.col(test, [i])  # stage15a (initial time only)
             for k in range(1, K + 1):
                 j = i + (k - 1) * lead
                 cn = run.cond_at(test, [j])
@@ -150,7 +151,7 @@ def main():
                 add(truth, k, x1n)
                 add(preds["persistence"], k, x0n)
                 for n, mdl in models.items():
-                    new, _ = mdl(st[n], cn, g, prev=pv[n])
+                    new, _ = mdl(st[n], cn, g, prev=pv[n], col=col0 if k == 1 else None)
                     pv[n], st[n] = st[n], new
                     add(preds[n], k, st[n])
     log(f"rollouts done in {(time.time() - t0) / 60:.1f} min")

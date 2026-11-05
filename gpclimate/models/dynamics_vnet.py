@@ -70,6 +70,10 @@ class VNetConfig:
     # Ch. 12, Sect. 12.1.4); False = first step only (incremental-analysis-update style window of one lead)
     nudge_carry: bool = True
     nudge_alpha_init: float = 0.12  # initial uniform coefficient = prior rho (measure it with scripts/model_error_autocorr.py)
+    # stage15a: column channels (e.g. sp, z1000, z850, t500, z50, r500, r850, tcwv, u/v1000) as V-Net *inputs only* at
+    # the initial time; later rollout steps get zeros and an availability flag 0 (their future values are unknown)
+    col_s: int = 0
+    col_v: int = 0
 
 
 class DynamicsVNet(nn.Module):
@@ -78,7 +82,10 @@ class DynamicsVNet(nn.Module):
         self.spec, self.cfg = spec, cfg
         cs, cv, nb, hd = cfg.cs, cfg.cv, cfg.n_basis, cfg.hidden
         n_prev_s, n_prev_v = (spec.n_s, spec.n_v) if cfg.prev_state else (0, 0)
-        self.lift = GridLift(spec.n_s + spec.n_cond_s + n_prev_s, spec.n_v + spec.n_cond_v + n_prev_v, cs, cv, nb, hd)
+        self.use_col = cfg.col_s + cfg.col_v > 0
+        n_col_s, n_col_v = (cfg.col_s + 1, cfg.col_v) if self.use_col else (0, 0)  # + availability flag
+        self.lift = GridLift(spec.n_s + spec.n_cond_s + n_prev_s + n_col_s, spec.n_v + spec.n_cond_v + n_prev_v + n_col_v,
+                             cs, cv, nb, hd)
         self.gnn = nn.ModuleList([GaugeStack(cs, cv, d, nb, hd) for d in cfg.depth])
         self.phys_ops = None
         if cfg.use_guide and cfg.fusion == "pigt":
@@ -144,8 +151,18 @@ class DynamicsVNet(nn.Module):
             out.append(self.phys_ops(raw.s[..., :n_s], raw.v, raw.s[..., n_s:], g.mesh_sinlat[lvl], g.mesh_edges[lvl]))
         return out
 
+    def column_input(self, col: Optional[Field], B: int, G: int, like: Field) -> Field:
+        """stage15a: column channels + availability flag; zeros and flag 0 when ``col`` is None."""
+        cfg = self.cfg
+        if col is None:
+            s = like.s.new_zeros(B, G, cfg.col_s + 1)
+            v = like.v.new_zeros(B, G, cfg.col_v)
+            return Field(s, v)
+        col = broadcast_batch(col, B)
+        return Field(torch.cat([col.s, col.s.new_ones(B, G, 1)], -1), col.v)
+
     def forward(self, state: Field, cond: Field, physics: Optional[Dict[str, Field]], g: GraphView,
-                prev: Optional[Field] = None, nudge: Optional[Field] = None) -> Field:
+                prev: Optional[Field] = None, nudge: Optional[Field] = None, col: Optional[Field] = None) -> Field:
         B = state.s.shape[0]
         cond = broadcast_batch(cond, B)
         xs, xv = [state.s, cond.s], [state.v, cond.v]
@@ -154,7 +171,11 @@ class DynamicsVNet(nn.Module):
             xs.append(state.s - prev.s)
             xv.append(state.v - prev.v)
         x = Field(torch.cat(xs, -1), torch.cat(xv, -1))
-        grid_emb, m0 = self.lift(x, g)
+        x_in = x
+        if self.use_col:  # stage15a: lift input only (the stage13 operator block keeps its own input layout)
+            c = self.column_input(col, B, state.s.shape[1], state)
+            x_in = Field(torch.cat([x.s, c.s], -1), torch.cat([x.v, c.v], -1))
+        grid_emb, m0 = self.lift(x_in, g)
         O = self.operator_tokens(state, cond, g) if (physics is not None and self.cfg.fusion == "pigt") else [None] * 3
         H0 = self.gnn[0](m0, g.mesh_edges[0])
         F0 = self._fuse(0, H0, physics, "P0", g.attn_edges[0], O[0])
@@ -215,14 +236,15 @@ class LieGuidedForecaster(nn.Module):
         return self.guide(state, cond, sigma, g)
 
     def forward(self, state: Field, cond: Field, g: GraphView, prev: Optional[Field] = None,
-                nudge: Optional[Field] = None) -> Tuple[Field, Field]:
+                nudge: Optional[Field] = None, col: Optional[Field] = None) -> Tuple[Field, Field]:
         """Deterministic forecast and its change in delta-scale units ``d = (X_bar - X_t) / delta_scale``.
         ``prev`` (stage14, ``VNetConfig.prev_state``) is the state one lead earlier; None = zero observed change.
         ``nudge`` (stage14b, ``VNetConfig.nudge``) is the initial increment from :meth:`increment`; None = no
-        relaxation (rollout steps after the first)."""
+        relaxation (rollout steps after the first).  ``col`` (stage15a, ``VNetConfig.col_s/col_v``) are the column
+        input channels at the initial time; None = not available (rollout steps after the first)."""
         if self.vnet.cfg.integrator != "ode":
             P = self.physics(state, cond, g)
-            d = self.vnet(state, cond, P, g, prev=prev, nudge=nudge)
+            d = self.vnet(state, cond, P, g, prev=prev, nudge=nudge, col=col)
             forecast = Field(state.s + d.s * self.delta_scale_s, state.v + d.v * self.delta_scale_v)
             return forecast, d
         forecast = self.integrate(state, cond, g)
@@ -297,13 +319,14 @@ class LieGuidedForecaster(nn.Module):
         return x
 
     def rollout(self, state: Field, conds: List[Field], g: GraphView, prev: Optional[Field] = None,
-                nudge: Optional[Field] = None) -> List[Field]:
+                nudge: Optional[Field] = None, col: Optional[Field] = None) -> List[Field]:
         """Autoregressive deterministic rollout; physics features are recomputed from each new state, the previous
-        input state serves as ``prev`` of the next step (stage14), and the nudging increment applies to the first
-        step and is then carried as the added term (stage14b, ``nudge_carry``) or dropped."""
+        input state serves as ``prev`` of the next step (stage14), the nudging increment applies to the first
+        step and is then carried as the added term (stage14b, ``nudge_carry``) or dropped, and the column inputs
+        (stage15a) exist at the initial time only."""
         out = []
         for c in conds:
-            new, _ = self(state, c, g, prev=prev, nudge=nudge)
-            prev, state, nudge = state, new, self.carried_nudge()
+            new, _ = self(state, c, g, prev=prev, nudge=nudge, col=col)
+            prev, state, nudge, col = state, new, self.carried_nudge(), None
             out.append(state)
         return out

@@ -30,7 +30,8 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from gpclimate.data.era5_wb2 import SPECS, ERA5Pairs, Normalizer, fit_normalizer, fit_tendency_scale  # noqa: E402
+from gpclimate.data.era5_wb2 import (COLUMN_SETS, SPECS, ColumnInputs, ERA5Pairs, Normalizer,  # noqa: E402
+                                     fit_normalizer, fit_tendency_scale)
 from gpclimate.data.variables import merge_state  # noqa: E402
 from gpclimate.geometry.graphs import SphereGraphs  # noqa: E402
 from gpclimate.models.diffusion import (DiffusionConfig, FeasibilityProjection, GraphResidualDiffusion,  # noqa: E402
@@ -104,6 +105,9 @@ class Run:
                                                       "loss_focus_weight", "simplicial", "neural_op", "no_hidden",
                                                       "no_layers", "no_modes", "prev_state", "nudge", "nudge_carry",
                                                       "nudge_alpha_init")}
+            # stage15a keys (absent from runs created before; tests build bare Namespaces)
+            self.cfg.update(column_inputs=getattr(args, "column_inputs", "") or "",
+                            column_data=getattr(args, "column_data", "") or "")
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         # stage10: the state feature matrix is a named spec stored in config.json (older runs: base11)
@@ -153,12 +157,39 @@ class Run:
                                 prev_state=bool(c.get("prev_state", False)), nudge=bool(c.get("nudge", False)),
                                 nudge_carry=bool(c.get("nudge_carry", True) if c.get("nudge_carry") is not None else True),
                                 nudge_alpha_init=float(c.get("nudge_alpha_init") or 0.12))
+        # stage15a: column channels as V-Net inputs at the initial time only (normalised with train-split statistics,
+        # cached in column_norm.json so an external benchmark year uses the same scaling)
+        self.use_col = bool(c.get("column_inputs"))
+        if self.use_col:
+            self._init_columns(args)
+            self.vnet_kwargs.update(col_s=len(COLUMN_SETS[c["column_inputs"]][0]),
+                                    col_v=len(COLUMN_SETS[c["column_inputs"]][1]))
         self.use_prev = bool(c.get("prev_state", False))  # stage14: V-Net input includes X_t - X_{t-lead}
         self.use_nudge = bool(c.get("nudge", False))  # stage14b: first step relaxes toward X_t - M(X_{t-lead})
         # earliest training index whose previous states exist (prev: X_{t-lead}; nudge pre-forecast: X_{t-2 lead})
         self.min_idx = int(c["lead"]) * (int(self.use_prev) + int(self.use_nudge))
         self.diff_cfg = DiffusionConfig(cs=c["diff_cs"], cv=c["diff_cv"], depth=c["diff_depth"], n_basis=c["n_basis"],
                                         hidden=c["hidden"])
+
+    def _init_columns(self, args):
+        c = self.cfg
+        which, path = c["column_inputs"], c["column_data"]
+        spath = self.dir / "column_norm.json"
+        stats = json.load(open(spath)) if spath.exists() else None
+        self.train.columns = ColumnInputs(path, "train", self.train.times, which, stats)
+        if stats is None:
+            json.dump(self.train.columns.stats, open(spath, "w"), indent=2)
+        stats = self.train.columns.stats
+        self.calib.columns = ColumnInputs(path, "calib", self.calib.times, which, stats)
+        if getattr(args, "eval_data", ""):
+            ext = getattr(args, "eval_column_data", "") or ""
+            if not ext:
+                raise ValueError("this run uses column inputs: pass --eval-column-data for the --eval-data year")
+            self.test.columns = ColumnInputs(ext, "test", self.test.times, which, stats)
+        else:
+            self.test.columns = ColumnInputs(path, "test", self.test.times, which, stats)
+        cs = self.train.columns
+        log(f"column inputs {which}: {cs.n_s} scalar + {cs.n_v} vector channels from {path} (initial time only)")
 
     def save_normalizer(self, path):
         torch.save({k: getattr(self.norm, k) for k in self.norm.__dataclass_fields__
@@ -171,6 +202,10 @@ class Run:
 
     def cond_at(self, ds: ERA5Pairs, idx):
         return self.norm.cond(ds.cond_field(torch.as_tensor(idx, dtype=torch.long)))
+
+    def col(self, ds: ERA5Pairs, idx):
+        """stage15a: normalised column channels at ``idx`` (None when the run does not use them)."""
+        return ds.columns.field(idx) if self.use_col else None
 
     def prev(self, ds: ERA5Pairs, idx):
         """stage14: normalised state one lead before ``idx`` (None when the run does not use it)."""
@@ -467,7 +502,8 @@ def stage_b(run: Run, use_guide: bool):
         xs = [run.norm.state(x) for x in states]
         cs = [run.norm.cond(c) for c in conds]
         x_prev = run.prev(run.train, idx)
-        f, d = model(xs[0], cs[0], g, prev=x_prev, nudge=run.increment(model, run.train, idx, xs[0]))
+        f, d = model(xs[0], cs[0], g, prev=x_prev, nudge=run.increment(model, run.train, idx, xs[0]),
+                     col=run.col(run.train, idx))
         x_prev, nud = xs[0], model.carried_nudge()
         l_f = field_mse(scaled(f), scaled(xs[1]), w, run.loss_w)  # == delta MSE of the one-step target
         l_phys = global_tendency_consistency(d.s * model.delta_scale_s, xs[1].s - xs[0].s, w)
@@ -498,15 +534,17 @@ def stage_b(run: Run, use_guide: bool):
                 for i in range(0, len(val_idx), 8):
                     x0n, x1n, cn, _ = run.prep(run.calib, val_idx[i:i + 8])
                     fc, _ = vm(x0n, cn, g, prev=run.prev(run.calib, val_idx[i:i + 8]),
-                               nudge=run.increment(vm, run.calib, val_idx[i:i + 8], x0n))
+                               nudge=run.increment(vm, run.calib, val_idx[i:i + 8], x0n),
+                               col=run.col(run.calib, val_idx[i:i + 8]))
                     tot += float(field_mse(fc, x1n, w)) * len(val_idx[i:i + 8])
                 for i in range(0, len(val_idx2), 8):
                     states, conds = run.calib.sequence(val_idx2[i:i + 8], 2)
                     fc, pv = run.norm.state(states[0]), run.prev(run.calib, val_idx2[i:i + 8])
                     nud = run.increment(vm, run.calib, val_idx2[i:i + 8], fc)
+                    cl = run.col(run.calib, val_idx2[i:i + 8])
                     for k in range(2):
-                        fc_new, _ = vm(fc, run.norm.cond(conds[k]), g, prev=pv, nudge=nud)
-                        pv, fc, nud = fc, fc_new, vm.carried_nudge()
+                        fc_new, _ = vm(fc, run.norm.cond(conds[k]), g, prev=pv, nudge=nud, col=cl)
+                        pv, fc, nud, cl = fc, fc_new, vm.carried_nudge(), None
                     tot2 += float(field_mse(fc, run.norm.state(states[2]), w)) * len(val_idx2[i:i + 8])
                 v_mse, v_mse2 = tot / len(val_idx), tot2 / len(val_idx2)
                 x0n, x1n, cn, _ = run.prep(run.calib, val_idx[:8])
@@ -565,7 +603,8 @@ def stage_c(run: Run):
         for i in range(0, len(idx), 8):
             x0n, x1n, cn, _ = run.prep(run.calib, idx[i:i + 8])
             xbar, _ = model(x0n, cn, g, prev=run.prev(run.calib, idx[i:i + 8]),
-                            nudge=run.increment(model, run.calib, idx[i:i + 8], x0n))
+                            nudge=run.increment(model, run.calib, idx[i:i + 8], x0n),
+                            col=run.col(run.calib, idx[i:i + 8]))
             rs.append(x1n.s - xbar.s)
             rv.append(x1n.v - xbar.v)
         rs, rv = torch.cat(rs), torch.cat(rv)
@@ -577,10 +616,10 @@ def stage_c(run: Run):
             f"feas weight {a.noise_feas_weight}, mean constraint weight {a.noise_mean_weight} every "
             f"{a.noise_mean_every} steps ({a.noise_mean_members} members x {a.noise_mean_steps} sampling steps)")
 
-    def context(x0n, cn, prev=None, nudge=None):
+    def context(x0n, cn, prev=None, nudge=None, col=None):
         with torch.no_grad():
             P = model.physics(x0n, cn, g)
-            xbar, _ = model(x0n, cn, g, prev=prev, nudge=nudge)
+            xbar, _ = model(x0n, cn, g, prev=prev, nudge=nudge, col=col)
         return xbar, {"xbar": xbar, "x": x0n, "cond": cn, "P0u": P["P0u"]}
 
     opt = torch.optim.Adam(diff.denoiser.parameters(), lr=a.lr)
@@ -590,7 +629,8 @@ def stage_c(run: Run):
             pg["lr"] = cosine_lr(step, a.steps, a.lr)
         idx = rng.integers(0, len(run.calib), a.batch)
         x0n, x1n, cn, _ = run.prep(run.calib, idx)
-        xbar, ctx = context(x0n, cn, run.prev(run.calib, idx), run.increment(model, run.calib, idx, x0n))
+        xbar, ctx = context(x0n, cn, run.prev(run.calib, idx), run.increment(model, run.calib, idx, x0n),
+                            run.col(run.calib, idx))
         ls = diff.losses(diff.to_residual(x1n, xbar), ctx, g, w)
         loss = ls["dsm"]
         if diff.project is not None:  # stage S5c: L_DSM + lambda_feas L_feas + lambda_mean L_mean
@@ -630,7 +670,7 @@ class PhysicsOnlyForecaster(torch.nn.Module):
         self.guide, self.vnet = base.guide, base.vnet
 
     def forward(self, state: Field, cond: Field, g, prev: Optional[Field] = None,
-                nudge: Optional[Field] = None):  # prev / nudge unused (no V-Net)
+                nudge: Optional[Field] = None, col: Optional[Field] = None):  # prev / nudge / col unused (no V-Net)
         f = self.base.physics_only(state, cond, g)
         return f, Field((f.s - state.s) / self.base.delta_scale_s, (f.v - state.v) / self.base.delta_scale_v)
 
@@ -679,6 +719,7 @@ def stage_eval(run: Run):
             states = {name: x0n for name in models}
             prevs = {name: run.prev(test, [i]) for name in models}  # stage14 (first init time: zero change)
             nudges = {name: run.increment(mdl, test, [i], x0n) for name, mdl in models.items()}  # stage14b
+            col0 = run.col(test, [i])  # stage15a: initial time only
             for k in range(1, K + 1):
                 j = i + (k - 1) * lead
                 cn = run.cond_at(test, [j])
@@ -688,7 +729,8 @@ def stage_eval(run: Run):
                 add(preds["persistence"], k, x0n)
                 add(preds["climatology"], k, clim_f)
                 for name, mdl in models.items():
-                    new, _ = mdl(states[name], cn, g, prev=prevs[name], nudge=nudges[name])
+                    new, _ = mdl(states[name], cn, g, prev=prevs[name], nudge=nudges[name],
+                                 col=col0 if k == 1 else None)
                     prevs[name], states[name] = states[name], new
                     nudges[name] = getattr(mdl, "carried_nudge", lambda: None)()
                     add(preds[name], k, states[name])
@@ -723,7 +765,8 @@ def stage_eval(run: Run):
             for i in ens_cases:
                 x0n, x1n, cn, _ = run.prep(test, [i])
                 P = mdl.physics(x0n, cn, g)
-                xbar, _ = mdl(x0n, cn, g, prev=run.prev(test, [i]), nudge=run.increment(mdl, test, [i], x0n))
+                xbar, _ = mdl(x0n, cn, g, prev=run.prev(test, [i]), nudge=run.increment(mdl, test, [i], x0n),
+                              col=run.col(test, [i]))
                 ctx = {"xbar": xbar, "x": x0n, "cond": cn, "P0u": P["P0u"]}
                 res = diff.sample(ctx, g, a.members, a.sample_steps, seed=int(i))
                 raw = diff.assemble(xbar, res, run.w, project=False)
@@ -903,6 +946,9 @@ def main():
                          "Evensen 2009 Ch. 12); 0 = first step only")
     ap.add_argument("--nudge-alpha-init", type=float, default=0.12,
                     help="stage14b: initial uniform nudging coefficient = prior rho (scripts/model_error_autocorr.py)")
+    ap.add_argument("--column-inputs", default="", choices=[""] + sorted(COLUMN_SETS),
+                    help="stage15a: column channels as V-Net inputs at the initial time only (stored in config.json)")
+    ap.add_argument("--column-data", default="", help="stage15a: npz with the column channels (same splits/times as --data)")
     ap.add_argument("--neural-op", default="", choices=["", "fft", "sht"],
                     help="stage13: continuous neural-operator layer on the grid after the mesh V-Net ('' = off)")
     ap.add_argument("--no-hidden", type=int, default=16, help="stage13: neural operator hidden channels")
@@ -936,6 +982,7 @@ def main():
     ap.add_argument("--eval-stride", type=int, default=16, help="init-time stride in 6 h steps")
     ap.add_argument("--eval-data", default="", help="score on the test split of this npz instead (benchmark year); "
                     "normaliser, climatology and models stay those of the run")
+    ap.add_argument("--eval-column-data", default="", help="stage15a runs: column channels of the --eval-data year")
     ap.add_argument("--eval-tag", default="", help="write eval_<tag>.json / eval_<tag>.md instead of eval.json")
     ap.add_argument("--max-cases", type=int, default=0, help="keep only the first N init times (0 = all)")
     ap.add_argument("--max-lead-steps", type=int, default=5)

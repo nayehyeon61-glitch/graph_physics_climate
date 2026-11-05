@@ -305,3 +305,72 @@ def fit_tendency_scale(ds: ERA5Pairs, norm: Normalizer, chunk: int = 1024) -> No
     norm.tend_s = m_ts.std() + 1e-6
     norm.tend_v = m_tv.rms_half() + 1e-6
     return norm
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# stage15a: column information as *input-only* conditions of the V-Net (not predicted, not scored).
+# WeatherODE (Liu et al. 2024) feeds 48 channels (6 variables x 7 levels) and predicts 5; our stage10a/10b fed the
+# FourCastNet column channels as extra *state* channels and lost accuracy to loss dilution, while z500 / msl improved.
+# Here the channels of FCN21 that are not in base11 are read from a separate file and used at the initial time only:
+# a rollout never has their future values (feeding X_{t+k lead} columns would leak the truth), so later steps get
+# zeros plus an availability flag of 0 (see DynamicsVNet.forward).
+COLUMN_SETS: Dict[str, Tuple[Tuple[str, ...], Tuple[Tuple[str, str], ...]]] = {
+    "fcn10": (("sp", "z1000", "z850", "t500", "z50", "r500", "r850", "tcwv"), (("u1000", "v1000"),)),
+}
+
+
+class ColumnInputs:
+    """Column channels of one split, normalised (scalars z-score, each wind pair one common scale, no mean shift),
+    aligned with the base data set's time axis (checked)."""
+
+    def __init__(self, npz_path: str, split: str, times: np.ndarray, which: str = "fcn10",
+                 stats: Optional[Dict[str, list]] = None):
+        scalars, vectors = COLUMN_SETS[which]
+        self.scalars, self.vectors = scalars, vectors
+        z = np.load(npz_path)  # NpzFile: read each member once (every access re-decompresses it)
+        t = z[f"{split}/time"]
+        if len(t) != len(times) or not np.array_equal(t, times):
+            raise ValueError(f"column file {npz_path} [{split}] times do not match the state data "
+                             f"({len(t)} vs {len(times)} steps)")
+        s = np.stack([z[f"{split}/{n}"] for n in scalars], 1)  # [T, n_s, H, W]
+        u = np.stack([z[f"{split}/{a}"] for a, _ in vectors], 1)
+        v = np.stack([z[f"{split}/{b}"] for _, b in vectors], 1)
+        z.close()
+        if stats is None:
+            stats = column_stats(s, u, v)
+        self.stats = stats
+        mean = np.asarray(stats["s_mean"], np.float32)[None, :, None, None]
+        std = np.asarray(stats["s_std"], np.float32)[None, :, None, None]
+        scale = np.asarray(stats["v_scale"], np.float32)[None, :, None, None]
+        self.s = torch.as_tensor(((s - mean) / std).astype(np.float32))
+        self.v = torch.complex(torch.as_tensor((u / scale).astype(np.float32)),
+                               torch.as_tensor((v / scale).astype(np.float32)))
+
+    @property
+    def n_s(self) -> int:
+        return len(self.scalars)
+
+    @property
+    def n_v(self) -> int:
+        return len(self.vectors)
+
+    def field(self, idx) -> Field:
+        """Normalised column channels at ``idx`` as a grid Field ``[B, H*W, n]``."""
+        idx = torch.as_tensor(idx, dtype=torch.long)
+        return Field(self.s[idx].flatten(2).transpose(1, 2), self.v[idx].flatten(2).transpose(1, 2))
+
+
+def column_stats(s: np.ndarray, u: np.ndarray, v: np.ndarray, chunk: int = 1024) -> Dict[str, list]:
+    """Per-channel mean / std of the column scalars and the common RMS scale of each wind pair, in float64 chunks
+    (a 10-year split is 14,612 x 2048 values per channel)."""
+    n, k = len(s), s.shape[1]
+    s1, s2, w2 = np.zeros(k), np.zeros(k), np.zeros(u.shape[1])
+    for i in range(0, n, chunk):
+        a = s[i:i + chunk].astype(np.float64)
+        s1 += a.sum((0, 2, 3))
+        s2 += (a ** 2).sum((0, 2, 3))
+        w2 += (u[i:i + chunk].astype(np.float64) ** 2 + v[i:i + chunk].astype(np.float64) ** 2).sum((0, 2, 3))
+    cnt = n * s.shape[2] * s.shape[3]
+    mean = s1 / cnt
+    std = np.sqrt(np.maximum(s2 / cnt - mean ** 2, 0.0)) + 1e-6
+    return {"s_mean": mean.tolist(), "s_std": std.tolist(), "v_scale": (np.sqrt(w2 / cnt / 2) + 1e-6).tolist()}
