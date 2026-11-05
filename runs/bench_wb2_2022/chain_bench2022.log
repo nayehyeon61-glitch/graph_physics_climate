@@ -1,0 +1,8 @@
+[12:04:52] 2020 benchmark finished -> 2022 benchmark evaluation
+[12:04:55] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:05:41] run runs/era5_64x32_s9_integrated: pairs train 14608 calib 1456 test 1452; graph [2562, 642, 162]
+[12:05:43] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[12:14:31] runs/era5_64x32_s9_integrated eval_2022 exit 0
+[12:14:34] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:15:13] run runs/era5_64x32_s7b_steps3x: pairs train 14608 calib 1456 test 1452; graph [2562, 642, 162]
+[12:15:14] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
