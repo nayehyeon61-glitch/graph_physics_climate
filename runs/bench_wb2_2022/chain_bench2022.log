@@ -6,3 +6,28 @@
 [12:14:34] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
 [12:15:13] run runs/era5_64x32_s7b_steps3x: pairs train 14608 calib 1456 test 1452; graph [2562, 642, 162]
 [12:15:14] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[12:21:30] deterministic rollouts done in 6.3 min
+[12:21:32] eval written to runs/era5_64x32_s7b_steps3x/eval_2022.json
+[12:21:33] runs/era5_64x32_s7b_steps3x eval_2022 exit 0
+[12:21:36] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:21:50] run runs/era5_64x32_s12b_width64: pairs train 2920 calib 1456 test 1452; graph [2562, 642, 162]
+[12:21:51] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[12:23:47] deterministic rollouts done in 1.9 min
+[12:23:49] eval written to runs/era5_64x32_s12b_width64/eval_2022.json
+[12:23:50] runs/era5_64x32_s12b_width64 eval_2022 exit 0
+[12:23:54] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:24:07] run runs/era5_64x32_s14a_prev: pairs train 2920 calib 1456 test 1452; graph [2562, 642, 162]
+[12:24:08] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[12:26:00] deterministic rollouts done in 1.9 min
+[12:26:02] eval written to runs/era5_64x32_s14a_prev/eval_2022.json
+[12:26:03] runs/era5_64x32_s14a_prev eval_2022 exit 0
+[12:26:07] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:26:20] run runs/era5_64x32_physops_roll: pairs train 2920 calib 1456 test 1452; graph [2562, 642, 162]
+[12:26:22] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[12:28:19] deterministic rollouts done in 2.0 min
+[12:28:21] eval written to runs/era5_64x32_physops_roll/eval_2022.json
+[12:28:22] runs/era5_64x32_physops_roll eval_2022 exit 0
+ClimODE {'class': 'Climate_encoder_free_uncertain', 'solver': 'euler', 'params': 2752099, 'eval_mode': False, 'ckpt_url': 'https://raw.githubusercontent.com/Aalto-QuML/ClimODE/e729d23e8799ce0e075699e76d60227d848d8d0c/checkpoints/ClimODE_global.pt', 'climode_dir': '/home/claude/nayehyeon61-glitch/physical_guide_flowmatching/third_party/climode'}; shard 0/1: 88 init times, leads [24, 48, 72, 96, 120] h
+ic 2/88 (22s, vel-fit loss 1.18e-04)
+ic 4/88 (50s, vel-fit loss 1.17e-04)
+ic 6/88 (106s, vel-fit loss 1.20e-04)
