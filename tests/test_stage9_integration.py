@@ -29,6 +29,10 @@ def test_stage9_pipeline(tmp_path):
     _run(run_dir, data, "c", "--steps", "2", "--val-every", "2", "--noise-constraints", "1")
     _run(run_dir, data, "eval", "--eval-stride", "4", "--max-lead-steps", "2", "--n-ens-cases", "2", "--members", "2",
          "--sample-steps", "2")
+    # external benchmark year: --n-ens-cases 0 must skip the Stage C ensemble instead of scoring an empty one
+    _run(run_dir, data, "eval", "--eval-stride", "4", "--max-lead-steps", "2", "--n-ens-cases", "0",
+         "--eval-data", str(data), "--eval-tag", "bench", "--max-cases", "2")
+    assert "ensemble_lead1" not in json.load(open(run_dir / "eval_bench.json"))
     ev = json.load(open(run_dir / "eval.json"))
     assert {"lie_guided", "no_guide"} <= set(ev["rmse"]["1"])
     assert all(v == v for v in ev["rmse"]["2"]["lie_guided"].values())  # finite

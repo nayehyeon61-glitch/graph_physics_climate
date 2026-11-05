@@ -707,7 +707,8 @@ def stage_eval(run: Run):
             results["rmse"][k][name] = wb2_scores(arr, stack(truth[k]), test.lat, test.lon, times)["rmse"]
 
     # ensemble at the first lead: diffusion vs. deterministic + independent Gaussian noise of the residual scale
-    if diff is not None:
+    # (--n-ens-cases 0 skips it, e.g. for the external benchmark years; there is nothing to score then)
+    if diff is not None and a.n_ens_cases > 0:
         ens_cases = cases[: a.n_ens_cases]
         mdl = models["lie_guided"]
         ens, ens_raw, gauss, tr, det = {}, {}, {}, {}, {}
