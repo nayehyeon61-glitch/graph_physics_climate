@@ -1,2 +1,4 @@
 [22:16:23] stage14b chain finished -> stage7c (Stage B 9000 steps on 10 y)
 [12:49:53] 2022 benchmark finished -> stage7c (Stage B 9000 steps on 10 y)
+[17:02:49] container restart (~14:55 UTC) -> relaunch, Stage B resumes from step 4501
+[17:02:49] 2022 benchmark finished -> stage7c (Stage B 9000 steps on 10 y)
