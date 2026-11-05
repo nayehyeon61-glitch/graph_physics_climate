@@ -10,8 +10,8 @@ LOG=runs/bench_wb2_2022/chain_bench2022.log
 D=data/era5_wb2_64x32_2022test.npz
 until grep -q CHAIN_BENCH2020_DONE runs/bench_wb2_2020/chain_bench2020.log 2>/dev/null; do sleep 60; done
 echo "[$(date -u +%H:%M:%S)] 2020 benchmark finished -> 2022 benchmark evaluation" >> $LOG
-for RUN in runs/era5_64x32_s7b_steps3x runs/era5_64x32_s7c_steps6x runs/era5_64x32_s12b_width64 runs/era5_64x32_physops_roll; do
-  [ -f $RUN/vnet.pt ] || continue
+for RUN in runs/era5_64x32_s9_integrated runs/era5_64x32_s7b_steps3x runs/era5_64x32_s12b_width64 runs/era5_64x32_s14a_prev runs/era5_64x32_physops_roll; do
+  [ -f $RUN/vnet_done.json ] || continue
   python -W ignore scripts/train_eval.py --run $RUN --threads 4 --stage eval --eval-stride 16 --max-lead-steps 5 \
     --n-ens-cases 0 --eval-data $D --eval-tag 2022 --max-cases 88 >> $LOG 2>&1
   echo "[$(date -u +%H:%M:%S)] $RUN eval_2022 exit $?" >> $LOG
