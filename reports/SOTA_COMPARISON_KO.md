@@ -112,6 +112,7 @@
 | WeatherODE (2024) | 5.625°, 1979–2015 1시간 간격, 48변수 | +40.8 % | +32.2 % | +32.9 % | +29.8 % |
 | SDECast (2026, 신경 SDE) | 5.625°, 1979–2015 1시간 간격, 5변수, 시험 2018 | +11.1 % | — | +7.1 % | — |
 | PINN-Cast (2026, Transformer+NODE+물리손실) | 5.625°, 1979–2015, 7레벨, 시험 2017–2018 | — (미보고) | — | +23.2 % | — |
+| **stage9 (우리 통합 구조, 2019)** | 5.625°, 2008–2017, 11변수 | **+20.5 %** | **+21.3 %** | **+16.0 %** | **+25.6 %** |
 | **stage7b (우리, 2019)** | 5.625°, 2008–2017, 11변수 | **+11.0 %** | **+16.5 %** | **+10.6 %** | **+22.0 %** |
 
 ClimODE 자체 RMSE: 논문(2017–2018) z500 193.4/478.7, t850 1.55/2.58; 우리 2019 프로토콜 z500 212/518, t850 1.33/2.58. t2m은 우리 프로토콜의 ClimODE t2m이 논문보다 크게 나빠(24 h 1.82 vs 1.40) 지수가 부풀려지므로 표에서 뺐다.
@@ -127,7 +128,9 @@ ClimODE 자체 RMSE: 논문(2017–2018) z500 193.4/478.7, t850 1.55/2.58; 우�
 | PhyDL-NWP (물리 플러그인) | KDD 2025 | 2008–2018 8:1:1 | 있음 | ClimODE 열이 없어 못 넣음 |
 | FlowCast-ODE (흐름 매칭 + ODE) | arXiv 2509.14775 (2025) | 1°, 1980–2019 / 2021 | 언급 없음 | 1°이고 그림만 있어 못 넣음 |
 
-잠정 결론: 같은 급에서 stage7b는 ClimaX·FourCastNet(5.625°)·ClimODE·CoDiCast보다 앞서고, **WeatherODE(1시간 간격·48변수·37년 학습)만 뒤진다**(z500 24 h 지수 +41 % vs 우리 +11 %). 2026년 SDECast와는 z500 24 h가 비슷하고(+11.1 % vs +11.0 %) t850 24 h는 우리가 앞선다(+10.6 % vs +7.1 %). 2026년 PINN-Cast는 t850 24 h에서 우리보다 앞선다(+23.2 % vs +10.6 %); 다만 36 h까지만 보고했고 37년·7레벨로 학습했다. WeatherODE와의 차이는 데이터 양(37년·시간 간격)과 입력 변수 수가 커서, step 예산(stage7c)·통합 구조(stage9)·3단계 같은 분할 재학습에서 다시 본다. ClimPhyDM은 수치 표가 없어 제외했다.
+stage9 갱신(2026-11-05 21:00 KST): 통합 구조 stage9는 ClimODE 기준 지수가 z500 24 h +20.5 %, t850 24 h +16.0 %로 stage7b(+11.0/+10.6 %)보다 크게 올랐다. 같은 급에서 CoDiCast·SDECast(+3.6·+11.1 %)를 넘고, 72 h는 WeatherODE(+32.2·+29.8 %)와의 차이가 z500 11 %p, t850 4 %p로 줄었다. t850 24 h는 PINN-Cast(+23.2 %)보다 아직 낮다.
+
+잠정 결론(stage7b 기준): 같은 급에서 stage7b는 ClimaX·FourCastNet(5.625°)·ClimODE·CoDiCast보다 앞서고, **WeatherODE(1시간 간격·48변수·37년 학습)만 뒤진다**(z500 24 h 지수 +41 % vs 우리 +11 %). 2026년 SDECast와는 z500 24 h가 비슷하고(+11.1 % vs +11.0 %) t850 24 h는 우리가 앞선다(+10.6 % vs +7.1 %). 2026년 PINN-Cast는 t850 24 h에서 우리보다 앞선다(+23.2 % vs +10.6 %); 다만 36 h까지만 보고했고 37년·7레벨로 학습했다. WeatherODE와의 차이는 데이터 양(37년·시간 간격)과 입력 변수 수가 커서, step 예산(stage7c)·통합 구조(stage9)·3단계 같은 분할 재학습에서 다시 본다. ClimPhyDM은 수치 표가 없어 제외했다.
 
 출처(2025–26): SDECast https://arxiv.org/abs/2610.03313, PINN-Cast https://arxiv.org/abs/2604.27313, PASSAT https://www.ijcai.org/proceedings/2025/0885.pdf, ClimateLLM https://arxiv.org/abs/2502.11059, PhyDL-NWP https://arxiv.org/abs/2505.14555, FlowCast-ODE https://arxiv.org/abs/2509.14775, WB2 Aurora gs://weatherbench2/datasets/aurora/2022-64x32_equiangular_conservative.zarr, FGN gs://weatherbench2/datasets/fgn/2022-64x32_equiangular_conservative_mean.zarr.
 

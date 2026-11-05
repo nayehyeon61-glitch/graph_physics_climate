@@ -61,3 +61,123 @@
 [10:59:02] stage C: feasibility projection (q700 >= 0, mass, water=True), feas weight 1.0, mean constraint weight 1.0 every 5 steps (2 members x 4 sampling steps)
 [10:59:06] C     0  L_eps(avg25) 1.8402 L_feas 0.0393 L_mean +13.7977 | 3.97 s/step
 [11:06:08] C   200  L_eps(avg25) 0.5545 L_feas 0.0036 L_mean +1.3254 | 2.12 s/step
+[11:13:14] C   400  L_eps(avg25) 0.3825 L_feas 0.0059 L_mean +0.1430 | 2.12 s/step
+[11:19:59] C   600  L_eps(avg25) 0.3952 L_feas 0.0023 L_mean +0.1573 | 2.09 s/step
+[11:26:37] C   799  L_eps(avg25) 0.4387 L_feas 0.0017 L_mean +0.0824 | 2.07 s/step
+[11:26:37] stage C done in 27.6 min
+[11:26:42] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[11:27:19] run runs/era5_64x32_s9_integrated: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[11:27:20] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[11:30:41] deterministic rollouts done in 3.4 min
+[11:33:08] ensemble eval done in 2.4 min
+[11:33:08] eval written to runs/era5_64x32_s9_integrated/eval.json
+[11:33:12] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+{
+ "run": "runs/era5_64x32_s9_integrated",
+ "p_dependence_mse": {
+  "true_P": 0.05252302127579848,
+  "zero_P": 0.0678884523610274,
+  "shuffled_P": 0.06900024289886157,
+  "persistence": 0.349194457133611
+ },
+ "p_dependence_relative": {
+  "true_P": 1.0,
+  "zero_P": 1.2925465959877864,
+  "shuffled_P": 1.31371427657486,
+  "persistence": 6.648407662993915
+ },
+ "linear_probe_r2_24h_scalar_tendency": {
+  "channels": [
+   "z500",
+   "t850",
+   "q700",
+   "t2m",
+   "msl"
+  ],
+  "state_only": [
+   0.06653839349746704,
+   0.13508695363998413,
+   0.0911257266998291,
+   0.05969017744064331,
+   0.07599544525146484
+  ],
+  "guide_only": [
+   0.38847649097442627,
+   0.4108617901802063,
+   0.2908627390861511,
+   0.24366497993469238,
+   0.34789735078811646
+  ],
+  "state_plus_guide": [
+   0.40748000144958496,
+   0.44545978307724,
+   0.29592597484588623,
+   0.25483405590057373,
+   0.355243444442749
+  ],
+  "physics_ops_only": [
+   0.27005261182785034,
+   0.32458430528640747,
+   0.24744313955307007,
+   0.21593844890594482,
+   0.33570122718811035
+  ],
+  "state_plus_physics_ops": [
+   0.2782202363014221,
+   0.34189629554748535,
+   0.2526128888130188,
+   0.2219122052192688,
+   0.34223324060440063
+  ]
+ },
+ "linear_probe_r2_mean": {
+  "state_only": 0.08568733930587769,
+  "guide_only": 0.33635267019271853,
+  "state_plus_guide": 0.3517886519432068,
+  "physics_ops_only": 0.27874394655227663,
+  "state_plus_physics_ops": 0.28737497329711914
+ },
+ "pigt_attention_mass": {
+  "sources": [
+   "H",
+   "P",
+   "O"
+  ],
+  "P0": [
+   [
+    0.19985869526863098,
+    0.35252997279167175,
+    0.44761258363723755
+   ]
+  ],
+  "P1": [
+   [
+    0.21226389706134796,
+    0.26482751965522766,
+    0.5229088664054871
+   ]
+  ],
+  "P2": [
+   [
+    0.41745927929878235,
+    0.2189047485589981,
+    0.36363616585731506
+   ]
+  ],
+  "P1u": [
+   [
+    0.4438723623752594,
+    0.28831642866134644,
+    0.2678110897541046
+   ]
+  ],
+  "P0u": [
+   [
+    0.42083540558815,
+    0.2728377878665924,
+    0.3063283860683441
+   ]
+  ]
+ }
+}
+PIPELINE_DONE
