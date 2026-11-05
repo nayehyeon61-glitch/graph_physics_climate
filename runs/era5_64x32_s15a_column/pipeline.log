@@ -1,0 +1,25 @@
+[22:10:54] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[22:13:42] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[22:13:42] run runs/era5_64x32_s15a_column: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[22:13:43] stage B[vnet_noguide]: vnet params 660629, steps 4500, batch 4, rollout steps 2 from step 1500 (weight 1.0)
+[22:13:52] B[vnet_noguide]     0  L_f 0.9224 L_roll 0.0000 L_phys 0.00003 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) | 9.81 s/step
+[22:16:20] B[vnet_noguide]   250  L_f 0.3882 L_roll 0.0000 L_phys 0.00069 | val MSE 0.1275 2-step 0.2543 (persistence 0.3295) | 0.63 s/step
+[22:18:47] B[vnet_noguide]   500  L_f 0.2959 L_roll 0.0000 L_phys 0.00041 | val MSE 0.0953 2-step 0.2175 (persistence 0.3295) | 0.61 s/step
+[22:21:22] B[vnet_noguide]   750  L_f 0.2421 L_roll 0.0000 L_phys 0.00015 | val MSE 0.0811 2-step 0.2017 (persistence 0.3295) | 0.61 s/step
+[22:23:52] B[vnet_noguide]  1000  L_f 0.2166 L_roll 0.0000 L_phys 0.00043 | val MSE 0.0724 2-step 0.1957 (persistence 0.3295) | 0.61 s/step
+[22:26:25] B[vnet_noguide]  1250  L_f 0.1880 L_roll 0.0000 L_phys 0.00017 | val MSE 0.0699 2-step 0.1891 (persistence 0.3295) | 0.61 s/step
+[22:28:59] B[vnet_noguide]  1500  L_f 0.1786 L_roll 0.5641 L_phys 0.00004 | val MSE 0.0708 2-step 0.1691 (persistence 0.3295) | 0.61 s/step
+[22:33:49] B[vnet_noguide]  1750  L_f 0.2051 L_roll 0.4259 L_phys 0.00008 | val MSE 0.0685 2-step 0.1445 (persistence 0.3295) | 0.69 s/step
+[22:38:43] B[vnet_noguide]  2000  L_f 0.1859 L_roll 0.4023 L_phys 0.00062 | val MSE 0.0643 2-step 0.1298 (persistence 0.3295) | 0.75 s/step
+[22:43:35] B[vnet_noguide]  2250  L_f 0.1953 L_roll 0.3937 L_phys 0.00073 | val MSE 0.0632 2-step 0.1275 (persistence 0.3295) | 0.80 s/step
+[22:48:25] B[vnet_noguide]  2500  L_f 0.1570 L_roll 0.3135 L_phys 0.00031 | val MSE 0.0605 2-step 0.1196 (persistence 0.3295) | 0.83 s/step
+[22:53:19] B[vnet_noguide]  2750  L_f 0.1638 L_roll 0.3150 L_phys 0.00018 | val MSE 0.0586 2-step 0.1165 (persistence 0.3295) | 0.86 s/step
+[22:58:14] B[vnet_noguide]  3000  L_f 0.1534 L_roll 0.3014 L_phys 0.00005 | val MSE 0.0572 2-step 0.1128 (persistence 0.3295) | 0.89 s/step
+[23:03:10] B[vnet_noguide]  3250  L_f 0.1578 L_roll 0.3063 L_phys 0.00009 | val MSE 0.0562 2-step 0.1095 (persistence 0.3295) | 0.91 s/step
+[23:08:04] B[vnet_noguide]  3500  L_f 0.1556 L_roll 0.3044 L_phys 0.00011 | val MSE 0.0555 2-step 0.1082 (persistence 0.3295) | 0.93 s/step
+[23:12:58] B[vnet_noguide]  3750  L_f 0.1543 L_roll 0.3076 L_phys 0.00012 | val MSE 0.0547 2-step 0.1063 (persistence 0.3295) | 0.95 s/step
+[23:17:44] B[vnet_noguide]  4000  L_f 0.1579 L_roll 0.3038 L_phys 0.00008 | val MSE 0.0545 2-step 0.1053 (persistence 0.3295) | 0.96 s/step
+[23:22:24] B[vnet_noguide]  4250  L_f 0.1548 L_roll 0.3001 L_phys 0.00006 | val MSE 0.0541 2-step 0.1045 (persistence 0.3295) | 0.97 s/step
+[23:27:05] B[vnet_noguide]  4499  L_f 0.1512 L_roll 0.2800 L_phys 0.00003 | val MSE 0.0539 2-step 0.1040 (persistence 0.3295) | 0.98 s/step
+[23:27:05] stage B[vnet_noguide] done in 73.4 min, best val MSE 0.1580
+[23:27:09] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
