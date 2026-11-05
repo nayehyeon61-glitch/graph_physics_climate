@@ -22,3 +22,130 @@
 [19:50:19] B[vnet]  8999  L_f 0.1411 L_roll 0.2659 L_phys 0.00005 | val MSE 0.0485 2-step 0.0964 (persistence 0.3295) | 1.89 s/step
 [19:50:19] stage B[vnet] done in 283.1 min, best val MSE 0.1449
 [19:50:24] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[19:51:11] run runs/era5_64x32_s7c_steps6x: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[19:51:11] stage B[vnet_noguide]: vnet params 447505, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[19:51:18] B[vnet_noguide]     0  L_f 0.9054 L_roll 0.0000 L_phys 0.00001 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) | 6.77 s/step
+[19:53:31] B[vnet_noguide]   250  L_f 0.4208 L_roll 0.0000 L_phys 0.00116 | val MSE 0.1428 2-step 0.2627 (persistence 0.3295) | 0.56 s/step
+[19:55:46] B[vnet_noguide]   500  L_f 0.3293 L_roll 0.0000 L_phys 0.00022 | val MSE 0.1074 2-step 0.2134 (persistence 0.3295) | 0.55 s/step
+[19:57:58] B[vnet_noguide]   750  L_f 0.2745 L_roll 0.0000 L_phys 0.00037 | val MSE 0.0936 2-step 0.1874 (persistence 0.3295) | 0.54 s/step
+[20:00:15] B[vnet_noguide]  1000  L_f 0.2342 L_roll 0.0000 L_phys 0.00088 | val MSE 0.0822 2-step 0.1710 (persistence 0.3295) | 0.54 s/step
+[20:02:35] B[vnet_noguide]  1250  L_f 0.2232 L_roll 0.0000 L_phys 0.00103 | val MSE 0.0792 2-step 0.1630 (persistence 0.3295) | 0.55 s/step
+[20:04:50] B[vnet_noguide]  1500  L_f 0.2032 L_roll 0.0000 L_phys 0.00049 | val MSE 0.0735 2-step 0.1558 (persistence 0.3295) | 0.55 s/step
+[20:07:04] B[vnet_noguide]  1750  L_f 0.2165 L_roll 0.0000 L_phys 0.00024 | val MSE 0.0698 2-step 0.1471 (persistence 0.3295) | 0.54 s/step
+[20:09:16] B[vnet_noguide]  2000  L_f 0.1983 L_roll 0.0000 L_phys 0.00041 | val MSE 0.0675 2-step 0.1444 (persistence 0.3295) | 0.54 s/step
+[20:11:30] B[vnet_noguide]  2250  L_f 0.2037 L_roll 0.0000 L_phys 0.00024 | val MSE 0.0648 2-step 0.1368 (persistence 0.3295) | 0.54 s/step
+[20:13:50] B[vnet_noguide]  2500  L_f 0.1715 L_roll 0.0000 L_phys 0.00017 | val MSE 0.0648 2-step 0.1392 (persistence 0.3295) | 0.54 s/step
+[20:16:11] B[vnet_noguide]  2750  L_f 0.1732 L_roll 0.0000 L_phys 0.00008 | val MSE 0.0618 2-step 0.1326 (persistence 0.3295) | 0.55 s/step
+[20:18:32] B[vnet_noguide]  3000  L_f 0.1621 L_roll 0.3538 L_phys 0.00017 | val MSE 0.0610 2-step 0.1293 (persistence 0.3295) | 0.55 s/step
+[20:23:00] B[vnet_noguide]  3250  L_f 0.1772 L_roll 0.3578 L_phys 0.00022 | val MSE 0.0641 2-step 0.1303 (persistence 0.3295) | 0.59 s/step
+[20:27:22] B[vnet_noguide]  3500  L_f 0.1819 L_roll 0.3651 L_phys 0.00059 | val MSE 0.0622 2-step 0.1274 (persistence 0.3295) | 0.62 s/step
+[20:31:41] B[vnet_noguide]  3750  L_f 0.1768 L_roll 0.3636 L_phys 0.00009 | val MSE 0.0604 2-step 0.1220 (persistence 0.3295) | 0.65 s/step
+[20:36:06] B[vnet_noguide]  4000  L_f 0.1809 L_roll 0.3479 L_phys 0.00021 | val MSE 0.0596 2-step 0.1196 (persistence 0.3295) | 0.67 s/step
+[20:40:28] B[vnet_noguide]  4250  L_f 0.1694 L_roll 0.3349 L_phys 0.00005 | val MSE 0.0587 2-step 0.1176 (persistence 0.3295) | 0.70 s/step
+[20:44:46] B[vnet_noguide]  4500  L_f 0.1677 L_roll 0.3357 L_phys 0.00003 | val MSE 0.0578 2-step 0.1157 (persistence 0.3295) | 0.71 s/step
+[20:49:02] B[vnet_noguide]  4750  L_f 0.1722 L_roll 0.3449 L_phys 0.00007 | val MSE 0.0574 2-step 0.1146 (persistence 0.3295) | 0.73 s/step
+[20:53:17] B[vnet_noguide]  5000  L_f 0.1712 L_roll 0.3424 L_phys 0.00006 | val MSE 0.0568 2-step 0.1155 (persistence 0.3295) | 0.74 s/step
+[20:57:34] B[vnet_noguide]  5250  L_f 0.1582 L_roll 0.3103 L_phys 0.00019 | val MSE 0.0556 2-step 0.1123 (persistence 0.3295) | 0.76 s/step
+[21:01:54] B[vnet_noguide]  5500  L_f 0.1773 L_roll 0.3406 L_phys 0.00017 | val MSE 0.0559 2-step 0.1117 (persistence 0.3295) | 0.77 s/step
+[21:06:18] B[vnet_noguide]  5750  L_f 0.1595 L_roll 0.3015 L_phys 0.00025 | val MSE 0.0549 2-step 0.1103 (persistence 0.3295) | 0.78 s/step
+[21:10:37] B[vnet_noguide]  6000  L_f 0.1535 L_roll 0.3109 L_phys 0.00009 | val MSE 0.0539 2-step 0.1077 (persistence 0.3295) | 0.79 s/step
+[21:14:53] B[vnet_noguide]  6250  L_f 0.1582 L_roll 0.2946 L_phys 0.00010 | val MSE 0.0536 2-step 0.1075 (persistence 0.3295) | 0.80 s/step
+[21:19:03] B[vnet_noguide]  6500  L_f 0.1532 L_roll 0.2964 L_phys 0.00007 | val MSE 0.0535 2-step 0.1065 (persistence 0.3295) | 0.81 s/step
+[21:23:11] B[vnet_noguide]  6750  L_f 0.1562 L_roll 0.3138 L_phys 0.00014 | val MSE 0.0531 2-step 0.1064 (persistence 0.3295) | 0.82 s/step
+[21:27:19] B[vnet_noguide]  7000  L_f 0.1430 L_roll 0.2750 L_phys 0.00008 | val MSE 0.0526 2-step 0.1054 (persistence 0.3295) | 0.82 s/step
+[21:31:38] B[vnet_noguide]  7250  L_f 0.1591 L_roll 0.3064 L_phys 0.00005 | val MSE 0.0525 2-step 0.1048 (persistence 0.3295) | 0.83 s/step
+[21:35:57] B[vnet_noguide]  7500  L_f 0.1461 L_roll 0.2758 L_phys 0.00005 | val MSE 0.0521 2-step 0.1038 (persistence 0.3295) | 0.84 s/step
+[21:40:16] B[vnet_noguide]  7750  L_f 0.1443 L_roll 0.2877 L_phys 0.00009 | val MSE 0.0521 2-step 0.1040 (persistence 0.3295) | 0.84 s/step
+[21:44:35] B[vnet_noguide]  8000  L_f 0.1546 L_roll 0.2970 L_phys 0.00007 | val MSE 0.0518 2-step 0.1029 (persistence 0.3295) | 0.85 s/step
+[21:48:45] B[vnet_noguide]  8250  L_f 0.1548 L_roll 0.2870 L_phys 0.00006 | val MSE 0.0518 2-step 0.1030 (persistence 0.3295) | 0.85 s/step
+[21:52:47] B[vnet_noguide]  8500  L_f 0.1635 L_roll 0.3024 L_phys 0.00004 | val MSE 0.0515 2-step 0.1024 (persistence 0.3295) | 0.86 s/step
+[21:56:46] B[vnet_noguide]  8750  L_f 0.1474 L_roll 0.2831 L_phys 0.00004 | val MSE 0.0515 2-step 0.1023 (persistence 0.3295) | 0.86 s/step
+[22:00:45] B[vnet_noguide]  8999  L_f 0.1504 L_roll 0.2776 L_phys 0.00007 | val MSE 0.0515 2-step 0.1024 (persistence 0.3295) | 0.86 s/step
+[22:00:45] stage B[vnet_noguide] done in 129.6 min, best val MSE 0.1538
+[22:00:48] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[22:01:35] run runs/era5_64x32_s7c_steps6x: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[22:01:36] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[22:03:10] deterministic rollouts done in 1.6 min
+[22:03:16] eval written to runs/era5_64x32_s7c_steps6x/eval.json
+[22:03:20] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+{
+ "run": "runs/era5_64x32_s7c_steps6x",
+ "p_dependence_mse": {
+  "true_P": 0.04996781423687935,
+  "zero_P": 0.0836925134062767,
+  "shuffled_P": 0.0852341540157795,
+  "persistence": 0.349194457133611
+ },
+ "p_dependence_relative": {
+  "true_P": 1.0,
+  "zero_P": 1.6749284451291133,
+  "shuffled_P": 1.7057811176553606,
+  "persistence": 6.988387674477941
+ },
+ "linear_probe_r2_24h_scalar_tendency": {
+  "channels": [
+   "z500",
+   "t850",
+   "q700",
+   "t2m",
+   "msl"
+  ],
+  "state_only": [
+   0.06653839349746704,
+   0.13508695363998413,
+   0.0911257266998291,
+   0.05969017744064331,
+   0.07599544525146484
+  ],
+  "guide_only": [
+   0.37264788150787354,
+   0.4093039035797119,
+   0.28227728605270386,
+   0.24209076166152954,
+   0.34197843074798584
+  ],
+  "state_plus_guide": [
+   0.39484310150146484,
+   0.4547082185745239,
+   0.28804004192352295,
+   0.2598641514778137,
+   0.3590138554573059
+  ],
+  "physics_ops_only": [
+   0.27005261182785034,
+   0.32458430528640747,
+   0.24744313955307007,
+   0.21593844890594482,
+   0.33570122718811035
+  ],
+  "state_plus_physics_ops": [
+   0.2782202363014221,
+   0.34189629554748535,
+   0.2526128888130188,
+   0.2219122052192688,
+   0.34223324060440063
+  ]
+ },
+ "linear_probe_r2_mean": {
+  "state_only": 0.08568733930587769,
+  "guide_only": 0.32965965270996095,
+  "state_plus_guide": 0.3512938737869263,
+  "physics_ops_only": 0.27874394655227663,
+  "state_plus_physics_ops": 0.28737497329711914
+ },
+ "fusion_gates_mean_abs": [
+  0.22929151356220245,
+  0.1988379955291748,
+  0.17194931209087372,
+  0.15664483606815338,
+  0.16838645935058594
+ ],
+ "fusion_gates_max_abs": [
+  0.3595438599586487,
+  0.43975570797920227,
+  0.3229179382324219,
+  0.2691044211387634,
+  0.26244643330574036
+ ]
+}
+PIPELINE_DONE

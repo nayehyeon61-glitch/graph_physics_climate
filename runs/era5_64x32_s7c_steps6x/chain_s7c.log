@@ -2,3 +2,5 @@
 [12:49:53] 2022 benchmark finished -> stage7c (Stage B 9000 steps on 10 y)
 [17:02:49] container restart (~14:55 UTC) -> relaunch, Stage B resumes from step 4501
 [17:02:49] 2022 benchmark finished -> stage7c (Stage B 9000 steps on 10 y)
+[22:04:24] stage7c pipeline exit 0
+[22:04:27] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
