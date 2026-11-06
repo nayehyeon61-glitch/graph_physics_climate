@@ -33,3 +33,13 @@
 [00:00:21] B[vnet]  1000  L_f 0.2067 L_roll 0.0000 L_phys 0.00005 | val MSE 0.0698 2-step 0.1814 (persistence 0.3295) | 1.93 s/step
 [00:07:40] B[vnet]  1250  L_f 0.1806 L_roll 0.0000 L_phys 0.00028 | val MSE 0.0657 2-step 0.1653 (persistence 0.3295) | 1.90 s/step
 [00:15:00] B[vnet]  1500  L_f 0.1726 L_roll 0.5320 L_phys 0.00065 | val MSE 0.0654 2-step 0.1561 (persistence 0.3295) | 1.87 s/step
+[00:17:44] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[00:22:38] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[00:22:38] run runs/era5_64x32_s15a_column: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[00:22:38] stage B[vnet_noguide]: vnet params 660629, steps 4500, batch 4, rollout steps 2 from step 1500 (weight 1.0)
+[00:22:38] stage B[vnet_noguide] already finished in this run directory; skipping (delete vnet_noguide_done.json to retrain)
+[00:22:53] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[00:24:06] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[00:24:06] run runs/era5_64x32_s15a_column: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[00:24:07] stage B[vnet]: vnet params 962534, steps 4500, batch 4, rollout steps 2 from step 1500 (weight 1.0)
+[00:24:07] stage B[vnet]: resumed from step 1501 (best 0.2214, 2811 s elapsed before)
