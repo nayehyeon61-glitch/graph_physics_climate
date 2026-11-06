@@ -1,0 +1,11 @@
+[04:58:11] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[04:59:25] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[04:59:25] run runs/era5_64x32_s9b_merged: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[04:59:25] stage B[vnet_noguide]: vnet params 660629, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[04:59:35] B[vnet_noguide]     0  L_f 0.9224 L_roll 0.0000 L_phys 0.00003 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) | 9.87 s/step
+[05:02:23] B[vnet_noguide]   250  L_f 0.3880 L_roll 0.0000 L_phys 0.00069 | val MSE 0.1275 2-step 0.2544 (persistence 0.3295) | 0.71 s/step
+[05:05:10] B[vnet_noguide]   500  L_f 0.2955 L_roll 0.0000 L_phys 0.00040 | val MSE 0.0953 2-step 0.2171 (persistence 0.3295) | 0.69 s/step
+[05:07:54] B[vnet_noguide]   750  L_f 0.2423 L_roll 0.0000 L_phys 0.00017 | val MSE 0.0811 2-step 0.2018 (persistence 0.3295) | 0.68 s/step
+[05:10:45] B[vnet_noguide]  1000  L_f 0.2167 L_roll 0.0000 L_phys 0.00048 | val MSE 0.0726 2-step 0.1961 (persistence 0.3295) | 0.68 s/step
+[05:13:36] B[vnet_noguide]  1250  L_f 0.1890 L_roll 0.0000 L_phys 0.00022 | val MSE 0.0698 2-step 0.1897 (persistence 0.3295) | 0.68 s/step
+[05:16:23] B[vnet_noguide]  1500  L_f 0.1755 L_roll 0.0000 L_phys 0.00007 | val MSE 0.0648 2-step 0.1938 (persistence 0.3295) | 0.68 s/step
