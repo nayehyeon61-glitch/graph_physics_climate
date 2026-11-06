@@ -43,3 +43,11 @@
 [00:24:06] run runs/era5_64x32_s15a_column: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
 [00:24:07] stage B[vnet]: vnet params 962534, steps 4500, batch 4, rollout steps 2 from step 1500 (weight 1.0)
 [00:24:07] stage B[vnet]: resumed from step 1501 (best 0.2214, 2811 s elapsed before)
+[00:42:36] B[vnet]  1750  L_f 0.1924 L_roll 0.4021 L_phys 0.00031 | val MSE 0.0645 2-step 0.1303 (persistence 0.3295) | 2.24 s/step
+[01:01:50] B[vnet]  2000  L_f 0.1740 L_roll 0.3749 L_phys 0.00005 | val MSE 0.0610 2-step 0.1216 (persistence 0.3295) | 2.54 s/step
+[01:21:02] B[vnet]  2250  L_f 0.1817 L_roll 0.3589 L_phys 0.00033 | val MSE 0.0585 2-step 0.1156 (persistence 0.3295) | 2.77 s/step
+[01:40:17] B[vnet]  2500  L_f 0.1492 L_roll 0.2885 L_phys 0.00070 | val MSE 0.0564 2-step 0.1118 (persistence 0.3295) | 2.95 s/step
+[01:59:35] B[vnet]  2750  L_f 0.1528 L_roll 0.2909 L_phys 0.00008 | val MSE 0.0555 2-step 0.1107 (persistence 0.3295) | 3.10 s/step
+[02:18:35] B[vnet]  3000  L_f 0.1427 L_roll 0.2768 L_phys 0.00006 | val MSE 0.0540 2-step 0.1048 (persistence 0.3295) | 3.23 s/step
+[02:37:31] B[vnet]  3250  L_f 0.1439 L_roll 0.2836 L_phys 0.00007 | val MSE 0.0530 2-step 0.1030 (persistence 0.3295) | 3.33 s/step
+[02:56:25] B[vnet]  3500  L_f 0.1477 L_roll 0.2810 L_phys 0.00003 | val MSE 0.0522 2-step 0.1017 (persistence 0.3295) | 3.41 s/step
