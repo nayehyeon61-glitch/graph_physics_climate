@@ -45,3 +45,8 @@
 [07:44:22] run runs/era5_64x32_s9b_merged: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
 [07:44:23] stage B[vnet]: vnet params 962534, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
 [07:45:07] B[vnet]     0  L_f 0.9224 L_roll 0.0000 L_phys 0.00003 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) | 44.86 s/step
+[07:54:21] B[vnet]   250  L_f 0.3709 L_roll 0.0000 L_phys 0.00127 | val MSE 0.1221 2-step 0.2502 (persistence 0.3295) | 2.39 s/step
+[08:03:35] B[vnet]   500  L_f 0.2882 L_roll 0.0000 L_phys 0.00019 | val MSE 0.0906 2-step 0.1977 (persistence 0.3295) | 2.30 s/step
+[08:12:45] B[vnet]   750  L_f 0.2351 L_roll 0.0000 L_phys 0.00055 | val MSE 0.0794 2-step 0.1796 (persistence 0.3295) | 2.27 s/step
+[08:21:58] B[vnet]  1000  L_f 0.2064 L_roll 0.0000 L_phys 0.00006 | val MSE 0.0699 2-step 0.1803 (persistence 0.3295) | 2.25 s/step
+[08:31:25] B[vnet]  1250  L_f 0.1787 L_roll 0.0000 L_phys 0.00044 | val MSE 0.0657 2-step 0.1656 (persistence 0.3295) | 2.26 s/step
