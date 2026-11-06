@@ -28,3 +28,16 @@
 [06:32:18] B[vnet_noguide]  5750  L_f 0.1352 L_roll 0.2554 L_phys 0.00003 | val MSE 0.0480 2-step 0.0970 (persistence 0.3295) | 0.97 s/step
 [06:37:39] B[vnet_noguide]  6000  L_f 0.1375 L_roll 0.2691 L_phys 0.00005 | val MSE 0.0473 2-step 0.0949 (persistence 0.3295) | 0.98 s/step
 [06:42:57] B[vnet_noguide]  6250  L_f 0.1332 L_roll 0.2550 L_phys 0.00009 | val MSE 0.0465 2-step 0.0921 (persistence 0.3295) | 0.99 s/step
+[06:48:18] B[vnet_noguide]  6500  L_f 0.1293 L_roll 0.2609 L_phys 0.00004 | val MSE 0.0463 2-step 0.0920 (persistence 0.3295) | 1.00 s/step
+[06:53:37] B[vnet_noguide]  6750  L_f 0.1335 L_roll 0.2723 L_phys 0.00005 | val MSE 0.0460 2-step 0.0916 (persistence 0.3295) | 1.01 s/step
+[06:58:59] B[vnet_noguide]  7000  L_f 0.1250 L_roll 0.2492 L_phys 0.00003 | val MSE 0.0458 2-step 0.0913 (persistence 0.3295) | 1.02 s/step
+[07:04:28] B[vnet_noguide]  7250  L_f 0.1374 L_roll 0.2699 L_phys 0.00002 | val MSE 0.0455 2-step 0.0904 (persistence 0.3295) | 1.03 s/step
+[07:09:53] B[vnet_noguide]  7500  L_f 0.1232 L_roll 0.2375 L_phys 0.00003 | val MSE 0.0453 2-step 0.0895 (persistence 0.3295) | 1.04 s/step
+[07:15:20] B[vnet_noguide]  7750  L_f 0.1269 L_roll 0.2541 L_phys 0.00006 | val MSE 0.0451 2-step 0.0888 (persistence 0.3295) | 1.05 s/step
+[07:20:52] B[vnet_noguide]  8000  L_f 0.1303 L_roll 0.2496 L_phys 0.00005 | val MSE 0.0449 2-step 0.0882 (persistence 0.3295) | 1.06 s/step
+[07:26:23] B[vnet_noguide]  8250  L_f 0.1354 L_roll 0.2444 L_phys 0.00007 | val MSE 0.0447 2-step 0.0880 (persistence 0.3295) | 1.07 s/step
+[07:32:00] B[vnet_noguide]  8500  L_f 0.1405 L_roll 0.2748 L_phys 0.00004 | val MSE 0.0447 2-step 0.0881 (persistence 0.3295) | 1.08 s/step
+[07:37:34] B[vnet_noguide]  8750  L_f 0.1253 L_roll 0.2406 L_phys 0.00003 | val MSE 0.0447 2-step 0.0877 (persistence 0.3295) | 1.08 s/step
+[07:43:08] B[vnet_noguide]  8999  L_f 0.1283 L_roll 0.2390 L_phys 0.00004 | val MSE 0.0446 2-step 0.0875 (persistence 0.3295) | 1.09 s/step
+[07:43:08] stage B[vnet_noguide] done in 163.7 min, best val MSE 0.1321
+[07:43:12] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
