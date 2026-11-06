@@ -83,3 +83,131 @@
 [17:25:39] B[vnet]  8999  L_f 0.1181 L_roll 0.2189 L_phys 0.00004 | val MSE 0.0415 2-step 0.0827 (persistence 0.3295) | 3.88 s/step
 [17:25:39] stage B[vnet] done in 581.3 min, best val MSE 0.1241
 [17:25:44] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[17:26:55] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[17:26:55] run runs/era5_64x32_s9b_merged: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[17:27:44] stage C: denoiser params 118045, residual scale s [0.050449248403310776, 0.07566391676664352, 0.2030922770500183, 0.04979977384209633, 0.14342455565929413]
+[17:27:44] stage C: feasibility projection (q700 >= 0, mass, water=True), feas weight 1.0, mean constraint weight 1.0 every 5 steps (2 members x 4 sampling steps)
+[17:27:49] C     0  L_eps(avg25) 1.9782 L_feas 0.1292 L_mean +20.0754 | 5.30 s/step
+[17:34:09] C   200  L_eps(avg25) 0.5405 L_feas 0.0070 L_mean +1.6555 | 1.92 s/step
+[17:40:34] C   400  L_eps(avg25) 0.4454 L_feas 0.0072 L_mean +0.1661 | 1.92 s/step
+[17:46:52] C   600  L_eps(avg25) 0.4371 L_feas 0.0026 L_mean +0.0838 | 1.91 s/step
+[17:53:07] C   799  L_eps(avg25) 0.4377 L_feas 0.0022 L_mean +0.0508 | 1.90 s/step
+[17:53:07] stage C done in 25.4 min
+[17:53:12] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[17:54:22] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[17:54:22] run runs/era5_64x32_s9b_merged: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[17:54:23] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[17:57:44] deterministic rollouts done in 3.3 min
+[17:59:58] ensemble eval done in 2.2 min
+[17:59:58] eval written to runs/era5_64x32_s9b_merged/eval.json
+[18:00:03] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[18:01:15] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+{
+ "run": "runs/era5_64x32_s9b_merged",
+ "p_dependence_mse": {
+  "true_P": 0.042475865532954536,
+  "zero_P": 0.06424447956184547,
+  "shuffled_P": 0.06540486154456933,
+  "persistence": 0.349194457133611
+ },
+ "p_dependence_relative": {
+  "true_P": 1.0,
+  "zero_P": 1.512493712741461,
+  "shuffled_P": 1.5398123316363155,
+  "persistence": 8.221008630481974
+ },
+ "linear_probe_r2_24h_scalar_tendency": {
+  "channels": [
+   "z500",
+   "t850",
+   "q700",
+   "t2m",
+   "msl"
+  ],
+  "state_only": [
+   0.06653839349746704,
+   0.13508695363998413,
+   0.0911257266998291,
+   0.05969017744064331,
+   0.07599544525146484
+  ],
+  "guide_only": [
+   0.38847649097442627,
+   0.4108617901802063,
+   0.2908627390861511,
+   0.24366497993469238,
+   0.34789735078811646
+  ],
+  "state_plus_guide": [
+   0.40748000144958496,
+   0.44545978307724,
+   0.29592597484588623,
+   0.25483405590057373,
+   0.355243444442749
+  ],
+  "physics_ops_only": [
+   0.27005261182785034,
+   0.32458430528640747,
+   0.24744313955307007,
+   0.21593844890594482,
+   0.33570122718811035
+  ],
+  "state_plus_physics_ops": [
+   0.2782202363014221,
+   0.34189629554748535,
+   0.2526128888130188,
+   0.2219122052192688,
+   0.34223324060440063
+  ]
+ },
+ "linear_probe_r2_mean": {
+  "state_only": 0.08568733930587769,
+  "guide_only": 0.33635267019271853,
+  "state_plus_guide": 0.3517886519432068,
+  "physics_ops_only": 0.27874394655227663,
+  "state_plus_physics_ops": 0.28737497329711914
+ },
+ "pigt_attention_mass": {
+  "sources": [
+   "H",
+   "P",
+   "O"
+  ],
+  "P0": [
+   [
+    0.18150198459625244,
+    0.2622569501399994,
+    0.5562412142753601
+   ]
+  ],
+  "P1": [
+   [
+    0.24747106432914734,
+    0.29000189900398254,
+    0.4625263214111328
+   ]
+  ],
+  "P2": [
+   [
+    0.35154202580451965,
+    0.23636212944984436,
+    0.412095308303833
+   ]
+  ],
+  "P1u": [
+   [
+    0.47493085265159607,
+    0.25228458642959595,
+    0.27278387546539307
+   ]
+  ],
+  "P0u": [
+   [
+    0.4326941967010498,
+    0.22938671708106995,
+    0.33791854977607727
+   ]
+  ]
+ }
+}
+PIPELINE_DONE
