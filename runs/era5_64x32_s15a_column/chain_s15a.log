@@ -4,3 +4,4 @@
 [00:16:06] container restart (~00:15 UTC) -> relaunch, Stage B resumes from step 1501
 [00:16:06] stage15a waits for CHAIN_S7C_DONE
 [00:16:06] stage15a column inputs start
+[04:47:54] stage15a pipeline exit 0
