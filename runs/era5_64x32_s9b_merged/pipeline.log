@@ -41,3 +41,7 @@
 [07:43:08] B[vnet_noguide]  8999  L_f 0.1283 L_roll 0.2390 L_phys 0.00004 | val MSE 0.0446 2-step 0.0875 (persistence 0.3295) | 1.09 s/step
 [07:43:08] stage B[vnet_noguide] done in 163.7 min, best val MSE 0.1321
 [07:43:12] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[07:44:22] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[07:44:22] run runs/era5_64x32_s9b_merged: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[07:44:23] stage B[vnet]: vnet params 962534, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[07:45:07] B[vnet]     0  L_f 0.9224 L_roll 0.0000 L_phys 0.00003 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) | 44.86 s/step
