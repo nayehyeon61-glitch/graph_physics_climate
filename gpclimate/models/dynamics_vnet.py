@@ -74,6 +74,10 @@ class VNetConfig:
     # the initial time; later rollout steps get zeros and an availability flag 0 (their future values are unknown)
     col_s: int = 0
     col_v: int = 0
+    # stage15b: intermediate-time supervision (WeatherODE-style loss on intermediate states, without extra solver
+    # evaluations) — an auxiliary head on the shared decoder embedding predicts the changes to X_{t + j 6 h}, j =
+    # 1..inter_times (3 = 6/12/18 h inside a 24 h lead).  Used only by the training loss; forecasts are unchanged.
+    inter_times: int = 0
 
 
 class DynamicsVNet(nn.Module):
@@ -112,6 +116,9 @@ class DynamicsVNet(nn.Module):
         # graph-to-grid head; receiver also sees the grid embedding of X_t (local detail skip)
         self.head_dec = GaugeTransfer(cs, cv, cs, cv, nb, hd, extra_cs=cs, extra_cv=cv)
         self.head_out = EqLinear(cs, cv, spec.n_s, spec.n_v)
+        self.head_inter = (EqLinear(cs, cv, spec.n_s * cfg.inter_times, spec.n_v * cfg.inter_times)
+                           if cfg.inter_times else None)
+        self.last_inter: Optional[Field] = None  # stage15b: intermediate-time output of the last forward (delta units)
         self.cont_op = None
         if cfg.neural_op:
             from gpclimate.nn.neural_operator import ContinuousOperatorBlock
@@ -122,11 +129,14 @@ class DynamicsVNet(nn.Module):
             from gpclimate.nn.nudging import InitialNudging
             self.nudge_block = InitialNudging(cs, cv, spec.n_s, spec.n_v, cfg.nudge_hidden, cfg.nudge_alpha_init)
         with torch.no_grad():  # start from persistence (delta = 0)
-            self.head_out.lin_s.weight.zero_()
-            self.head_out.lin_s.bias.zero_()
-            if self.head_out.w_re is not None:
-                self.head_out.w_re.zero_()
-                self.head_out.w_im.zero_()
+            for head in (self.head_out, self.head_inter):
+                if head is None:
+                    continue
+                head.lin_s.weight.zero_()
+                head.lin_s.bias.zero_()
+                if head.w_re is not None:
+                    head.w_re.zero_()
+                    head.w_im.zero_()
 
     def _fuse(self, k: int, h: Field, physics: Optional[Dict[str, Field]], key: str, edges,
               ops: Optional[Field] = None) -> Field:
@@ -189,6 +199,8 @@ class DynamicsVNet(nn.Module):
         F0u = self._fuse(4, H0u, physics, "P0u", g.attn_edges[0], O[0])
         emb = self.head_dec(F0u, g.mesh2grid, extra=grid_emb)
         out = self.head_out(emb)
+        if self.head_inter is not None:  # stage15b: intermediate-time changes from the same embedding
+            self.last_inter = self.head_inter(emb)
         if self.cont_op is not None:  # stage13: Lie guide -> discrete mesh GNN -> continuous operator on the grid
             H, W = g.extras["grid_hw"]
             out = out + self.cont_op(x, out, H, W, g.extras["grid_lat"], g.extras.get("grid_gauge"))
@@ -250,6 +262,17 @@ class LieGuidedForecaster(nn.Module):
         forecast = self.integrate(state, cond, g)
         d = Field((forecast.s - state.s) / self.delta_scale_s, (forecast.v - state.v) / self.delta_scale_v)
         return forecast, d
+
+    def inter_forecasts(self, state: Field) -> List[Field]:
+        """stage15b: intermediate-time states X_{t + j 6 h}, j = 1..inter_times, predicted by the intermediate-time head in
+        the last forward call that started from ``state`` (same units as ``state``; delta-scale changes)."""
+        cfg, d = self.vnet.cfg, self.vnet.last_inter
+        assert cfg.inter_times > 0 and d is not None, "the V-Net has no intermediate-time head or has not been called"
+        n_s, n_v = self.spec.n_s, self.spec.n_v
+        ds = d.s.unflatten(-1, (cfg.inter_times, n_s))
+        dv = d.v.unflatten(-1, (cfg.inter_times, n_v))
+        return [Field(state.s + ds[..., j, :] * self.delta_scale_s, state.v + dv[..., j, :] * self.delta_scale_v)
+                for j in range(cfg.inter_times)]
 
     def increment(self, state: Field, prev_state: Field, prev_cond: Field, g: GraphView,
                   prev_prev: Optional[Field] = None) -> Field:

@@ -108,6 +108,9 @@ class Run:
             # stage15a keys (absent from runs created before; tests build bare Namespaces)
             self.cfg.update(column_inputs=getattr(args, "column_inputs", "") or "",
                             column_data=getattr(args, "column_data", "") or "")
+            # stage15b keys (intermediate-time auxiliary loss)
+            self.cfg.update(inter_times=int(getattr(args, "inter_times", 0) or 0),
+                            inter_weight=float(getattr(args, "inter_weight", 1.0)))
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         # stage10: the state feature matrix is a named spec stored in config.json (older runs: base11)
@@ -164,6 +167,17 @@ class Run:
             self._init_columns(args)
             self.vnet_kwargs.update(col_s=len(COLUMN_SETS[c["column_inputs"]][0]),
                                     col_v=len(COLUMN_SETS[c["column_inputs"]][1]))
+        # stage15b: auxiliary head for the intermediate times X_{t + j 6 h}, j = 1..inter_times (training loss only)
+        self.inter_times = int(c.get("inter_times", 0) or 0)
+        self.inter_weight = float(c.get("inter_weight", 1.0) if c.get("inter_weight") is not None else 1.0)
+        if self.inter_times:
+            if self.inter_times >= int(c["lead"]):
+                raise ValueError(f"inter_times must be < lead ({c['lead']} data steps)")
+            if c.get("integrator", "delta") != "delta":
+                raise ValueError("inter_times needs the delta integrator")
+            self.vnet_kwargs.update(inter_times=self.inter_times)
+            log(f"intermediate-time loss: {self.inter_times} auxiliary targets "
+                f"({', '.join(f'{6 * j} h' for j in range(1, self.inter_times + 1))}), weight {self.inter_weight}")
         self.use_prev = bool(c.get("prev_state", False))  # stage14: V-Net input includes X_t - X_{t-lead}
         self.use_nudge = bool(c.get("nudge", False))  # stage14b: first step relaxes toward X_t - M(X_{t-lead})
         # earliest training index whose previous states exist (prev: X_{t-lead}; nudge pre-forecast: X_{t-2 lead})
@@ -206,6 +220,10 @@ class Run:
     def col(self, ds: ERA5Pairs, idx):
         """stage15a: normalised column channels at ``idx`` (None when the run does not use them)."""
         return ds.columns.field(idx) if self.use_col else None
+
+    def inter_targets(self, ds: ERA5Pairs, idx):
+        """stage15b: normalised states X_{t + j 6 h}, j = 1..inter_times (empty when the run has no such head)."""
+        return [self.norm.state(ds.state_after(idx, j)) for j in range(1, self.inter_times + 1)]
 
     def prev(self, ds: ERA5Pairs, idx):
         """stage14: normalised state one lead before ``idx`` (None when the run does not use it)."""
@@ -506,6 +524,11 @@ def stage_b(run: Run, use_guide: bool):
                      col=run.col(run.train, idx))
         x_prev, nud = xs[0], model.carried_nudge()
         l_f = field_mse(scaled(f), scaled(xs[1]), w, run.loss_w)  # == delta MSE of the one-step target
+        l_int = torch.zeros(())
+        if run.inter_times:  # stage15b: intermediate times of the first lead, same delta units as L_f
+            mids = model.inter_forecasts(xs[0])
+            l_int = sum(field_mse(scaled(fa), scaled(ta), w, run.loss_w)
+                        for fa, ta in zip(mids, run.inter_targets(run.train, idx))) / run.inter_times
         l_phys = global_tendency_consistency(d.s * model.delta_scale_s, xs[1].s - xs[0].s, w)
         l_pde = pde_residual(xs[0], f, cs[0]) if use_pde else torch.zeros(())
         l_roll = torch.zeros(())
@@ -516,7 +539,7 @@ def stage_b(run: Run, use_guide: bool):
             l_roll = l_roll + field_mse(scaled(f), scaled(xs[k]), w, run.loss_w)
             if lam_spec > 0:
                 l_spec = l_spec + spectral_energy_loss(f, xs[k], *grid_hw, grid_lat)
-        loss = l_f + a.phys_weight * l_phys + lam * l_roll + lam_pde * l_pde + lam_spec * l_spec
+        loss = l_f + a.phys_weight * l_phys + lam * l_roll + lam_pde * l_pde + lam_spec * l_spec + run.inter_weight * l_int
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(params, 1.0)
@@ -525,18 +548,24 @@ def stage_b(run: Run, use_guide: bool):
             ema_update(step)
         if step % 25 == 0:
             run.jlog(name, {"step": step, "l_f": float(l_f), "l_phys": float(l_phys), "l_roll": float(l_roll),
-                            "l_pde": float(l_pde), "l_spec": float(l_spec), "k": k_now, "t": time.time() - t0})
+                            "l_pde": float(l_pde), "l_spec": float(l_spec), "k": k_now, "t": time.time() - t0,
+                            **({"l_int": float(l_int)} if run.inter_times else {})})
         if step % a.val_every == 0 or step == a.steps - 1:
             model.eval()
             vm = ema_model if ema_model is not None else model  # validated / saved weights
             with torch.no_grad():
                 tot, tot2 = 0.0, 0.0
+                tot_int = np.zeros(run.inter_times)
                 for i in range(0, len(val_idx), 8):
                     x0n, x1n, cn, _ = run.prep(run.calib, val_idx[i:i + 8])
                     fc, _ = vm(x0n, cn, g, prev=run.prev(run.calib, val_idx[i:i + 8]),
                                nudge=run.increment(vm, run.calib, val_idx[i:i + 8], x0n),
                                col=run.col(run.calib, val_idx[i:i + 8]))
                     tot += float(field_mse(fc, x1n, w)) * len(val_idx[i:i + 8])
+                    if run.inter_times:  # stage15b: MSE of the intermediate-time head (diagnostic, not selected on)
+                        for j, (fa, ta) in enumerate(zip(vm.inter_forecasts(x0n),
+                                                         run.inter_targets(run.calib, val_idx[i:i + 8]))):
+                            tot_int[j] += float(field_mse(fa, ta, w)) * len(val_idx[i:i + 8])
                 for i in range(0, len(val_idx2), 8):
                     states, conds = run.calib.sequence(val_idx2[i:i + 8], 2)
                     fc, pv = run.norm.state(states[0]), run.prev(run.calib, val_idx2[i:i + 8])
@@ -559,13 +588,17 @@ def stage_b(run: Run, use_guide: bool):
                 if guide_lr > 0:
                     torch.save(vm.guide.state_dict(), run.dir / "guide_finetuned.pt")
             nb = vm.vnet.nudge_block
+            v_int = (tot_int / len(val_idx)).tolist()
             run.jlog(name, {"step": step, "val_mse": v_mse, "val_mse2": v_mse2, "val_persistence_mse": pers,
+                            **({"val_inter_mse": v_int} if run.inter_times else {}),
                             "best": best, "attention_mass": model.vnet.attention_mass(), "t": time.time() - t0,
                             **({"nudge_alpha": nb.last_alpha.tolist()} if nb is not None and nb.last_alpha is not None else {})})
             log(f"B[{name}] {step:5d}  L_f {float(l_f):.4f} L_roll {float(l_roll):.4f} L_phys {float(l_phys):.5f}"
                 + (f" L_pde {float(l_pde):.4f}" if use_pde else "")
+                + (f" L_int {float(l_int):.4f}" if run.inter_times else "")
                 + f" | val MSE {v_mse:.4f} 2-step {v_mse2:.4f} (persistence {pers:.4f})"
-                f" | {(time.time() - t0) / (step + 1):.2f} s/step")
+                + (" 6/12/18 h " + "/".join(f"{x:.4f}" for x in v_int) if run.inter_times else "")
+                + f" | {(time.time() - t0) / (step + 1):.2f} s/step")
             state = {"step": step + 1, "vnet": model.vnet.state_dict(), "opt": opt.state_dict(), "best": best,
                      "rng": rng.bit_generator.state, "torch_rng": torch.get_rng_state(), "elapsed": time.time() - t0}
             if guide_lr > 0:
@@ -949,6 +982,11 @@ def main():
     ap.add_argument("--column-inputs", default="", choices=[""] + sorted(COLUMN_SETS),
                     help="stage15a: column channels as V-Net inputs at the initial time only (stored in config.json)")
     ap.add_argument("--column-data", default="", help="stage15a: npz with the column channels (same splits/times as --data)")
+    ap.add_argument("--inter-times", type=int, default=0,
+                    help="stage15b: intermediate data steps (6 h) supervised by an auxiliary head inside the first lead "
+                         "(3 = 6/12/18 h for a 24 h lead; 0 = off); training loss only, forecasts unchanged")
+    ap.add_argument("--inter-weight", type=float, default=1.0,
+                    help="stage15b: weight of the mean intermediate-time loss (same delta units as L_f)")
     ap.add_argument("--neural-op", default="", choices=["", "fft", "sht"],
                     help="stage13: continuous neural-operator layer on the grid after the mesh V-Net ('' = off)")
     ap.add_argument("--no-hidden", type=int, default=16, help="stage13: neural operator hidden channels")

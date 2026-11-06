@@ -211,6 +211,12 @@ class ERA5Pairs:
         idx = torch.as_tensor(idx, dtype=torch.long)
         return split_state(self.state[idx + 1], self.spec, self.names)
 
+    def state_after(self, idx: Sequence[int], data_steps: int) -> Field:
+        """State ``data_steps`` data steps (6 h each) after ``idx`` (stage15b intermediate-time targets, e.g. 1/2/3 =
+        6/12/18 h inside a 24 h lead; always available for training indices since data_steps < lead)."""
+        idx = torch.as_tensor(idx, dtype=torch.long)
+        return split_state(self.state[idx + data_steps], self.spec, self.names)
+
     def sequence(self, idx: Sequence[int], n_steps: int):
         """States ``X_{t + k lead}`` for k = 0..n_steps and conditions for k = 0..n_steps-1 (rollout training).
 

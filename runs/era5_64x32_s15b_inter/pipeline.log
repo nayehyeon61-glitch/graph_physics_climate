@@ -1,0 +1,5 @@
+[18:24:17] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[18:25:31] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[18:25:31] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+[18:25:31] run runs/era5_64x32_s15b_inter: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[18:25:32] stage B[vnet_noguide]: vnet params 661892, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
