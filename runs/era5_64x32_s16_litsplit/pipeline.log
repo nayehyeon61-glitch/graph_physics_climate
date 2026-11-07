@@ -56,3 +56,4 @@
 [12:11:53] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2006_2018.npz (initial time only)
 [12:11:53] run runs/era5_64x32_s16_litsplit: pairs train 14604 calib 1460 test 2916; graph [2562, 642, 162]
 [12:11:54] stage B[vnet]: vnet params 962534, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[12:13:41] B[vnet]     0  L_f 0.9011 L_roll 0.0000 L_phys 0.00003 | val MSE 0.3436 2-step 0.5036 (persistence 0.3496) | 107.26 s/step

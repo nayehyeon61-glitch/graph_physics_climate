@@ -68,6 +68,9 @@ class GuideConfig:
     # state one 6 h step by semi-Lagrangian transport with parallel-transported vectors (gpclimate.nn.semi_lagrangian)
     # and the tendency head becomes the source term: G(X) = T_u(X) + S_theta(X) dt.  Needs tend_head.
     flow_head: bool = False
+    # stage19b (GPINN graph embedding): number of eigenvectors of the terrain / coastline weighted grid Laplacian
+    # (gpclimate/geometry/graph_embedding.py) added to the guide's input embedding (zero-initialised); 0 = off
+    graph_embed: int = 0
 
 
 # stage17c level groups: the wind that carries each state channel
@@ -164,6 +167,20 @@ class LiePhysicalGNN(nn.Module):
                 self.flow_out.w_re.zero_()
                 self.flow_out.w_im.zero_()
             self.register_buffer("flow_v_scale", torch.ones(spec.n_v), persistent=False)  # m/s per normalised unit
+        # stage19b: GPINN graph embedding (values set by the trainer with set_graph_embedding, saved with the guide)
+        self.gemb_in: Optional[EqLinear] = None
+        if cfg.graph_embed:
+            self.register_buffer("gemb", torch.zeros(0, cfg.graph_embed))
+            self.gemb_in = EqLinear(cfg.graph_embed, 0, cs, cv)
+            with torch.no_grad():
+                self.gemb_in.lin_s.weight.zero_()
+                self.gemb_in.lin_s.bias.zero_()
+
+    def set_graph_embedding(self, emb: torch.Tensor) -> None:
+        """stage19b: the [n_grid, graph_embed] eigenvectors of the terrain-weighted grid Laplacian."""
+        if emb.shape[-1] != self.cfg.graph_embed:
+            raise ValueError(f"graph embedding has {emb.shape[-1]} columns, the guide expects {self.cfg.graph_embed}")
+        self.gemb = emb.to(self.gemb.device, torch.float32).clone()
 
     @property
     def feature_dims(self) -> Tuple[int, int]:
@@ -189,7 +206,12 @@ class LiePhysicalGNN(nn.Module):
         cond = broadcast_batch(cond, B)
         sig = sigma.to(state.s).reshape(B, 1, 1).expand(B, G, 1)
         x = Field(torch.cat([state.s, cond.s, sig], -1), torch.cat([state.v, cond.v], -1))
-        _, m0 = self.lift(x, g)
+        extra = None
+        if self.gemb_in is not None:  # stage19b: GPINN graph embedding as extra input dimensions
+            if self.gemb.shape[0] != G:
+                raise ValueError("graph embedding not set (set_graph_embedding) or of the wrong grid size")
+            extra = self.gemb_in(Field(self.gemb.to(state.s)[None].expand(B, -1, -1), state.v[..., :0]))
+        _, m0 = self.lift(x, g, extra=extra)
         if self.phys_ops is not None:
             ops = self.phys_embed(self.phys_norm(self.physics_terms(state, cond, g)))
             m0 = Field(m0.s + ops.s, m0.v + ops.v)

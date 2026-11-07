@@ -113,6 +113,8 @@ class Run:
                             inter_weight=float(getattr(args, "inter_weight", 1.0)))
             # stage18b key (previous-state input along the ODE path)
             self.cfg.update(prev_path=int(getattr(args, "prev_path", 0) or 0))
+            # stage19b key (GPINN graph embedding of the guide)
+            self.cfg.update(graph_embed=int(getattr(args, "graph_embed", 0) or 0))
             # stage17 keys (dynamic guide: sub-step forcing, learnable guide-drift gain)
             self.cfg.update(ode_path_forcing=int(getattr(args, "ode_path_forcing", 0) or 0),
                             ode_drift_gain=int(getattr(args, "ode_drift_gain", 0) or 0),
@@ -160,7 +162,8 @@ class Run:
                                      resolved_coef=c.get("resolved_coef"),
                                      curvature_ops=bool(c.get("curvature_ops", False)),
                                      simplicial=int(c.get("simplicial", 0)),
-                                     flow_head=bool(c.get("flow_head", False)))
+                                     flow_head=bool(c.get("flow_head", False)),
+                                     graph_embed=int(c.get("graph_embed", 0) or 0))
         self.vnet_kwargs = dict(cs=c["cs"], cv=c["cv"], depth=tuple(c["depth"]), heads=c["heads"], ds=c["ds"],
                                 dv=c["dv"], n_basis=c["n_basis"], hidden=c["hidden"],
                                 fusion=c.get("fusion", "gated"), pigt_layers=int(c.get("pigt_layers", 2)),
@@ -296,10 +299,28 @@ class Run:
             m.vnet.phys_ops.v_scale.copy_(self.norm.v_scale)
         if m.guide is not None and getattr(m.guide, "flow_out", None) is not None:  # stage17c flow in m/s
             m.guide.flow_v_scale.copy_(self.norm.v_scale)
+        if m.guide is not None and getattr(m.guide, "gemb_in", None) is not None:  # stage19b
+            m.guide.set_graph_embedding(self.graph_embedding())
         if m.guide is not None and m.guide.resolved is not None:
             m.guide.resolved.set_scales(self.norm.s_mean, self.norm.s_std, self.norm.v_scale, self.norm.tend_s,
                                         self.norm.tend_v)
         return m
+
+    def graph_embedding(self) -> torch.Tensor:
+        """stage19b: terrain / coastline weighted grid-Laplacian eigenvectors [n_grid, graph_embed] from the data's
+        static fields (cached in ``graph_embed.npy`` so every stage of the run uses the same vectors)."""
+        path = self.dir / "graph_embed.npy"
+        k = int(self.cfg.get("graph_embed", 0) or 0)
+        if path.exists():
+            emb = np.load(path)
+            if emb.shape[1] == k:
+                return torch.as_tensor(emb)
+        from gpclimate.geometry.graph_embedding import terrain_laplacian_eigvecs
+        z = np.load(self.cfg["data"] if Path(self.cfg["data"]).is_absolute() else ROOT / self.cfg["data"])
+        emb = terrain_laplacian_eigvecs(z["lat"], z["lon"], z["static/orog"] / 9.80665, z["static/lsm"], k).numpy()
+        np.save(path, emb)
+        log(f"GPINN graph embedding: {k} terrain-weighted Laplacian eigenvectors -> {path.name}")
+        return torch.as_tensor(emb)
 
     def load_guide(self, m: LieGuidedForecaster, finetuned: bool = True):
         """Stage A guide ``guide.pt``; when Stage B fine-tuned the guide (``--guide-lr``, stage12) the matching
@@ -329,7 +350,37 @@ class Run:
 
 # guide read-out heads (grid adapter, reconstruction, aux, tendency/source, flow): Stage A --guide-heads-only (stage17c)
 # and Stage B --guide-lr with --guide-heads-only (stage18c) train only these, so the features P stay unchanged
-GUIDE_HEADS = ("head_dec.", "rec_out.", "aux_out.", "tend_out.", "flow_out.")
+# (+ the stage19b graph-embedding input adapter, the only way the embedding reaches a frozen trunk)
+GUIDE_HEADS = ("head_dec.", "rec_out.", "aux_out.", "tend_out.", "flow_out.", "gemb_in.")
+
+
+def make_pinn(run, weight: float, terms: str):
+    """stage19 GPINN: residual losses of the relations that hold for ERA5 (gpclimate/training/pinn.py), with var(L)
+    scales fitted on 32 training pairs and cached in ``pinn_scales.json``; None when ``weight`` is 0."""
+    if weight <= 0:
+        return None
+    from gpclimate.training.pinn import ALL_TERMS, PINNResiduals
+    names = tuple(t for t in (terms or ",".join(ALL_TERMS)).split(",") if t)
+    pinn = PINNResiduals(run.norm.s_mean, run.norm.s_std, run.norm.v_scale, run.graphs.mesh[0].lat, names)
+    path = run.dir / "pinn_scales.json"
+    if path.exists():
+        cached = json.load(open(path))
+        for k, v in cached["scale"].items():
+            pinn.scale[ALL_TERMS.index(k)] = float(v)
+        missing = [k for k in names if k not in cached["scale"]]
+    else:
+        missing = list(names)
+    if missing:
+        idx = list(np.linspace(0, len(run.train) - 2, 32).round().astype(int))
+        pairs = []
+        for i in range(0, 32, 8):
+            x0n, _, _, _ = run.prep(run.train, idx[i:i + 8])
+            pairs.append((x0n, run.norm.state(run.train.next_state(idx[i:i + 8]))))
+        scales = pinn.fit_scales(pairs, run.g)
+        old = json.load(open(path))["scale"] if path.exists() else {}
+        json.dump({"scale": {**old, **scales}, "terms": list(names)}, open(path, "w"), indent=1)
+    log(f"GPINN residuals {names} (weight {weight}), ERA5 var(L) scales from {path.name}")
+    return pinn
 
 
 def next_prev(model, start):
@@ -356,6 +407,8 @@ def stage_a(run: Run):
     use_flow = getattr(guide, "flow_out", None) is not None
     if use_flow:
         log("stage A: Lie transport guide — tendency = semi-Lagrangian transport by the guide flow + source head")
+    pinn_w = float(getattr(a, "pinn_weight", 0.0) or 0.0)
+    pinn = make_pinn(run, pinn_w, getattr(a, "pinn_terms", "") or "")  # stage19: GPINN guide
 
     def step_tendency(feats, x_norm, gview, source):
         """stage17c: guide 6 h tendency (normalised tendency units) = transport by the guide's flow + source."""
@@ -414,6 +467,13 @@ def stage_a(run: Run):
                 tend = step_tendency(feats, xg, gv, tend)
             l_tend = field_mse(tend, tend_t, w, run.loss_w)
             loss = loss + a.tend_weight * l_tend
+        l_pinn = torch.zeros(())
+        if pinn is not None:  # stage19: physics residuals of the guide's own outputs (denoised state, its 6 h step)
+            nxt = None
+            if tend is not None:
+                nxt = Field(rec.s + tend.s * run.norm.tend_s, rec.v + tend.v * run.norm.tend_v)
+            l_pinn = sum(pinn.losses(rec, nxt, gv).values())
+            loss = loss + pinn_w * l_pinn
         l_clos = torch.zeros(())
         if guide.closure_out is not None:  # S5a: closure = observed tendency - fixed resolved dynamics, on mesh 0
             tend_m = guide.resolved.pool(run.norm.tendency(x0, run.train.next_state(idx)).gauge(tg), gv)
@@ -426,7 +486,7 @@ def stage_a(run: Run):
         opt.step()
         if step % 25 == 0:
             run.jlog("a", {"step": step, "l_rec": float(l_rec), "l_aux": float(l_aux), "l_tend": float(l_tend),
-                           "l_clos": float(l_clos), "t": time.time() - t0})
+                           "l_clos": float(l_clos), "l_pinn": float(l_pinn), "t": time.time() - t0})
         if step % a.val_every == 0 or step == a.steps - 1:
             guide.eval()
             with torch.no_grad():
@@ -445,6 +505,12 @@ def stage_a(run: Run):
                         v_zero = float(field_mse(zero, tend_true, w))  # persistence
                         tend = step_tendency(feats, x0n, g, tend)
                     v_tend = float(field_mse(tend, tend_true, w))
+                v_pinn = None
+                if pinn is not None:  # stage19: var(L-R)/var(L) of the guide's outputs vs of ERA5 itself
+                    x1n_v = run.norm.state(run.calib.next_state(val_idx))
+                    nxt = (Field(rec.s + tend.s * run.norm.tend_s, rec.v + tend.v * run.norm.tend_v)
+                           if tend is not None else None)
+                    v_pinn = {"guide": pinn.ratios(rec, nxt, g), "era5": pinn.ratios(x0n, x1n_v, g)}
                 v_clos, v_full, rfrac = 0.0, 0.0, None
                 if guide.closure_out is not None:
                     tend_m = guide.resolved.pool(run.norm.tendency(x0, run.calib.next_state(val_idx)), g)
@@ -461,11 +527,14 @@ def stage_a(run: Run):
             run.jlog("a", {"step": step, "val_rec": v_rec, "val_aux": v_aux, "val_tend": v_tend, "val_clos": v_clos,
                            "val_resolved_only": v_full, "resolved_fraction": rfrac, "best": best,
                            **({"val_transport_only": v_tr, "val_persistence": v_zero} if use_flow else {}),
+                           **({"val_pinn": v_pinn} if v_pinn is not None else {}),
                            "t": time.time() - t0})
             log(f"A {step:5d}  L_rec {float(l_rec):.4f} L_aux {float(l_aux):.4f} L_tend {float(l_tend):.4f}"
                 f" L_clos {float(l_clos):.4f} | val rec {v_rec:.4f} aux {v_aux:.4f} tend {v_tend:.4f} clos {v_clos:.4f}"
                 f" (resolved only {v_full:.4f})"
                 + (f" transport only {v_tr:.4f} persistence {v_zero:.4f}" if use_flow else "")
+                + (" | PINN guide/ERA5 " + " ".join(f"{k} {v:.2f}/{v_pinn['era5'][k]:.2f}"
+                                                     for k, v in v_pinn["guide"].items()) if v_pinn is not None else "")
                 + f" | {(time.time() - t0) / (step + 1):.2f} s/step")
     json.dump({"steps": int(a.steps), "best": best, "finished_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
               open(done_path, "w"))
@@ -597,6 +666,8 @@ def stage_b(run: Run, use_guide: bool):
             rows = [line for line in open(lp) if json.loads(line)["step"] < start_step]
             open(lp, "w").writelines(rows)
         log(f"stage B[{name}]: resumed from step {start_step} (best {best:.4f}, {time.time() - t0:.0f} s elapsed before)")
+    pinn_wb = float(getattr(a, "pinn_weight_b", 0.0) or 0.0) if use_guide else 0.0
+    pinn_b = make_pinn(run, pinn_wb, getattr(a, "pinn_terms", "") or "")  # stage19c: GPINN on the forecast path
     init_vnet = getattr(a, "init_vnet", "") or ""
     if start_step == 0 and init_vnet:  # stage17: paired fine-tuning from a trained V-Net (new parameters keep their init)
         missing, unexpected = model.vnet.load_state_dict(torch.load(init_vnet), strict=False)
@@ -624,6 +695,11 @@ def stage_b(run: Run, use_guide: bool):
             l_int = sum(field_mse(scaled(fa), scaled(ta), w, run.loss_w)
                         for fa, ta in zip(mids, run.inter_targets(run.train, idx))) / run.inter_times
         l_phys = global_tendency_consistency(d.s * model.delta_scale_s, xs[1].s - xs[0].s, w)
+        l_pinn = torch.zeros(())
+        if pinn_b is not None:  # stage19c: GPINN residuals along the forecast path (every 6 h path state and step)
+            path = [xs[0]] + (list(model.last_path) if model.vnet.cfg.integrator == "ode" else []) + [f]
+            l_pinn = sum(sum(pinn_b.losses(path[j], path[j + 1], g).values())
+                         for j in range(len(path) - 1)) / (len(path) - 1)
         l_pde = pde_residual(xs[0], f, cs[0]) if use_pde else torch.zeros(())
         l_roll = torch.zeros(())
         l_spec = spectral_energy_loss(f, xs[1], *grid_hw, grid_lat) if lam_spec > 0 else torch.zeros(())
@@ -634,6 +710,8 @@ def stage_b(run: Run, use_guide: bool):
             if lam_spec > 0:
                 l_spec = l_spec + spectral_energy_loss(f, xs[k], *grid_hw, grid_lat)
         loss = l_f + a.phys_weight * l_phys + lam * l_roll + lam_pde * l_pde + lam_spec * l_spec + run.inter_weight * l_int
+        if pinn_b is not None:
+            loss = loss + pinn_wb * l_pinn
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(params, 1.0)
@@ -693,6 +771,7 @@ def stage_b(run: Run, use_guide: bool):
             log(f"B[{name}] {step:5d}  L_f {float(l_f):.4f} L_roll {float(l_roll):.4f} L_phys {float(l_phys):.5f}"
                 + (f" L_pde {float(l_pde):.4f}" if use_pde else "")
                 + (f" L_int {float(l_int):.4f}" if run.inter_times else "")
+                + (f" L_pinn {float(l_pinn):.4f}" if pinn_b is not None else "")
                 + f" | val MSE {v_mse:.4f} 2-step {v_mse2:.4f} (persistence {pers:.4f})"
                 + (" 6/12/18 h " + "/".join(f"{x:.4f}" for x in v_int) if run.inter_times else "")
                 + (" gain " + "/".join(f"{float(x):.2f}" for x in torch.cat([vm.vnet.drift_gain_s, vm.vnet.drift_gain_v]))
@@ -1043,6 +1122,15 @@ def main():
     ap.add_argument("--tend-head", type=int, default=1, choices=[0, 1],
                     help="guide: Stage-A one-step (6 h) tendency head (stored in config.json)")
     ap.add_argument("--tend-weight", type=float, default=1.0)
+    ap.add_argument("--graph-embed", type=int, default=0,
+                    help="stage19b GPINN: terrain-weighted grid-Laplacian eigenvectors added to the guide input")
+    ap.add_argument("--pinn-weight", type=float, default=0.0,
+                    help="stage19 GPINN: weight of the physics residual losses on the guide's outputs (Stage A)")
+    ap.add_argument("--pinn-weight-b", type=float, default=0.0,
+                    help="stage19c: weight of the physics residual losses on the forecast path (Stage B)")
+    ap.add_argument("--pinn-terms", default="",
+                    help="stage19: comma list of relations (default all: geo500,geo850,thermal,geo500_tend,hyps_tend,"
+                         "bve500)")
     ap.add_argument("--closure-tend", type=int, default=0, choices=[0, 1],
                     help="guide (stage S5a): tendency = fixed resolved dynamics + learned closure on mesh 0 "
                          "(stored in config.json)")
