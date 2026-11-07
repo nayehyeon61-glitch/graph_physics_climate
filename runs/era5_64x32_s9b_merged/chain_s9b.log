@@ -1,0 +1,10 @@
+[14:52:33] stage9b waits for CHAIN_S15A_DONE
+[17:02:49] stage9b waits for CHAIN_S15A_DONE
+[00:16:06] stage9b waits for CHAIN_S15A_DONE
+{"adopt": true, "improved_leads": 5, "mean_gain_pct": 6.49, "gain_pct": {"1": 8.74, "2": 7.92, "3": 6.56, "4": 5.14, "5": 4.07}, "candidate": "runs/era5_64x32_s7c_steps6x/eval.json", "baseline": "runs/era5_64x32_s7b_steps3x/eval.json"}
+{"adopt": true, "improved_leads": 5, "mean_gain_pct": 1.67, "gain_pct": {"1": 0.74, "2": 1.97, "3": 1.89, "4": 1.75, "5": 1.97}, "candidate": "runs/era5_64x32_s15a_column/eval.json", "baseline": "runs/era5_64x32_s9_integrated/eval.json"}
+[04:58:07] merge decision: steps_9000=1 column_inputs=1
+[18:02:05] stage9b pipeline exit 0
+[18:06:46] stage9b eval_2020 exit 0
+[18:11:42] stage9b eval_2022 exit 0
+[18:11:42] stage9b done CHAIN_S9B_DONE

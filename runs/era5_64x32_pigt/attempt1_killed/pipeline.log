@@ -1,0 +1,4 @@
+[23:22:53] run runs/era5_64x32_pigt: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[23:22:54] stage B[vnet]: vnet params 677790, steps 1500, batch 4, rollout steps 2 from step 500 (weight 1.0)
+[23:23:50] B[vnet]     0  L_f 0.9072 L_roll 0.0000 L_phys 0.00002 | val MSE 0.3252 2-step 0.4930 (persistence 0.3257) | 55.72 s/step
+[00:02:50] B[vnet]   250  L_f 0.3892 L_roll 0.0000 L_phys 0.00036 | val MSE 0.1342 2-step 0.2510 (persistence 0.3257) | 9.54 s/step

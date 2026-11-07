@@ -1,0 +1,104 @@
+[14:34:39] run runs/era5_64x32_physops: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[14:34:40] stage A: guide params 275817, steps 1000, batch 4
+[14:34:42] A     0  L_rec 2.6443 L_aux 0.4990 L_tend 1.4027 | val rec 2.6318 aux 0.4941 tend 1.4467 | 2.08 s/step
+[14:37:24] A   200  L_rec 0.0578 L_aux 0.1815 L_tend 0.6110 | val rec 0.0352 aux 0.1750 tend 0.5581 | 0.82 s/step
+[14:39:57] A   400  L_rec 0.0384 L_aux 0.1669 L_tend 0.4335 | val rec 0.0249 aux 0.1517 tend 0.4113 | 0.79 s/step
+[14:42:25] A   600  L_rec 0.0322 L_aux 0.1554 L_tend 0.3723 | val rec 0.0216 aux 0.1405 tend 0.3548 | 0.77 s/step
+[14:44:53] A   800  L_rec 0.0333 L_aux 0.1531 L_tend 0.3640 | val rec 0.0206 aux 0.1371 tend 0.3379 | 0.77 s/step
+[14:47:24] A   999  L_rec 0.0330 L_aux 0.1495 L_tend 0.3751 | val rec 0.0203 aux 0.1362 tend 0.3331 | 0.76 s/step
+[14:47:24] stage A done in 12.7 min, best val score 0.4215
+[14:47:47] run runs/era5_64x32_physops: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[14:47:48] stage B[vnet]: vnet params 554665, steps 1500, batch 4
+[14:47:58] B[vnet]     0  L_f 0.9072 L_phys 0.00002 | val MSE 0.3252 (persistence 0.3257) | 10.47 s/step
+[14:55:04] B[vnet]   250  L_f 0.3834 L_phys 0.00018 | val MSE 0.1307 (persistence 0.3257) | 1.74 s/step
+[15:02:33] B[vnet]   500  L_f 0.3090 L_phys 0.00013 | val MSE 0.1028 (persistence 0.3257) | 1.77 s/step
+[15:09:42] B[vnet]   750  L_f 0.2866 L_phys 0.00006 | val MSE 0.0904 (persistence 0.3257) | 1.75 s/step
+[15:17:46] B[vnet]  1000  L_f 0.2117 L_phys 0.00005 | val MSE 0.0834 (persistence 0.3257) | 1.80 s/step
+[15:26:00] B[vnet]  1250  L_f 0.2340 L_phys 0.00012 | val MSE 0.0799 (persistence 0.3257) | 1.83 s/step
+[15:33:46] B[vnet]  1499  L_f 0.2397 L_phys 0.00005 | val MSE 0.0787 (persistence 0.3257) | 1.84 s/step
+[15:33:46] stage B[vnet] done in 46.0 min, best val MSE 0.0787
+[15:34:11] run runs/era5_64x32_physops: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[15:34:12] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[15:38:10] deterministic rollouts done in 4.0 min
+[15:38:13] eval written to runs/era5_64x32_physops/eval.json
+{
+ "run": "runs/era5_64x32_physops",
+ "p_dependence_mse": {
+  "true_P": 0.07973879451553027,
+  "zero_P": 0.1761904383699099,
+  "shuffled_P": 0.2068047175804774,
+  "persistence": 0.34522128105163574
+ },
+ "p_dependence_relative": {
+  "true_P": 1.0,
+  "zero_P": 2.2095949586445567,
+  "shuffled_P": 2.5935270132557524,
+  "persistence": 4.329401806850729
+ },
+ "linear_probe_r2_24h_scalar_tendency": {
+  "channels": [
+   "z500",
+   "t850",
+   "q700",
+   "t2m",
+   "msl"
+  ],
+  "state_only": [
+   0.06653839349746704,
+   0.13508659601211548,
+   0.09112536907196045,
+   0.059689879417419434,
+   0.07599544525146484
+  ],
+  "guide_only": [
+   0.3756237030029297,
+   0.40312808752059937,
+   0.2689877152442932,
+   0.2347348928451538,
+   0.3278006315231323
+  ],
+  "state_plus_guide": [
+   0.389614462852478,
+   0.4384385347366333,
+   0.274029016494751,
+   0.2528482675552368,
+   0.3495684862136841
+  ],
+  "physics_ops_only": [
+   0.2700526714324951,
+   0.32458436489105225,
+   0.24744290113449097,
+   0.21593809127807617,
+   0.33570122718811035
+  ],
+  "state_plus_physics_ops": [
+   0.2782202363014221,
+   0.3418961763381958,
+   0.252612829208374,
+   0.22191202640533447,
+   0.34223318099975586
+  ]
+ },
+ "linear_probe_r2_mean": {
+  "state_only": 0.08568713665008545,
+  "guide_only": 0.3220550060272217,
+  "state_plus_guide": 0.34089975357055663,
+  "physics_ops_only": 0.27874385118484496,
+  "state_plus_physics_ops": 0.28737488985061643
+ },
+ "fusion_gates_mean_abs": [
+  0.17586278915405273,
+  0.1558307260274887,
+  0.12764476239681244,
+  0.1511085480451584,
+  0.16599367558956146
+ ],
+ "fusion_gates_max_abs": [
+  0.33209308981895447,
+  0.33398160338401794,
+  0.22488628327846527,
+  0.25064927339553833,
+  0.2724330723285675
+ ]
+}
+PIPELINE_DONE

@@ -1,0 +1,163 @@
+[11:44:17] data: {'grid': [32, 64], 'pairs': {'train': 92, 'calib': 36, 'test': 36}, 'periods': {'train': ('2018-01-01', '2018-01-24T18'), 'calib': ('2019-01-01', '2019-01-10T18'), 'test': ('2020-01-01', '2020-01-10T18')}, 'lead_hours': 24, 'scalars': ['z500', 't850', 'q700', 't2m', 'msl'], 'vectors': [['u850', 'v850'], ['u500', 'v500'], ['u10', 'v10']]}
+[11:44:17] graph: {'grid': [32, 64], 'mesh_nodes': [2562, 642, 162], 'mesh_edges': [15360, 3840, 960], 'mean_edge_deg': [4.326820802379863, 8.644476636375034, 17.215974448713897], 'grid2mesh_edges': 10382, 'mesh2grid_edges': 6144, 'down_edges': [4494, 1134], 'up_edges': [7686, 1926]}
+[11:44:18] equivariance (untrained): {'guide': {'P0': 1.8672525925467198e-07, 'P1': 2.1018686879870074e-07, 'P2': 1.8294636561222433e-07, 'P1u': 2.6732101332527236e-07, 'P0u': 2.65682132294387e-07, 'rec': 2.6264532948516717e-07, 'aux': 3.3947787869692547e-07}}
+[11:44:19] A step   0  L_rec 2.4074  L_aux 0.5286
+[11:44:23] A step  10  L_rec 0.1897  L_aux 0.5286
+[11:44:32] A step  20  L_rec 0.0940  L_aux 0.4612
+[11:44:37] A step  30  L_rec 0.0590  L_aux 0.4414
+[11:44:41] A step  40  L_rec 0.0794  L_aux 0.3461
+[11:44:49] A step  50  L_rec 0.0527  L_aux 0.3086
+[11:44:54] A step  60  L_rec 0.0297  L_aux 0.2858
+[11:44:59] A step  70  L_rec 0.0746  L_aux 0.2957
+[11:45:03] A step  80  L_rec 0.0518  L_aux 0.2725
+[11:45:08] A step  90  L_rec 0.0305  L_aux 0.2357
+[11:45:12] A step 100  L_rec 0.0240  L_aux 0.2240
+[11:45:16] A step 110  L_rec 0.0274  L_aux 0.2148
+[11:45:20] A step 120  L_rec 0.0462  L_aux 0.2221
+[11:45:24] A step 130  L_rec 0.0453  L_aux 0.2130
+[11:45:29] A step 140  L_rec 0.0191  L_aux 0.1685
+[11:45:32] A step 149  L_rec 0.0405  L_aux 0.2027
+[11:45:33] stage A: {'steps': 150, 'seconds': 74.13131189346313, 'sec_per_step': 0.4942087459564209, 'loss_first5': [1.1583404958248138, 0.5268248796463013], 'loss_last5': [0.04035119488835335, 0.1978004902601242], 'calib_rec_mse_sigma0': 0.019748495891690254, 'calib_aux_mse': 0.1823461800813675}
+[11:45:33] B[lie-guided] step   0  L_forecast 1.0557  L_phys 0.00001
+[11:45:41] B[lie-guided] step  10  L_forecast 0.7771  L_phys 0.00006
+[11:45:49] B[lie-guided] step  20  L_forecast 0.7358  L_phys 0.00289
+[11:45:57] B[lie-guided] step  30  L_forecast 0.8809  L_phys 0.00002
+[11:46:05] B[lie-guided] step  40  L_forecast 0.7900  L_phys 0.00026
+[11:46:12] B[lie-guided] step  50  L_forecast 0.6690  L_phys 0.00093
+[11:46:21] B[lie-guided] step  60  L_forecast 0.7491  L_phys 0.00095
+[11:46:29] B[lie-guided] step  70  L_forecast 0.5950  L_phys 0.00042
+[11:46:36] B[lie-guided] step  80  L_forecast 0.6081  L_phys 0.00029
+[11:46:45] B[lie-guided] step  90  L_forecast 0.5580  L_phys 0.00034
+[11:46:53] B[lie-guided] step 100  L_forecast 0.6215  L_phys 0.00091
+[11:47:00] B[lie-guided] step 110  L_forecast 0.5921  L_phys 0.00069
+[11:47:08] B[lie-guided] step 120  L_forecast 0.6015  L_phys 0.00026
+[11:47:16] B[lie-guided] step 130  L_forecast 0.5397  L_phys 0.00049
+[11:47:25] B[lie-guided] step 140  L_forecast 0.5351  L_phys 0.00117
+[11:47:33] B[lie-guided] step 150  L_forecast 0.4353  L_phys 0.00010
+[11:47:40] B[lie-guided] step 160  L_forecast 0.5293  L_phys 0.00020
+[11:47:48] B[lie-guided] step 170  L_forecast 0.4628  L_phys 0.00047
+[11:47:56] B[lie-guided] step 180  L_forecast 0.4889  L_phys 0.00058
+[11:48:04] B[lie-guided] step 190  L_forecast 0.4470  L_phys 0.00032
+[11:48:11] B[lie-guided] step 199  L_forecast 0.4911  L_phys 0.00075
+[11:48:11] stage B: {'steps': 200, 'seconds': 158.40604090690613, 'sec_per_step': 0.7920302045345307, 'loss_first5': [0.9322872877120971, 3.435449216340203e-05], 'loss_last5': [0.4510131239891052, 0.00043605462997220457], 'fusion_gates_mean_abs': [0.11627642065286636, 0.10152499377727509, 0.11150284856557846, 0.1327057033777237, 0.12178907543420792]}
+[11:48:12] B[no-guide] step   0  L_forecast 1.0557  L_phys 0.00001
+[11:48:20] B[no-guide] step  10  L_forecast 0.7796  L_phys 0.00027
+[11:48:24] B[no-guide] step  20  L_forecast 0.7352  L_phys 0.00007
+[11:48:28] B[no-guide] step  30  L_forecast 0.8877  L_phys 0.00011
+[11:48:33] B[no-guide] step  40  L_forecast 0.8149  L_phys 0.00010
+[11:48:37] B[no-guide] step  50  L_forecast 0.6913  L_phys 0.00025
+[11:48:41] B[no-guide] step  60  L_forecast 0.7703  L_phys 0.00061
+[11:48:53] B[no-guide] step  70  L_forecast 0.6338  L_phys 0.00052
+[11:48:58] B[no-guide] step  80  L_forecast 0.6278  L_phys 0.00018
+[11:49:02] B[no-guide] step  90  L_forecast 0.5591  L_phys 0.00034
+[11:49:06] B[no-guide] step 100  L_forecast 0.6340  L_phys 0.00084
+[11:49:10] B[no-guide] step 110  L_forecast 0.6225  L_phys 0.00057
+[11:49:15] B[no-guide] step 120  L_forecast 0.5996  L_phys 0.00048
+[11:49:19] B[no-guide] step 130  L_forecast 0.5575  L_phys 0.00187
+[11:49:24] B[no-guide] step 140  L_forecast 0.5440  L_phys 0.00060
+[11:49:28] B[no-guide] step 150  L_forecast 0.4490  L_phys 0.00015
+[11:49:32] B[no-guide] step 160  L_forecast 0.5460  L_phys 0.00006
+[11:49:39] B[no-guide] step 170  L_forecast 0.4739  L_phys 0.00010
+[11:49:43] B[no-guide] step 180  L_forecast 0.4909  L_phys 0.00077
+[11:49:54] B[no-guide] step 190  L_forecast 0.4659  L_phys 0.00040
+[11:49:58] B[no-guide] step 199  L_forecast 0.5012  L_phys 0.00170
+[11:50:03] C step   0  L_eps 2.1086
+[11:50:10] C step  10  L_eps 0.9030
+[11:50:25] C step  20  L_eps 0.5375
+[11:50:32] C step  30  L_eps 0.5406
+[11:50:40] C step  40  L_eps 0.4918
+[11:50:47] C step  50  L_eps 0.4603
+[11:50:54] C step  60  L_eps 0.4640
+[11:51:01] C step  70  L_eps 0.2696
+[11:51:10] C step  80  L_eps 0.3992
+[11:51:17] C step  90  L_eps 0.1426
+[11:51:25] C step 100  L_eps 0.3312
+[11:51:32] C step 110  L_eps 0.5080
+[11:51:39] C step 120  L_eps 0.2000
+[11:51:47] C step 130  L_eps 0.2928
+[11:51:54] C step 140  L_eps 0.2134
+[11:52:02] C step 149  L_eps 0.7921
+[11:52:02] stage C: {'steps': 150, 'seconds': 119.3936595916748, 'sec_per_step': 0.7959577306111654, 'loss_first5': 1.5007876634597779, 'loss_last5': 0.5020883977413177}
+[11:52:03] equivariance: {'guide': {'P0': 1.8672525925467198e-07, 'P1': 2.1018686879870074e-07, 'P2': 1.8294636561222433e-07, 'P1u': 2.6732101332527236e-07, 'P0u': 2.65682132294387e-07, 'rec': 2.6264532948516717e-07, 'aux': 3.3947787869692547e-07}, 'denoiser': {'eps': 3.8903104382370657e-07}, 'forecaster_trained': {'forecast': 1.5541893105819327e-07, 'delta': 3.0831716912871343e-07}}
+[11:54:07] test: {
+ "n_cases": 12,
+ "members": 8,
+ "sample_steps": 20,
+ "seconds": 122.75171709060669,
+ "valid_times": [
+  "2020-01-02T00",
+  "2020-01-02T18",
+  "2020-01-03T12",
+  "2020-01-04T12",
+  "2020-01-05T06",
+  "2020-01-06T00",
+  "2020-01-06T18",
+  "2020-01-07T12",
+  "2020-01-08T06",
+  "2020-01-09T06",
+  "2020-01-10T00",
+  "2020-01-10T18"
+ ],
+ "rmse_deterministic": {
+  "z500": 425.8410627684263,
+  "t850": 1.861884585914603,
+  "t2m": 1.4234591487623984,
+  "msl": 429.6337770429856,
+  "u850": 3.572487845288529,
+  "v850": 3.801743829768989,
+  "u10": 2.430723721980614,
+  "v10": 2.6028615618431923
+ },
+ "rmse_persistence": {
+  "z500": 591.2469135898106,
+  "t850": 2.7995659636532473,
+  "t2m": 1.7519833564118334,
+  "msl": 585.5953392558202,
+  "u850": 4.7116770375155665,
+  "v850": 5.905073086797284,
+  "u10": 3.391375306525017,
+  "v10": 4.159279200137998
+ },
+ "crps_ensemble": {
+  "z500": 269.3390688744067,
+  "t850": 1.0765190913350577,
+  "t2m": 0.7662416534747152,
+  "msl": 261.35192223197663,
+  "u850": 2.260987478737863,
+  "v850": 2.1960365379025846,
+  "u10": 1.5089789888340273,
+  "v10": 1.5268528191150477
+ },
+ "ens_mean_rmse": {
+  "z500": 614.8531820638237,
+  "t850": 2.305276227211983,
+  "t2m": 1.775781109389431,
+  "msl": 591.8461158243925,
+  "u850": 4.561872166664623,
+  "v850": 4.620897017878431,
+  "u10": 3.1031029626595212,
+  "v10": 3.1883650980769738
+ },
+ "ens_spread": {
+  "z500": 621.5554465321829,
+  "t850": 2.49826635881304,
+  "t2m": 2.222979115565801,
+  "msl": 623.5335206506905,
+  "u850": 4.495432716871557,
+  "v850": 4.481880751076724,
+  "u10": 2.9752516731007503,
+  "v10": 2.9559183661141177
+ },
+ "rollout_2step_finite": true,
+ "rmse_no_guide": {
+  "z500": 423.18234652001337,
+  "t850": 1.9350964160755815,
+  "t2m": 1.4300126691526713,
+  "msl": 424.8470789871789,
+  "u850": 3.658217627985581,
+  "v850": 3.9141592961098,
+  "u10": 2.4840594829588394,
+  "v10": 2.6706241219069433
+ }
+}
+[11:54:07] report written to reports/smoke_test.json

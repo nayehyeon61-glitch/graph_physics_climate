@@ -1,0 +1,3 @@
+[11:23:08] stage17c waits for CHAIN_S17B_DONE
+[11:38:42] old chain (waiting on 17b) stopped; relaunched to follow stage17a
+[11:38:54] stage17c waits for CHAIN_S17A_DONE

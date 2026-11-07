@@ -1,0 +1,17 @@
+[08:23:31] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[08:23:46] run runs/era5_64x32_s5c_noise: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[08:24:14] stage C: denoiser params 118045, residual scale s [0.08812127262353897, 0.10749757289886475, 0.26080286502838135, 0.06913997232913971, 0.24710890650749207]
+[08:24:14] stage C: feasibility projection (q700 >= 0, mass, water=True), feas weight 1.0, mean constraint weight 1.0 every 5 steps (2 members x 4 sampling steps)
+[08:24:19] C     0  L_eps(avg25) 1.3571 L_feas 0.0611 L_mean +10.5446 | 5.59 s/step
+[08:32:42] C   200  L_eps(avg25) 0.4899 L_feas 0.0052 L_mean +1.1819 | 2.53 s/step
+[08:41:14] C   400  L_eps(avg25) 0.3463 L_feas 0.0013 L_mean +0.1736 | 2.54 s/step
+[08:49:36] C   600  L_eps(avg25) 0.3891 L_feas 0.0012 L_mean +0.1574 | 2.53 s/step
+[08:58:12] C   799  L_eps(avg25) 0.3793 L_feas 0.0011 L_mean +0.1321 | 2.55 s/step
+[08:58:12] stage C done in 34.0 min
+[08:58:20] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[08:58:34] run runs/era5_64x32_s5c_noise: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[08:58:36] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[09:02:29] deterministic rollouts done in 3.9 min
+[09:14:26] ensemble eval done in 11.9 min
+[09:14:26] eval written to runs/era5_64x32_s5c_noise/eval.json
+PIPELINE_DONE

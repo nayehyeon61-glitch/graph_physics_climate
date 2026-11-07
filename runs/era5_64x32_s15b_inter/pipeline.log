@@ -1,0 +1,242 @@
+[18:24:17] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[18:25:31] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[18:25:31] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+[18:25:31] run runs/era5_64x32_s15b_inter: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[18:25:32] stage B[vnet_noguide]: vnet params 661892, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[18:25:44] B[vnet_noguide]     0  L_f 0.9224 L_roll 0.0000 L_phys 0.00003 L_int 0.6074 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) 6/12/18 h 0.0652/0.1664/0.2589 | 12.33 s/step
+[18:28:43] B[vnet_noguide]   250  L_f 0.3948 L_roll 0.0000 L_phys 0.00109 L_int 0.2721 | val MSE 0.1297 2-step 0.2619 (persistence 0.3295) 6/12/18 h 0.0418/0.0770/0.1014 | 0.76 s/step
+[18:31:39] B[vnet_noguide]   500  L_f 0.3079 L_roll 0.0000 L_phys 0.00006 L_int 0.1926 | val MSE 0.0979 2-step 0.2235 (persistence 0.3295) 6/12/18 h 0.0349/0.0597/0.0769 | 0.73 s/step
+[18:34:31] B[vnet_noguide]   750  L_f 0.2526 L_roll 0.0000 L_phys 0.00039 L_int 0.1676 | val MSE 0.0884 2-step 0.2141 (persistence 0.3295) 6/12/18 h 0.0321/0.0536/0.0698 | 0.72 s/step
+[18:37:23] B[vnet_noguide]  1000  L_f 0.2259 L_roll 0.0000 L_phys 0.00010 L_int 0.1538 | val MSE 0.0763 2-step 0.2003 (persistence 0.3295) 6/12/18 h 0.0296/0.0469/0.0609 | 0.71 s/step
+[18:40:17] B[vnet_noguide]  1250  L_f 0.1961 L_roll 0.0000 L_phys 0.00013 L_int 0.1266 | val MSE 0.0737 2-step 0.1925 (persistence 0.3295) 6/12/18 h 0.0281/0.0443/0.0582 | 0.71 s/step
+[18:43:13] B[vnet_noguide]  1500  L_f 0.1831 L_roll 0.0000 L_phys 0.00011 L_int 0.1190 | val MSE 0.0676 2-step 0.1983 (persistence 0.3295) 6/12/18 h 0.0269/0.0428/0.0556 | 0.71 s/step
+[18:46:07] B[vnet_noguide]  1750  L_f 0.2066 L_roll 0.0000 L_phys 0.00070 L_int 0.1286 | val MSE 0.0647 2-step 0.2040 (persistence 0.3295) 6/12/18 h 0.0258/0.0410/0.0532 | 0.71 s/step
+[18:49:02] B[vnet_noguide]  2000  L_f 0.1786 L_roll 0.0000 L_phys 0.00035 L_int 0.1131 | val MSE 0.0612 2-step 0.2030 (persistence 0.3295) 6/12/18 h 0.0245/0.0382/0.0496 | 0.70 s/step
+[18:51:57] B[vnet_noguide]  2250  L_f 0.1788 L_roll 0.0000 L_phys 0.00006 L_int 0.1129 | val MSE 0.0594 2-step 0.1949 (persistence 0.3295) 6/12/18 h 0.0235/0.0366/0.0477 | 0.70 s/step
+[18:54:57] B[vnet_noguide]  2500  L_f 0.1513 L_roll 0.0000 L_phys 0.00023 L_int 0.0995 | val MSE 0.0583 2-step 0.1838 (persistence 0.3295) 6/12/18 h 0.0227/0.0359/0.0472 | 0.71 s/step
+[18:57:55] B[vnet_noguide]  2750  L_f 0.1501 L_roll 0.0000 L_phys 0.00011 L_int 0.0965 | val MSE 0.0560 2-step 0.2077 (persistence 0.3295) 6/12/18 h 0.0220/0.0346/0.0452 | 0.71 s/step
+[19:00:53] B[vnet_noguide]  3000  L_f 0.1475 L_roll 0.6528 L_phys 0.00007 L_int 0.0947 | val MSE 0.0554 2-step 0.1668 (persistence 0.3295) 6/12/18 h 0.0217/0.0340/0.0444 | 0.71 s/step
+[19:06:36] B[vnet_noguide]  3250  L_f 0.1692 L_roll 0.3669 L_phys 0.00038 L_int 0.1046 | val MSE 0.0584 2-step 0.1236 (persistence 0.3295) 6/12/18 h 0.0228/0.0362/0.0477 | 0.76 s/step
+[19:12:11] B[vnet_noguide]  3500  L_f 0.1561 L_roll 0.3387 L_phys 0.00025 L_int 0.1066 | val MSE 0.0567 2-step 0.1181 (persistence 0.3295) 6/12/18 h 0.0227/0.0358/0.0468 | 0.80 s/step
+[19:17:47] B[vnet_noguide]  3750  L_f 0.1524 L_roll 0.3230 L_phys 0.00019 L_int 0.1019 | val MSE 0.0540 2-step 0.1109 (persistence 0.3295) 6/12/18 h 0.0223/0.0346/0.0446 | 0.84 s/step
+[19:23:25] B[vnet_noguide]  4000  L_f 0.1554 L_roll 0.3182 L_phys 0.00043 L_int 0.1056 | val MSE 0.0534 2-step 0.1104 (persistence 0.3295) 6/12/18 h 0.0221/0.0343/0.0441 | 0.87 s/step
+[19:29:12] B[vnet_noguide]  4250  L_f 0.1478 L_roll 0.3026 L_phys 0.00013 L_int 0.0979 | val MSE 0.0516 2-step 0.1056 (persistence 0.3295) 6/12/18 h 0.0218/0.0338/0.0434 | 0.90 s/step
+[19:34:48] B[vnet_noguide]  4500  L_f 0.1486 L_roll 0.3012 L_phys 0.00031 L_int 0.0949 | val MSE 0.0514 2-step 0.1064 (persistence 0.3295) 6/12/18 h 0.0220/0.0340/0.0436 | 0.92 s/step
+[19:40:22] B[vnet_noguide]  4750  L_f 0.1526 L_roll 0.3213 L_phys 0.00034 L_int 0.0987 | val MSE 0.0503 2-step 0.1029 (persistence 0.3295) 6/12/18 h 0.0215/0.0332/0.0423 | 0.95 s/step
+[19:46:00] B[vnet_noguide]  5000  L_f 0.1470 L_roll 0.3017 L_phys 0.00007 L_int 0.0932 | val MSE 0.0498 2-step 0.1010 (persistence 0.3295) 6/12/18 h 0.0213/0.0327/0.0417 | 0.97 s/step
+[19:51:40] B[vnet_noguide]  5250  L_f 0.1392 L_roll 0.2745 L_phys 0.00003 L_int 0.0904 | val MSE 0.0495 2-step 0.1005 (persistence 0.3295) 6/12/18 h 0.0211/0.0325/0.0414 | 0.98 s/step
+[19:57:24] B[vnet_noguide]  5500  L_f 0.1544 L_roll 0.3057 L_phys 0.00038 L_int 0.1015 | val MSE 0.0484 2-step 0.0975 (persistence 0.3295) 6/12/18 h 0.0211/0.0322/0.0409 | 1.00 s/step
+[20:03:06] B[vnet_noguide]  5750  L_f 0.1358 L_roll 0.2647 L_phys 0.00009 L_int 0.0922 | val MSE 0.0485 2-step 0.0986 (persistence 0.3295) 6/12/18 h 0.0208/0.0319/0.0404 | 1.02 s/step
+[20:08:49] B[vnet_noguide]  6000  L_f 0.1393 L_roll 0.2763 L_phys 0.00007 L_int 0.0897 | val MSE 0.0476 2-step 0.0958 (persistence 0.3295) 6/12/18 h 0.0208/0.0319/0.0405 | 1.03 s/step
+[20:14:26] B[vnet_noguide]  6250  L_f 0.1350 L_roll 0.2569 L_phys 0.00005 L_int 0.0888 | val MSE 0.0471 2-step 0.0940 (persistence 0.3295) 6/12/18 h 0.0207/0.0316/0.0399 | 1.05 s/step
+[20:20:04] B[vnet_noguide]  6500  L_f 0.1334 L_roll 0.2660 L_phys 0.00007 L_int 0.0876 | val MSE 0.0468 2-step 0.0936 (persistence 0.3295) 6/12/18 h 0.0206/0.0314/0.0396 | 1.06 s/step
+[20:25:37] B[vnet_noguide]  6750  L_f 0.1339 L_roll 0.2757 L_phys 0.00007 L_int 0.0910 | val MSE 0.0463 2-step 0.0936 (persistence 0.3295) 6/12/18 h 0.0207/0.0315/0.0399 | 1.07 s/step
+[20:31:23] B[vnet_noguide]  7000  L_f 0.1254 L_roll 0.2505 L_phys 0.00002 L_int 0.0839 | val MSE 0.0464 2-step 0.0934 (persistence 0.3295) 6/12/18 h 0.0205/0.0313/0.0394 | 1.08 s/step
+[20:37:00] B[vnet_noguide]  7250  L_f 0.1396 L_roll 0.2757 L_phys 0.00005 L_int 0.0890 | val MSE 0.0460 2-step 0.0921 (persistence 0.3295) 6/12/18 h 0.0204/0.0311/0.0391 | 1.09 s/step
+[20:42:40] B[vnet_noguide]  7500  L_f 0.1239 L_roll 0.2424 L_phys 0.00004 L_int 0.0862 | val MSE 0.0457 2-step 0.0911 (persistence 0.3295) 6/12/18 h 0.0204/0.0311/0.0391 | 1.10 s/step
+[20:48:16] B[vnet_noguide]  7750  L_f 0.1274 L_roll 0.2524 L_phys 0.00003 L_int 0.0829 | val MSE 0.0456 2-step 0.0904 (persistence 0.3295) 6/12/18 h 0.0203/0.0309/0.0388 | 1.10 s/step
+[20:53:52] B[vnet_noguide]  8000  L_f 0.1309 L_roll 0.2608 L_phys 0.00004 L_int 0.0850 | val MSE 0.0455 2-step 0.0902 (persistence 0.3295) 6/12/18 h 0.0202/0.0308/0.0386 | 1.11 s/step
+[20:59:29] B[vnet_noguide]  8250  L_f 0.1357 L_roll 0.2561 L_phys 0.00006 L_int 0.0868 | val MSE 0.0453 2-step 0.0900 (persistence 0.3295) 6/12/18 h 0.0202/0.0308/0.0385 | 1.12 s/step
+[21:05:02] B[vnet_noguide]  8500  L_f 0.1415 L_roll 0.2757 L_phys 0.00005 L_int 0.0910 | val MSE 0.0451 2-step 0.0897 (persistence 0.3295) 6/12/18 h 0.0202/0.0307/0.0385 | 1.13 s/step
+[21:10:35] B[vnet_noguide]  8750  L_f 0.1251 L_roll 0.2431 L_phys 0.00006 L_int 0.0844 | val MSE 0.0451 2-step 0.0894 (persistence 0.3295) 6/12/18 h 0.0202/0.0307/0.0384 | 1.13 s/step
+[21:16:06] B[vnet_noguide]  8999  L_f 0.1301 L_roll 0.2438 L_phys 0.00004 L_int 0.0864 | val MSE 0.0450 2-step 0.0892 (persistence 0.3295) 6/12/18 h 0.0201/0.0306/0.0383 | 1.14 s/step
+[21:16:06] stage B[vnet_noguide] done in 170.6 min, best val MSE 0.1342
+[21:16:10] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[21:17:21] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[21:17:21] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+[21:17:21] run runs/era5_64x32_s15b_inter: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[21:17:22] stage B[vnet]: vnet params 963797, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[21:18:02] B[vnet]     0  L_f 0.9224 L_roll 0.0000 L_phys 0.00003 L_int 0.6074 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) 6/12/18 h 0.0652/0.1664/0.2589 | 40.24 s/step
+[21:27:04] B[vnet]   250  L_f 0.3818 L_roll 0.0000 L_phys 0.00017 L_int 0.2060 | val MSE 0.1240 2-step 0.2548 (persistence 0.3295) 6/12/18 h 0.0369/0.0695/0.0937 | 2.32 s/step
+[21:35:58] B[vnet]   500  L_f 0.3081 L_roll 0.0000 L_phys 0.00041 L_int 0.1682 | val MSE 0.0943 2-step 0.2093 (persistence 0.3295) 6/12/18 h 0.0299/0.0542/0.0728 | 2.23 s/step
+[21:44:51] B[vnet]   750  L_f 0.2356 L_roll 0.0000 L_phys 0.00036 L_int 0.1443 | val MSE 0.0800 2-step 0.1887 (persistence 0.3295) 6/12/18 h 0.0278/0.0483/0.0630 | 2.20 s/step
+[21:54:00] B[vnet]  1000  L_f 0.2124 L_roll 0.0000 L_phys 0.00019 L_int 0.1288 | val MSE 0.0707 2-step 0.1875 (persistence 0.3295) 6/12/18 h 0.0262/0.0438/0.0564 | 2.20 s/step
+[22:03:09] B[vnet]  1250  L_f 0.1788 L_roll 0.0000 L_phys 0.00030 L_int 0.1130 | val MSE 0.0653 2-step 0.1703 (persistence 0.3295) 6/12/18 h 0.0249/0.0410/0.0525 | 2.20 s/step
+[22:12:05] B[vnet]  1500  L_f 0.1680 L_roll 0.0000 L_phys 0.00022 L_int 0.1054 | val MSE 0.0624 2-step 0.1819 (persistence 0.3295) 6/12/18 h 0.0240/0.0393/0.0505 | 2.19 s/step
+[22:20:55] B[vnet]  1750  L_f 0.1845 L_roll 0.0000 L_phys 0.00018 L_int 0.1106 | val MSE 0.0586 2-step 0.1675 (persistence 0.3295) 6/12/18 h 0.0230/0.0371/0.0475 | 2.18 s/step
+[22:29:39] B[vnet]  2000  L_f 0.1616 L_roll 0.0000 L_phys 0.00024 L_int 0.0993 | val MSE 0.0566 2-step 0.1681 (persistence 0.3295) 6/12/18 h 0.0222/0.0356/0.0457 | 2.17 s/step
+[22:38:20] B[vnet]  2250  L_f 0.1663 L_roll 0.0000 L_phys 0.00018 L_int 0.1053 | val MSE 0.0550 2-step 0.1725 (persistence 0.3295) 6/12/18 h 0.0217/0.0345/0.0440 | 2.16 s/step
+[22:47:08] B[vnet]  2500  L_f 0.1417 L_roll 0.0000 L_phys 0.00032 L_int 0.0909 | val MSE 0.0533 2-step 0.1597 (persistence 0.3295) 6/12/18 h 0.0211/0.0336/0.0431 | 2.15 s/step
+[22:56:13] B[vnet]  2750  L_f 0.1423 L_roll 0.0000 L_phys 0.00010 L_int 0.0908 | val MSE 0.0513 2-step 0.1610 (persistence 0.3295) 6/12/18 h 0.0206/0.0326/0.0416 | 2.16 s/step
+[23:05:27] B[vnet]  3000  L_f 0.1364 L_roll 0.4862 L_phys 0.00011 L_int 0.0871 | val MSE 0.0560 2-step 0.1414 (persistence 0.3295) 6/12/18 h 0.0205/0.0332/0.0441 | 2.16 s/step
+[23:24:30] B[vnet]  3250  L_f 0.1504 L_roll 0.3128 L_phys 0.00011 L_int 0.0959 | val MSE 0.0551 2-step 0.1218 (persistence 0.3295) 6/12/18 h 0.0217/0.0356/0.0461 | 2.35 s/step
+[23:43:54] B[vnet]  3500  L_f 0.1484 L_roll 0.3070 L_phys 0.00043 L_int 0.0961 | val MSE 0.0530 2-step 0.1102 (persistence 0.3295) 6/12/18 h 0.0213/0.0343/0.0437 | 2.51 s/step
+[00:02:50] B[vnet]  3750  L_f 0.1414 L_roll 0.3123 L_phys 0.00014 L_int 0.0918 | val MSE 0.0502 2-step 0.1039 (persistence 0.3295) 6/12/18 h 0.0208/0.0329/0.0414 | 2.65 s/step
+[00:11:43] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[00:13:21] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[00:13:21] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+[00:13:21] run runs/era5_64x32_s15b_inter: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[00:13:21] stage B[vnet_noguide]: vnet params 661892, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[00:13:21] stage B[vnet_noguide] already finished in this run directory; skipping (delete vnet_noguide_done.json to retrain)
+[00:13:34] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[00:14:10] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[00:14:10] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+[00:14:10] run runs/era5_64x32_s15b_inter: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[00:14:11] stage B[vnet]: vnet params 963797, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[00:14:11] stage B[vnet]: resumed from step 3751 (best 0.1541, 9928 s elapsed before)
+[00:33:07] B[vnet]  4000  L_f 0.1416 L_roll 0.2936 L_phys 0.00012 L_int 0.0950 | val MSE 0.0491 2-step 0.1021 (persistence 0.3295) 6/12/18 h 0.0206/0.0325/0.0408 | 2.77 s/step
+[00:52:38] B[vnet]  4250  L_f 0.1374 L_roll 0.2738 L_phys 0.00014 L_int 0.0878 | val MSE 0.0478 2-step 0.0983 (persistence 0.3295) 6/12/18 h 0.0203/0.0320/0.0402 | 2.88 s/step
+[01:12:03] B[vnet]  4500  L_f 0.1362 L_roll 0.2691 L_phys 0.00026 L_int 0.0877 | val MSE 0.0476 2-step 0.0976 (persistence 0.3295) 6/12/18 h 0.0204/0.0322/0.0404 | 2.98 s/step
+[01:31:18] B[vnet]  4750  L_f 0.1358 L_roll 0.2850 L_phys 0.00015 L_int 0.0901 | val MSE 0.0466 2-step 0.0947 (persistence 0.3295) 6/12/18 h 0.0201/0.0314/0.0392 | 3.06 s/step
+[01:51:07] B[vnet]  5000  L_f 0.1378 L_roll 0.2871 L_phys 0.00005 L_int 0.0873 | val MSE 0.0463 2-step 0.0938 (persistence 0.3295) 6/12/18 h 0.0200/0.0310/0.0387 | 3.15 s/step
+[02:10:27] B[vnet]  5250  L_f 0.1282 L_roll 0.2519 L_phys 0.00003 L_int 0.0841 | val MSE 0.0457 2-step 0.0924 (persistence 0.3295) 6/12/18 h 0.0199/0.0308/0.0384 | 3.22 s/step
+[02:30:24] B[vnet]  5500  L_f 0.1413 L_roll 0.2771 L_phys 0.00035 L_int 0.0943 | val MSE 0.0450 2-step 0.0915 (persistence 0.3295) 6/12/18 h 0.0200/0.0309/0.0384 | 3.29 s/step
+[02:50:14] B[vnet]  5750  L_f 0.1251 L_roll 0.2380 L_phys 0.00007 L_int 0.0852 | val MSE 0.0447 2-step 0.0902 (persistence 0.3295) 6/12/18 h 0.0196/0.0302/0.0374 | 3.35 s/step
+[03:10:25] B[vnet]  6000  L_f 0.1277 L_roll 0.2516 L_phys 0.00004 L_int 0.0832 | val MSE 0.0440 2-step 0.0889 (persistence 0.3295) 6/12/18 h 0.0197/0.0304/0.0376 | 3.42 s/step
+[03:31:09] B[vnet]  6250  L_f 0.1241 L_roll 0.2360 L_phys 0.00006 L_int 0.0830 | val MSE 0.0435 2-step 0.0872 (persistence 0.3295) 6/12/18 h 0.0196/0.0301/0.0373 | 3.48 s/step
+[03:51:23] B[vnet]  6500  L_f 0.1212 L_roll 0.2363 L_phys 0.00005 L_int 0.0810 | val MSE 0.0432 2-step 0.0868 (persistence 0.3295) 6/12/18 h 0.0195/0.0298/0.0368 | 3.53 s/step
+[04:12:19] B[vnet]  6750  L_f 0.1240 L_roll 0.2409 L_phys 0.00006 L_int 0.0850 | val MSE 0.0430 2-step 0.0863 (persistence 0.3295) 6/12/18 h 0.0195/0.0299/0.0369 | 3.59 s/step
+[04:31:45] B[vnet]  7000  L_f 0.1164 L_roll 0.2244 L_phys 0.00007 L_int 0.0788 | val MSE 0.0427 2-step 0.0847 (persistence 0.3295) 6/12/18 h 0.0193/0.0296/0.0364 | 3.63 s/step
+[04:37:24] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[04:39:11] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[04:39:11] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+[04:39:11] run runs/era5_64x32_s15b_inter: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[04:39:11] stage B[vnet_noguide]: vnet params 661892, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[04:39:11] stage B[vnet_noguide] already finished in this run directory; skipping (delete vnet_noguide_done.json to retrain)
+[04:39:24] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[04:40:06] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[04:40:06] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+[04:40:06] run runs/era5_64x32_s15b_inter: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[04:40:07] stage B[vnet]: vnet params 963797, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[04:40:07] stage B[vnet]: resumed from step 7001 (best 0.1274, 25381 s elapsed before)
+[04:59:22] B[vnet]  7250  L_f 0.1299 L_roll 0.2490 L_phys 0.00003 L_int 0.0835 | val MSE 0.0424 2-step 0.0847 (persistence 0.3295) 6/12/18 h 0.0194/0.0296/0.0364 | 3.66 s/step
+[05:18:38] B[vnet]  7500  L_f 0.1135 L_roll 0.2205 L_phys 0.00004 L_int 0.0802 | val MSE 0.0422 2-step 0.0838 (persistence 0.3295) 6/12/18 h 0.0193/0.0294/0.0362 | 3.69 s/step
+[05:38:10] B[vnet]  7750  L_f 0.1192 L_roll 0.2345 L_phys 0.00004 L_int 0.0774 | val MSE 0.0420 2-step 0.0833 (persistence 0.3295) 6/12/18 h 0.0193/0.0294/0.0361 | 3.72 s/step
+[05:57:53] B[vnet]  8000  L_f 0.1216 L_roll 0.2365 L_phys 0.00005 L_int 0.0801 | val MSE 0.0418 2-step 0.0829 (persistence 0.3295) 6/12/18 h 0.0192/0.0293/0.0359 | 3.76 s/step
+[06:18:14] B[vnet]  8250  L_f 0.1250 L_roll 0.2301 L_phys 0.00006 L_int 0.0819 | val MSE 0.0417 2-step 0.0825 (persistence 0.3295) 6/12/18 h 0.0192/0.0292/0.0358 | 3.79 s/step
+[06:38:18] B[vnet]  8500  L_f 0.1322 L_roll 0.2548 L_phys 0.00003 L_int 0.0859 | val MSE 0.0416 2-step 0.0825 (persistence 0.3295) 6/12/18 h 0.0192/0.0292/0.0359 | 3.82 s/step
+[06:58:26] B[vnet]  8750  L_f 0.1150 L_roll 0.2165 L_phys 0.00004 L_int 0.0795 | val MSE 0.0416 2-step 0.0823 (persistence 0.3295) 6/12/18 h 0.0192/0.0292/0.0357 | 3.85 s/step
+[07:18:50] B[vnet]  8999  L_f 0.1182 L_roll 0.2207 L_phys 0.00005 L_int 0.0807 | val MSE 0.0415 2-step 0.0821 (persistence 0.3295) 6/12/18 h 0.0192/0.0291/0.0357 | 3.88 s/step
+[07:18:50] stage B[vnet] done in 581.7 min, best val MSE 0.1237
+[07:18:54] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[07:19:37] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[07:19:37] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+[07:19:37] run runs/era5_64x32_s15b_inter: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[07:20:25] stage C: denoiser params 118045, residual scale s [0.050770778208971024, 0.07540711760520935, 0.203725665807724, 0.04897885397076607, 0.14235392212867737]
+[07:20:25] stage C: feasibility projection (q700 >= 0, mass, water=True), feas weight 1.0, mean constraint weight 1.0 every 5 steps (2 members x 4 sampling steps)
+[07:20:29] C     0  L_eps(avg25) 1.4108 L_feas 0.0120 L_mean +10.4812 | 4.16 s/step
+[07:27:18] C   200  L_eps(avg25) 0.4417 L_feas 0.0043 L_mean +0.4673 | 2.05 s/step
+[07:34:08] C   400  L_eps(avg25) 0.4436 L_feas 0.0041 L_mean +0.1000 | 2.05 s/step
+[07:40:56] C   600  L_eps(avg25) 0.4286 L_feas 0.0037 L_mean +0.1026 | 2.05 s/step
+[07:47:34] C   799  L_eps(avg25) 0.3919 L_feas 0.0036 L_mean +0.0481 | 2.04 s/step
+[07:47:34] stage C done in 27.2 min
+[07:47:38] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[07:48:22] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[07:48:22] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+[07:48:22] run runs/era5_64x32_s15b_inter: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[07:48:24] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[07:52:00] deterministic rollouts done in 3.6 min
+[07:54:42] ensemble eval done in 2.6 min
+[07:54:42] eval written to runs/era5_64x32_s15b_inter/eval.json
+[07:54:46] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[07:55:30] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[07:55:30] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+{
+ "run": "runs/era5_64x32_s15b_inter",
+ "p_dependence_mse": {
+  "true_P": 0.04275225102901459,
+  "zero_P": 0.05735809604326884,
+  "shuffled_P": 0.06045730970799923,
+  "persistence": 0.349194457133611
+ },
+ "p_dependence_relative": {
+  "true_P": 1.0,
+  "zero_P": 1.3416392040817156,
+  "shuffled_P": 1.4141316130224064,
+  "persistence": 8.167861310896212
+ },
+ "linear_probe_r2_24h_scalar_tendency": {
+  "channels": [
+   "z500",
+   "t850",
+   "q700",
+   "t2m",
+   "msl"
+  ],
+  "state_only": [
+   0.06653839349746704,
+   0.13508695363998413,
+   0.0911257266998291,
+   0.05969017744064331,
+   0.07599544525146484
+  ],
+  "guide_only": [
+   0.38847649097442627,
+   0.4108617901802063,
+   0.2908627390861511,
+   0.24366497993469238,
+   0.34789735078811646
+  ],
+  "state_plus_guide": [
+   0.40748000144958496,
+   0.44545978307724,
+   0.29592597484588623,
+   0.25483405590057373,
+   0.355243444442749
+  ],
+  "physics_ops_only": [
+   0.27005261182785034,
+   0.32458430528640747,
+   0.24744313955307007,
+   0.21593844890594482,
+   0.33570122718811035
+  ],
+  "state_plus_physics_ops": [
+   0.2782202363014221,
+   0.34189629554748535,
+   0.2526128888130188,
+   0.2219122052192688,
+   0.34223324060440063
+  ]
+ },
+ "linear_probe_r2_mean": {
+  "state_only": 0.08568733930587769,
+  "guide_only": 0.33635267019271853,
+  "state_plus_guide": 0.3517886519432068,
+  "physics_ops_only": 0.27874394655227663,
+  "state_plus_physics_ops": 0.28737497329711914
+ },
+ "pigt_attention_mass": {
+  "sources": [
+   "H",
+   "P",
+   "O"
+  ],
+  "P0": [
+   [
+    0.1808597445487976,
+    0.21326665580272675,
+    0.6058736443519592
+   ]
+  ],
+  "P1": [
+   [
+    0.24269899725914001,
+    0.26351702213287354,
+    0.49378472566604614
+   ]
+  ],
+  "P2": [
+   [
+    0.43241217732429504,
+    0.23666423559188843,
+    0.33092397451400757
+   ]
+  ],
+  "P1u": [
+   [
+    0.40829938650131226,
+    0.3027461767196655,
+    0.28895455598831177
+   ]
+  ],
+  "P0u": [
+   [
+    0.2845006585121155,
+    0.35988304018974304,
+    0.3556174039840698
+   ]
+  ]
+ }
+}
+PIPELINE_DONE
