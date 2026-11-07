@@ -79,6 +79,29 @@ def test_change_relations_and_scales():
         PINNResiduals(torch.zeros(5), torch.ones(5), torch.ones(3), _graphs().mesh[0].lat, ("momentum",))
 
 
+def test_preprocessing_fits_the_thermal_wind_calibration():
+    """fit_scales re-fits alpha by least squares on the given pairs: a state whose shear is exactly 0.9 x the
+    thermal wind of its t850 field gives alpha ~ 0.9 (up to the mesh's gradient bias) and a smaller residual."""
+    from gpclimate.training.pinn import LN85, R_DRY
+    g = _graphs().view()
+    pinn, _ = _pinn(g, ("thermal",))
+    x = _balanced_state()  # u850 = 0.5 w, u500 = w (w geostrophic to z500): shear 0.5 w
+    b = 0.5 / (0.9 * R_DRY * LN85)  # t850 = 270 + b (phi - 5.5e4) -> thermal wind = (0.5 / 0.9) w
+    s = x.s.clone()
+    s[..., 1] = 270.0 + b * (s[..., 0] - 5.5e4)
+    x = Field(s, x.v)
+    before = pinn.ratios(x, None, g)["thermal"]
+    pinn.fit_scales([(x, x)], g)
+    a = pinn.alpha_dict()["thermal"]
+    # the coarse test mesh's gradient is biased by a factor c, measured on the geostrophic relation of the same state
+    geo, _ = _pinn(g, ("geo500",))
+    L, R = geo.relations(x, None, g)["geo500"]
+    c = float(geo._cross("geo500", L, R) / geo._mean("geo500", R))
+    assert 0.8 < c < 1.3 and abs(a - 0.9 * c) < 0.02, (a, c)
+    assert pinn.ratios(x, None, g)["thermal"] < before and pinn.last_fit["ratio"]["thermal"] < before
+    assert pinn.alpha_dict()["hyps_tend"] == pytest.approx(0.76)  # not in the terms: default kept
+
+
 def test_terrain_embedding_reduces_to_l1_harmonics_on_a_flat_ocean_planet():
     flat = terrain_laplacian_eigvecs(LAT, LON, np.zeros((H, W)), np.zeros((H, W)), k=3)
     harm = np.stack([(np.cos(LATR) * np.cos(LONR)).ravel(), (np.cos(LATR) * np.sin(LONR)).ravel(),
@@ -142,6 +165,8 @@ def test_stage19_pipeline(files, tmp_path):
                "--pinn-weight", "0.05")
     assert "GPINN residuals" in out and "PINN guide/ERA5" in out and "graph embedding" in out
     assert (run_dir / "pinn_scales.json").exists() and np.load(run_dir / "graph_embed.npy").shape[1] == 4
+    fit = json.load(open(run_dir / "pinn_scales.json"))
+    assert set(fit["alpha"]) == {"thermal", "hyps_tend"} and "GPINN preprocessing" in out
     rows = [json.loads(line) for line in open(run_dir / "log_a.jsonl")]
     assert any("val_pinn" in r for r in rows) and any(r.get("l_pinn", 0) > 0 for r in rows)
     out = _run(run_dir, base, "b", "--steps", "3", "--val-every", "2", *roll, "--init-vnet", str(src / "vnet.pt"),

@@ -358,31 +358,39 @@ GUIDE_HEADS = ("head_dec.", "rec_out.", "aux_out.", "tend_out.", "flow_out.", "g
 
 
 def make_pinn(run, weight: float, terms: str):
-    """stage19 GPINN: residual losses of the relations that hold for ERA5 (gpclimate/training/pinn.py), with var(L)
-    scales fitted on 32 training pairs and cached in ``pinn_scales.json``; None when ``weight`` is 0."""
+    """stage19 GPINN: residual losses of the relations that hold for ERA5 (gpclimate/training/pinn.py).  Preprocessing
+    step fitted on 64 training pairs of the run's own data and cached in ``pinn_scales.json``: the calibration alpha of
+    the thermal-wind / hypsometric relations (least squares) and the var(L) scales.  None when ``weight`` is 0."""
     if weight <= 0:
         return None
-    from gpclimate.training.pinn import ALL_TERMS, PINNResiduals
+    from gpclimate.training.pinn import ALL_TERMS, CALIBRATED, PINNResiduals
     names = tuple(t for t in (terms or ",".join(ALL_TERMS)).split(",") if t)
     pinn = PINNResiduals(run.norm.s_mean, run.norm.s_std, run.norm.v_scale, run.graphs.mesh[0].lat, names)
     path = run.dir / "pinn_scales.json"
-    if path.exists():
-        cached = json.load(open(path))
-        for k, v in cached["scale"].items():
-            pinn.scale[ALL_TERMS.index(k)] = float(v)
-        missing = [k for k in names if k not in cached["scale"]]
-    else:
-        missing = list(names)
-    if missing:
-        idx = list(np.linspace(0, len(run.train) - 2, 32).round().astype(int))
+    cached = json.load(open(path)) if path.exists() else {"scale": {}}
+    if "alpha" not in cached:  # caches written before the alpha fit: redo the whole preprocessing step
+        cached = {"scale": {}}
+    for k, v in cached["scale"].items():
+        pinn.scale[ALL_TERMS.index(k)] = float(v)
+    missing = [k for k in names if k not in cached["scale"]]
+    if missing:  # preprocessing fitted on the run's own training data: alpha calibration + var(L) scales
+        pinn.terms = tuple(sorted(set(names) | set(cached["scale"]), key=ALL_TERMS.index))
+        idx = list(np.linspace(0, len(run.train) - 2, 64).round().astype(int))
         pairs = []
-        for i in range(0, 32, 8):
+        for i in range(0, 64, 8):
             x0n, _, _, _ = run.prep(run.train, idx[i:i + 8])
             pairs.append((x0n, run.norm.state(run.train.next_state(idx[i:i + 8]))))
         scales = pinn.fit_scales(pairs, run.g)
-        old = json.load(open(path))["scale"] if path.exists() else {}
-        json.dump({"scale": {**old, **scales}, "terms": list(names)}, open(path, "w"), indent=1)
-    log(f"GPINN residuals {names} (weight {weight}), ERA5 var(L) scales from {path.name}")
+        pinn.terms = names
+        cached = {"scale": scales, "alpha": pinn.alpha_dict(), "ratio": pinn.last_fit["ratio"], "terms": list(names),
+                  "pairs": len(idx)}
+        json.dump(cached, open(path, "w"), indent=1)
+        log("GPINN preprocessing on 64 training pairs: alpha " + " ".join(f"{k} {v:.2f}" for k, v in
+                                                                         cached["alpha"].items())
+            + " | var(L-R)/var(L) " + " ".join(f"{k} {v:.2f}" for k, v in cached["ratio"].items()))
+    for k, v in cached["alpha"].items():
+        pinn.alpha[CALIBRATED.index(k)] = float(v)
+    log(f"GPINN residuals {names} (weight {weight}), ERA5 alpha and var(L) scales from {path.name}")
     return pinn
 
 

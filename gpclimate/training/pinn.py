@@ -36,8 +36,10 @@ DT = 6 * 3600.0
 STATE_TERMS = ("geo500", "geo850", "thermal")
 CHANGE_TERMS = ("geo500_tend", "hyps_tend", "bve500")
 ALL_TERMS = STATE_TERMS + CHANGE_TERMS
-# least-squares calibration of the relations with an approximate layer temperature (pinn_equation_check, global)
+# least-squares calibration of the relations with an approximate layer temperature (pinn_equation_check, global);
+# defaults only: ``PINNResiduals.fit_scales`` re-fits them on the run's own training pairs (preprocessing step)
 ALPHA = {"thermal": 0.77, "hyps_tend": 0.76}
+CALIBRATED = tuple(ALPHA)
 GLOBAL_TERMS = ("hyps_tend",)  # holds in the tropics as well; the balance / vorticity relations use |lat| > lat_min
 
 
@@ -62,20 +64,23 @@ def physics_fields(m: Field, sinlat: torch.Tensor, st: Stencil) -> Dict[str, tor
                 g_absv500=g_absv500)
 
 
-def state_relations(q: Dict[str, torch.Tensor]) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
+def state_relations(q: Dict[str, torch.Tensor], alpha: Optional[Dict[str, float]] = None
+                    ) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
     """(L, R) of the balance relations of one state; L - R is the residual."""
+    a = ALPHA if alpha is None else alpha
     f = q["f_safe"]
     return {"geo500": (q["u500"], 1j * q["g_z500"] / f),
             "geo850": (q["u850"], 1j * q["g_phi850"] / f),
-            "thermal": (q["u500"] - q["u850"], ALPHA["thermal"] * 1j * R_DRY * LN85 * q["g_t850"] / f)}
+            "thermal": (q["u500"] - q["u850"], a["thermal"] * 1j * R_DRY * LN85 * q["g_t850"] / f)}
 
 
-def change_relations(q0, q1, qm) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
+def change_relations(q0, q1, qm, alpha: Optional[Dict[str, float]] = None) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
     """(L, R) of the 6 h change relations (``qm`` = fields of the midpoint state)."""
+    a = ALPHA if alpha is None else alpha
     f = q0["f_safe"]
     return {"geo500_tend": (q1["u500"] - q0["u500"], 1j * (q1["g_z500"] - q0["g_z500"]) / f),
             "hyps_tend": (q1["z500"] - q0["z500"],
-                          ALPHA["hyps_tend"] * ((q1["phi850"] - q0["phi850"]) + R_DRY * LN85 * (q1["t850"] - q0["t850"]))),
+                          a["hyps_tend"] * ((q1["phi850"] - q0["phi850"]) + R_DRY * LN85 * (q1["t850"] - q0["t850"]))),
             "bve500": (q1["vort500"] - q0["vort500"], -DT * (qm["u500"].conj() * qm["g_absv500"]).real)}
 
 
@@ -94,7 +99,9 @@ class PINNResiduals(nn.Module):
         lat = torch.as_tensor(mesh_lat_deg, dtype=torch.float32).abs()
         self.register_buffer("mask_x", (lat > lat_min).float())
         self.register_buffer("scale", torch.ones(len(ALL_TERMS)))
+        self.register_buffer("alpha", torch.tensor([ALPHA[k] for k in CALIBRATED]))
         self._st: Dict[int, Stencil] = {}
+        self.last_fit: Dict[str, Dict[str, float]] = {}
 
     def _stencil(self, g: GraphView) -> Stencil:
         key = id(g.mesh_edges[0])
@@ -107,18 +114,32 @@ class PINNResiduals(nn.Module):
         m = transport_interpolate(phys, g.extras.get("grid2mesh_lin", g.grid2mesh))
         return physics_fields(m, g.mesh_sinlat[0], self._stencil(g))
 
-    def relations(self, x0: Field, x1: Optional[Field], g: GraphView) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
+    def alpha_dict(self) -> Dict[str, float]:
+        return {k: float(a) for k, a in zip(CALIBRATED, self.alpha)}
+
+    def relations(self, x0: Field, x1: Optional[Field], g: GraphView, calibrated: bool = True
+                  ) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
+        """(L, R) per relation; ``calibrated=False`` uses alpha = 1 (the raw right-hand side, for fitting alpha)."""
+        a = self.alpha_dict() if calibrated else {k: 1.0 for k in CALIBRATED}
         q0 = self.fields(x0, g)
-        out = {k: v for k, v in state_relations(q0).items() if k in self.terms}
+        out = {k: v for k, v in state_relations(q0, a).items() if k in self.terms}
         if x1 is not None and any(t in self.terms for t in CHANGE_TERMS):
             q1 = self.fields(x1, g)
             qm = self.fields(Field(0.5 * (x0.s + x1.s), 0.5 * (x0.v + x1.v)), g)
-            out.update({k: v for k, v in change_relations(q0, q1, qm).items() if k in self.terms})
+            out.update({k: v for k, v in change_relations(q0, q1, qm, a).items() if k in self.terms})
         return out
 
+    def _region(self, name: str) -> torch.Tensor:
+        return torch.ones_like(self.mask_x) if name in GLOBAL_TERMS else self.mask_x
+
     def _mean(self, name: str, t: torch.Tensor) -> torch.Tensor:
-        m = torch.ones_like(self.mask_x) if name in GLOBAL_TERMS else self.mask_x
+        m = self._region(name)
         return torch.where(m > 0, t.abs() ** 2, torch.zeros_like(t.real)).sum(-1).mean() / m.sum()
+
+    def _cross(self, name: str, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        """Region mean of Re(conj(a) b)."""
+        m = self._region(name)
+        return torch.where(m > 0, (a.conj() * b).real, torch.zeros_like(a.real)).sum(-1).mean() / m.sum()
 
     def losses(self, x0: Field, x1: Optional[Field], g: GraphView) -> Dict[str, torch.Tensor]:
         """Per relation: mean |L - R|^2 over its region / var(L) of ERA5."""
@@ -131,13 +152,29 @@ class PINNResiduals(nn.Module):
                 for k, (L, R) in self.relations(x0, x1, g).items()}
 
     @torch.no_grad()
-    def fit_scales(self, pairs, g: GraphView) -> Dict[str, float]:
-        """``pairs``: iterable of normalised (X0, X1) truth pairs; sets ``scale`` = var(L) per relation."""
-        acc = {k: [] for k in self.terms}
+    def fit_scales(self, pairs, g: GraphView, fit_alpha: bool = True) -> Dict[str, float]:
+        """Preprocessing fitted on the run's training data.  ``pairs``: iterable of normalised (X0, X1) truth pairs.
+        Sets ``scale`` = var(L) per relation and, with ``fit_alpha``, the calibration of the thermal-wind and
+        hypsometric relations by least squares, alpha = <L, R> / <R, R> over the relation's region (clipped to
+        [0.3, 1.5]; kept at the default when R vanishes).  ``self.last_fit`` holds alpha and var(L - R)/var(L)."""
+        acc = {k: [0.0, 0.0, 0.0, 0.0, 0] for k in self.terms}  # var L, <L,R>, <R,R>, var(L - R) (calibrated), n
+        pairs = list(pairs)
         for x0, x1 in pairs:
-            for k, (L, _) in self.relations(x0, x1, g).items():
-                acc[k].append(float(self._mean(k, L)))
-        for k, v in acc.items():
-            if v:
-                self.scale[ALL_TERMS.index(k)] = max(float(sum(v) / len(v)), 1e-30)
+            for k, (L, R) in self.relations(x0, x1, g, calibrated=False).items():
+                a = acc[k]
+                a[0] += float(self._mean(k, L))
+                a[1] += float(self._cross(k, L, R))
+                a[2] += float(self._mean(k, R))
+                a[4] += 1
+        for k, (vl, lr, rr, _, n) in acc.items():
+            if n == 0:
+                continue
+            self.scale[ALL_TERMS.index(k)] = max(vl / n, 1e-30)
+            if fit_alpha and k in CALIBRATED and rr > 1e-12 * max(vl, 1e-30):
+                self.alpha[CALIBRATED.index(k)] = min(max(lr / rr, 0.3), 1.5)
+        for x0, x1 in pairs:  # the fitted relations' own residual ratio (the pinn_equation_check number)
+            for k, (L, R) in self.relations(x0, x1, g).items():
+                acc[k][3] += float(self._mean(k, L - R))
+        self.last_fit = {"alpha": self.alpha_dict(),
+                         "ratio": {k: v[3] / max(v[0], 1e-30) for k, v in acc.items() if v[4]}}
         return {k: float(self.scale[ALL_TERMS.index(k)]) for k in self.terms}
