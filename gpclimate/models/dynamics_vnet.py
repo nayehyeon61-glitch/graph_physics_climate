@@ -269,7 +269,7 @@ class DynamicsVNet(nn.Module):
         H0u = self.gnn[4](self.merge0(self.up10(F1u, g.up[0]), H0), g.mesh_edges[0])
         F0u = self._fuse(4, H0u, physics, "P0u", g.attn_edges[0], O[0], C[0])
         emb = self.head_dec(F0u, g.mesh2grid, extra=grid_emb)
-        self.last_emb = emb
+        self.last_emb = emb if self.core_on else None  # stage18: read by the core heads
         out = self.head_out(emb)
         if self.head_inter is not None:  # stage15b: intermediate-time changes from the same embedding
             self.last_inter = self.head_inter(emb)

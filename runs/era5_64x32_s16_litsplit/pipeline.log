@@ -48,3 +48,4 @@
 [11:40:36] A     0  L_rec 1.8839 L_aux 0.4798 L_tend 1.3735 L_clos 0.0000 | val rec 1.9726 aux 0.5146 tend 1.5502 clos 0.0000 (resolved only 0.0000) | 6.27 s/step
 [11:42:38] A   200  L_rec 0.0628 L_aux 0.2201 L_tend 0.6619 L_clos 0.0000 | val rec 0.0399 aux 0.1925 tend 0.6125 clos 0.0000 (resolved only 0.0000) | 0.64 s/step
 [11:46:43] A   400  L_rec 0.0395 L_aux 0.1697 L_tend 0.4425 L_clos 0.0000 | val rec 0.0279 aux 0.1690 tend 0.4635 clos 0.0000 (resolved only 0.0000) | 0.93 s/step
+[11:57:28] A   600  L_rec 0.0786 L_aux 0.2212 L_tend 0.5181 L_clos 0.0000 | val rec 0.0239 aux 0.1604 tend 0.4189 clos 0.0000 (resolved only 0.0000) | 1.69 s/step
