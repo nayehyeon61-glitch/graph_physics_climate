@@ -18,6 +18,17 @@ is gauge invariant and J(j -> i) = -J(i -> j) by construction: message passing o
 conservative finite-volume flux.  The transport part of the core (-div(V q) with the guide's flow) is done by the
 semi-Lagrangian step of stage17c (``gpclimate.nn.semi_lagrangian``), because an explicit flux form at a 6 h sub-step
 violates the CFL limit by an order of magnitude near the poles of a 5.6 deg grid (PG-Flow sub-cycles at minutes).
+
+stage18d Laplace block (PhyMPGN, Zeng et al. ICLR 2025, github.com/intell-sci-comput/PhyMPGN): the diffusion term
+K lap q of the PG-Flow core, missing in stage18, on the same covering control volumes.  PhyMPGN's discrete
+Laplace-Beltrami  lap f_i = (1/d_i) sum_j w_ij (f_j - f_i)  uses the area d_i of the polygon that covers node i
+(circumcentres around it) and the cotangent weights w_ij = (cot a + cot b) / 2 = dual length / primal length.  On this
+orthogonal grid the covering polygon is the cell (area A_i) and the weight is face length / centre distance
+(``weight = l / d``), so ``laplacian`` is that operator.  The learned part is the diffusivity K >= 0 per cell and
+channel (PhyMPGN's learnable correction of the operator itself is the antisymmetric flux J_theta here).  An explicit
+6 h diffusion step is unstable near the poles (east faces of a polar cell are 30 km apart), so the face number
+nu = K w dt / min(A_i, A_j) is capped smoothly at ``nu_max`` (0.12): with four faces per cell the update is a convex
+combination of the cell and its neighbours (no new extrema) and the area integral is conserved exactly.
 """
 
 from __future__ import annotations
@@ -63,6 +74,14 @@ class GridFaceGraph(nn.Module):
         length = torch.cat([e_len, n_len])
         # face normal (from src to dst) in the canonical east/north frame: east faces 1, north faces i
         normal = torch.cat([torch.ones(len(e_src), dtype=torch.complex128), torch.full((len(n_src),), 1j)])
+        # stage18d: centre distances (east: along the latitude circle, north: along the meridian) and the cotangent
+        # (covering) weights l / d of the finite-volume Laplace-Beltrami operator
+        e_dist = (EARTH_RADIUS * lat.cos() * dlon)[:, None].expand(H, W).reshape(-1)
+        n_dist = (EARTH_RADIUS * (lat[1:] - lat[:-1]))[:, None].expand(H - 1, W).reshape(-1)
+        dist = torch.cat([e_dist, n_dist])
+        src_all, dst_all = torch.cat([e_src, n_src]), torch.cat([e_dst, n_dst])
+        self.register_buffer("weight", (length / dist).float(), persistent=False)
+        self.register_buffer("face_mass", torch.minimum(area[src_all], area[dst_all]).float(), persistent=False)
         self.register_buffer("length", length.float(), persistent=False)
         self.register_buffer("area", area.float(), persistent=False)
         self.register_buffer("normal", normal.to(torch.complex64), persistent=False)
@@ -78,6 +97,30 @@ class GridFaceGraph(nn.Module):
         out = scatter(fl, self.src, 1, dim_size=self.n_cells, reduce="sum")
         out = out - scatter(fl, self.dst, 1, dim_size=self.n_cells, reduce="sum")
         return out / self.area[None, :, None]
+
+    def _exchange(self, F: torch.Tensor) -> torch.Tensor:
+        """Face exchange ``F`` [B, F, C] (amount moved from dst into src) -> cell change [B, N, C] (area-conserving)."""
+        out = scatter(F, self.src, 1, dim_size=self.n_cells, reduce="sum")
+        out = out - scatter(F, self.dst, 1, dim_size=self.n_cells, reduce="sum")
+        return out / self.area[None, :, None]
+
+    def laplacian(self, q: torch.Tensor) -> torch.Tensor:
+        """stage18d: finite-volume Laplace-Beltrami of ``q`` [B, N, C] (1/m^2):  (1/A_i) sum_f (l_f/d_f)(q_j - q_i)."""
+        dq = q.index_select(1, self.dst) - q.index_select(1, self.src)
+        return self._exchange(self.weight[None, :, None] * dq)
+
+    def diffusion(self, q: torch.Tensor, K: torch.Tensor, dt: float, nu_max: float = 0.12) -> torch.Tensor:
+        """stage18d: change of ``q`` [B, N, C] by one explicit diffusion step of ``dt`` seconds with the face
+        diffusivity ``K`` [B, F, C] (m^2/s, >= 0).  For small K it is  dt K lap q;  the face number
+        nu = K (l/d) dt / min(A_i, A_j) is capped smoothly at ``nu_max`` (stable, monotone, area integral conserved)."""
+        x = K * (self.weight * dt / self.face_mass)[None, :, None]
+        nu = nu_max * torch.tanh(x / nu_max)
+        dq = q.index_select(1, self.dst) - q.index_select(1, self.src)
+        return self._exchange(nu * self.face_mass[None, :, None] * dq)
+
+    def face_mean(self, c: torch.Tensor) -> torch.Tensor:
+        """Symmetric face value of a cell field [B, N, C] -> [B, F, C]."""
+        return 0.5 * (c.index_select(1, self.src) + c.index_select(1, self.dst))
 
     def face_normals(self, gauge: torch.Tensor) -> torch.Tensor:
         """Face normals in the node frames of the src cells [F] (complex): canonical normal times exp(-i gauge)."""

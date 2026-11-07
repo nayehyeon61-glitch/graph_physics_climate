@@ -115,6 +115,8 @@ class Run:
             self.cfg.update(prev_path=int(getattr(args, "prev_path", 0) or 0))
             # stage19b key (GPINN graph embedding of the guide)
             self.cfg.update(graph_embed=int(getattr(args, "graph_embed", 0) or 0))
+            # stage18d key (Laplace block in the graph tendency core)
+            self.cfg.update(core_laplace=int(getattr(args, "core_laplace", 0) or 0))
             # stage17 keys (dynamic guide: sub-step forcing, learnable guide-drift gain)
             self.cfg.update(ode_path_forcing=int(getattr(args, "ode_path_forcing", 0) or 0),
                             ode_drift_gain=int(getattr(args, "ode_drift_gain", 0) or 0),
@@ -180,7 +182,8 @@ class Run:
                                 ode_drift=c.get("ode_drift", "tend") or "tend",
                                 tendency_core=bool(c.get("tendency_core", False)),
                                 core_tokens=bool(c.get("core_tokens", True) if c.get("core_tokens") is not None else True),
-                                prev_path=bool(c.get("prev_path", False)))
+                                prev_path=bool(c.get("prev_path", False)),
+                                core_laplace=bool(c.get("core_laplace", False)))
         if self.vnet_kwargs["prev_path"] and not (self.vnet_kwargs["prev_state"] and self.vnet_kwargs["integrator"] == "ode"):
             raise ValueError("prev_path needs the previous-state input (prev_state) and the ODE integrator")
         if self.vnet_kwargs["ode_drift_gain"] and not self.vnet_kwargs["ode_physics"]:
@@ -639,7 +642,8 @@ def stage_b(run: Run, use_guide: bool):
             + (" (learned gain, init 0)" if vc.ode_drift_gain else "")
             + (", sub-step solar forcing" if vc.ode_path_forcing else "")
             + (", graph tendency core (beta-scaled guide transport + conservative face flux + source"
-               + (", core tokens C in PIGT)" if vc.core_tokens else ")") if vc.tendency_core else ""))
+               + (", core tokens C in PIGT" if vc.core_tokens else "")
+               + (", Laplace block" if vc.core_laplace else "") + ")" if vc.tendency_core else ""))
     # restart safety: a finished Stage B is skipped, an interrupted one resumes from its last validation checkpoint
     start_step = 0
     ck_path, done_path = run.dir / f"{name}_train_state.pt", run.dir / f"{name}_done.json"
@@ -778,6 +782,8 @@ def stage_b(run: Run, use_guide: bool):
                    if vm.vnet.drift_gain_s is not None else "")
                 + (" core beta " + "/".join(f"{b:.2f}" for b in vm.last_core["beta"])
                    + f" rms T {vm.last_core['transport']:.3f} F {vm.last_core['flux']:.3f} S {vm.last_core['source']:.3f}"
+                   + (f" D {vm.last_core['diffusion']:.4f} K {sum(vm.last_core['K']) / len(vm.last_core['K']):.0f}"
+                      if "diffusion" in vm.last_core else "")
                    if getattr(vm, "last_core", None) else "")
                 + f" | {(time.time() - t0) / (step + 1):.2f} s/step")
             state = {"step": step + 1, "vnet": model.vnet.state_dict(), "opt": opt.state_dict(), "best": best,
@@ -1198,6 +1204,8 @@ def main():
                          "--ode-physics 0)")
     ap.add_argument("--prev-path", type=int, default=0, choices=[0, 1],
                     help="stage18b: previous-state input along the ODE path (needs --prev-state 1, --integrator ode)")
+    ap.add_argument("--core-laplace", type=int, default=0, choices=[0, 1],
+                    help="stage18d: Laplace block in the graph tendency core (PhyMPGN-style diffusion with learned K)")
     ap.add_argument("--core-tokens", type=int, default=1, choices=[0, 1],
                     help="stage18: give the guide's core terms to PIGT as a fourth token source C")
     ap.add_argument("--ode-drift", default="tend", choices=["tend", "transport"],

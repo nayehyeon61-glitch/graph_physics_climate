@@ -98,6 +98,14 @@ class VNetConfig:
     # source C next to H / P / O.  Needs integrator "ode", PIGT fusion and a guide with the flow head.
     tendency_core: bool = False
     core_tokens: bool = True
+    # stage18d Laplace block in the core (PhyMPGN, ICLR 2025): + one explicit diffusion step of the scalar channels on
+    # the face graph, finite-volume Laplace-Beltrami with the covering (cotangent) weights, diffusivity K >= 0 per cell
+    # and channel from the V-Net embedding, K = K_ref softplus(gain * head), the head starting uniform at raw = -5
+    # (K ~ 700 m^2/s, i.e. ~ off); the gain lets Adam move K by orders of magnitude within a 1000-step fine-tuning.
+    # Face numbers are capped for stability.  Needs tendency_core.
+    core_laplace: bool = False
+    core_k_ref: float = 1.0e5
+    core_k_gain: float = 8.0
     # stage18b: the previous-state input follows the path — sub-step k of an ODE lead gets the state one lead before
     # *its own* time, X_{t + k 6 h - lead} (observed past states in the first lead, the previous lead's path later),
     # instead of X_{t - lead} for all sub-steps.  ``prev`` is then a list of ode_steps states.
@@ -159,7 +167,9 @@ class DynamicsVNet(nn.Module):
         if cfg.ode_drift_gain and cfg.use_guide:  # stage17b: real gains keep the vector drift gauge-equivariant
             self.drift_gain_s = nn.Parameter(torch.zeros(spec.n_s))
             self.drift_gain_v = nn.Parameter(torch.zeros(spec.n_v))
-        self.core_embed = self.beta_head = self.flux_head = None
+        self.core_embed = self.beta_head = self.flux_head = self.laplace_head = None
+        if cfg.core_laplace and not cfg.tendency_core:
+            raise ValueError("core_laplace (stage18d) is part of the graph tendency core: set tendency_core")
         self.last_emb: Optional[Field] = None
         if self.core_on:  # stage18: all new parts start at zero (a trained V-Net keeps its function)
             from gpclimate.nn.graph_core import FaceFluxHead
@@ -173,6 +183,11 @@ class DynamicsVNet(nn.Module):
                     if lin.w_re is not None:
                         lin.w_re.zero_()
                         lin.w_im.zero_()
+            if cfg.core_laplace:  # stage18d: diffusivity head, uniform and ~ 0 at the start
+                self.laplace_head = EqLinear(cs, cv, spec.n_s, 0)
+                with torch.no_grad():
+                    self.laplace_head.lin_s.weight.zero_()
+                    self.laplace_head.lin_s.bias.fill_(-5.0 / cfg.core_k_gain)
         self.nudge_block = None
         if cfg.nudge:
             from gpclimate.nn.nudging import InitialNudging
@@ -209,6 +224,10 @@ class DynamicsVNet(nn.Module):
     def core_beta(self, emb: Field) -> torch.Tensor:
         """stage18: share of the guide's flow per cell and level group [B, N, 3] (0 at the start, clipped)."""
         return self.beta_head(emb).s.clamp(-0.5, 2.0)
+
+    def core_diffusivity(self, emb: Field) -> torch.Tensor:
+        """stage18d: diffusivity K [B, N, n_s] (m^2/s, >= 0) of the scalar channels per cell."""
+        return self.cfg.core_k_ref * nn.functional.softplus(self.cfg.core_k_gain * self.laplace_head(emb).s)
 
     def core_flux(self, emb: Field, faces, gauge: torch.Tensor) -> torch.Tensor:
         """stage18: -div_G J_theta of the scalar channels [B, N, n_s] in units of the face graph's mean edge length
@@ -499,6 +518,10 @@ class LieGuidedForecaster(nn.Module):
         C = self.vnet.core_flux(emb, faces, gauge) * self.delta_scale_s / cfg.ode_steps
         h = 1.0 / cfg.ode_steps
         S_s, S_v = d.s * self.delta_scale_s * h, d.v * self.delta_scale_v * h
+        D, K = None, None
+        if self.vnet.laplace_head is not None:  # stage18d: Laplace block, diffusion of the transported scalars
+            K = self.vnet.core_diffusivity(emb)
+            D = faces.diffusion(xb.s, faces.face_mean(K), 6 * 3600.0 * steps)
         with torch.no_grad():  # share of each core term (rms over the batch, normalised units) for the logs
             rms = lambda t: float(t.abs().pow(2).mean().sqrt())  # noqa: E731
             self.last_core = {"beta": [float(b) for b in beta.mean((0, 1))],
@@ -506,7 +529,10 @@ class LieGuidedForecaster(nn.Module):
                               "transport": rms(torch.cat([(xb.s - x.s).flatten(), (xb.v - x.v).abs().flatten()])),
                               "flux": rms(C), "source": rms(torch.cat([S_s.flatten(), S_v.abs().flatten()])),
                               "guide_transport": rms(torch.cat([tr.s.flatten(), tr.v.abs().flatten()]))}
-        return Field(xb.s - x.s + C + S_s, xb.v - x.v + S_v)
+            if D is not None:
+                self.last_core.update(diffusion=rms(D), K=[float(k) for k in K.mean((0, 1))])
+        ds = xb.s - x.s + C + S_s + (D if D is not None else 0.0)
+        return Field(ds, xb.v - x.v + S_v)
 
     def integrate(self, state: Field, cond: Field, g: GraphView, p_map: Optional[Callable] = None,
                   prev: Optional[Field] = None, col: Optional[Field] = None) -> Field:

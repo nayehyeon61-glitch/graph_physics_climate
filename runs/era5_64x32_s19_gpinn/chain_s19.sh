@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Stage stage19a/b/c (2026-11-07 21:25 KST): GPINN guide (감자 2026-11-07 20:20 KST, arXiv 2306.09792: "gpinn은 원본
 # 가이드, dynamic guide는 예측구조의 보조로"; 21:18 KST MTMLab/GNN-PINN as a reference: staged training, the physics
-# penalty only where the relation holds).  Base = the stage18 family member the chains adopted (18c > 18b > 18).
+# penalty only where the relation holds).  Base = the stage18 family member the chains adopted (18d > 18c > 18b > 18).
 #   stage19a: the guide's Stage A of stage17c (heads from stage9b's guide, trunk frozen, same perturbations, 1000 steps)
 #             + soft PINN residuals of the relations that hold for ERA5 (geostrophic 500/850 hPa, thermal wind,
 #             balanced 6 h change, hypsometric change, 500 hPa vorticity; scripts/pinn_equation_check.py) on the
@@ -19,14 +19,13 @@ S17A=runs/era5_64x32_s17a_dyn
 S18=runs/era5_64x32_s18_core
 S18B=runs/era5_64x32_s18b_prevpath
 S18C=runs/era5_64x32_s18c_guidepath
+S18D=runs/era5_64x32_s18d_laplace
 LOG=runs/era5_64x32_s19_gpinn/chain_s19.log
-echo "[$(date -u +%H:%M:%S)] stage19 waits for CHAIN_S18C_DONE" >> $LOG
-until grep -q "CHAIN_S18C_DONE" $S18C/chain_s18c.log 2>/dev/null; do sleep 120; done
-if grep -q "stage18b ADOPTED" $S18B/chain_s18b.log; then BASE=$S18B; else BASE=$S18; fi
-BFLAGS=""
-if grep -A1 "vs base" $S18C/chain_s18c.log | grep -q '"adopt": true'; then
-  BASE=$S18C; BFLAGS="--guide-lr 3e-5 --guide-heads-only 1"
-fi
+echo "[$(date -u +%H:%M:%S)] stage19 waits for CHAIN_S18D_DONE" >> $LOG
+until grep -q "CHAIN_S18D_DONE" $S18D/chain_s18d.log 2>/dev/null; do sleep 120; done
+# stage18d recorded the adopted member of 18 / 18b / 18c (and its Stage B guide flags); 18d itself if adopted
+BASE=$(cat $S18D/base.txt); BFLAGS=$(cat $S18D/bflags.txt)
+if grep -q "stage18d ADOPTED" $S18D/chain_s18d.log; then BASE=$S18D; fi
 echo "[$(date -u +%H:%M:%S)] stage19 start on $BASE ($BFLAGS)" >> $LOG
 FT="--threads 4 --batch 4 --lr 3e-4 --steps 1000 --val-every 250 --rollout-steps 2 --rollout-start 0 --rollout-weight 1.0"
 EV="--threads 4 --stage eval --eval-stride 16 --max-lead-steps 5"

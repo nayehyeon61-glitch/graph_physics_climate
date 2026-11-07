@@ -5,7 +5,7 @@
 - 감자 2026-11-07 20:20 KST (arXiv 2306.09792 GPINN 첨부): "이 논문과 같은 pinn의 구조와 예측 dynamics guide를 위한 physics를 더해보면 어떨까요? gpinn은 원본 가이드 그리고 dynamic guide는 예측구조의 보조로서 추가해보면 어떨까요?"
 - 감자 2026-11-07 21:18 KST: "https://github.com/MTMLab/GNN-PINN graph pinn은 이걸 참고하면 괜찮을까요?" (답: 개념 참고만, 아래 §4)
 
-stage18 계열(18 → 18b → 18c, `Stage18_Graph_Tendency_Core_KO.md`)이 끝난 뒤, 체인이 채택한 쪽 위에서 시작합니다.
+stage18 계열(18 → 18b → 18c → 18d, `Stage18_Graph_Tendency_Core_KO.md`)이 끝난 뒤, 체인이 채택한 쪽 위에서 시작합니다.
 
 ## 1. GPINN에서 가져오는 것
 
@@ -53,14 +53,14 @@ w_f = (ℓ_f / d_f) · exp(−|Δh| / 1000 m) · (해륙 경계를 넘으면 0.2
 
 | 단계 | 변화 하나 | 비교 대상 |
 | --- | --- | --- |
-| stage19a | guide Stage A(stage17c 방식: stage9b guide에서 head만, 1000 step, 교란 0.3)에 PINN 잔차 손실, 가중치 0.05 | stage18 계열 채택본(18c > 18b > 18) |
+| stage19a | guide Stage A(stage17c 방식: stage9b guide에서 head만, 1000 step, 교란 0.3)에 PINN 잔차 손실, 가중치 0.05 | stage18 계열 채택본(18d > 18c > 18b > 18) |
 | stage19b | + 지형 가중 그래프 임베딩 8개 | stage19a |
 | stage19c | + 예보 경로(6 h마다)에 같은 잔차, 가중치 0.02 | stage19b |
 
 - 누적 구성(19b는 19a의 손실을 유지). 각 단계는 바로 앞 단계와 `decide_adoption.py`(5개 선행 중 3개 이상 + 평균 ≥ 0.5 %)로 판정하고, 기준(18 계열)과의 누적 비교도 함께 기록합니다.
 - 각 단계: 짝 미세조정(V-Net은 stage9b에서 1000 step, lr 3e-4, rollout 2), guide 없는 짝은 기준의 것 재사용. 2019 평가 + 2020/2022, ClimODE 열 포함.
 - 의미 지표: guide 출력의 잔차 비율(ERA5 대비), 예보 경로의 잔차 비율, physics_only(guide core만의 예보), guide on/off 이득, β와 항별 크기.
-- 실행 `runs/era5_64x32_s19_gpinn/chain_s19.sh`(CHAIN_S18C_DONE 대기, 표지 CHAIN_S19_DONE). 단계별 run `runs/era5_64x32_s19{a,b,c}_gpinn`.
+- 실행 `runs/era5_64x32_s19_gpinn/chain_s19.sh`(CHAIN_S18D_DONE 대기, 표지 CHAIN_S19_DONE). 단계별 run `runs/era5_64x32_s19{a,b,c}_gpinn`.
 
 ## 6. 위험
 
