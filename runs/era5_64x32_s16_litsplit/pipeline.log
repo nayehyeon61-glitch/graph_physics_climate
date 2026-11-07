@@ -58,3 +58,7 @@
 [12:11:54] stage B[vnet]: vnet params 962534, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
 [12:13:41] B[vnet]     0  L_f 0.9011 L_roll 0.0000 L_phys 0.00003 | val MSE 0.3436 2-step 0.5036 (persistence 0.3496) | 107.26 s/step
 [12:36:44] B[vnet]   250  L_f 0.3485 L_roll 0.0000 L_phys 0.00034 | val MSE 0.1260 2-step 0.2520 (persistence 0.3496) | 5.94 s/step
+[12:52:01] B[vnet]   500  L_f 0.2503 L_roll 0.0000 L_phys 0.00021 | val MSE 0.0938 2-step 0.2045 (persistence 0.3496) | 4.80 s/step
+[13:02:09] B[vnet]   750  L_f 0.2198 L_roll 0.0000 L_phys 0.00021 | val MSE 0.0804 2-step 0.1884 (persistence 0.3496) | 4.01 s/step
+[13:11:55] B[vnet]  1000  L_f 0.1952 L_roll 0.0000 L_phys 0.00010 | val MSE 0.0738 2-step 0.1961 (persistence 0.3496) | 3.60 s/step
+[13:21:32] B[vnet]  1250  L_f 0.1886 L_roll 0.0000 L_phys 0.00020 | val MSE 0.0668 2-step 0.1725 (persistence 0.3496) | 3.34 s/step
