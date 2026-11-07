@@ -98,6 +98,10 @@ class VNetConfig:
     # source C next to H / P / O.  Needs integrator "ode", PIGT fusion and a guide with the flow head.
     tendency_core: bool = False
     core_tokens: bool = True
+    # stage18b: the previous-state input follows the path — sub-step k of an ODE lead gets the state one lead before
+    # *its own* time, X_{t + k 6 h - lead} (observed past states in the first lead, the previous lead's path later),
+    # instead of X_{t - lead} for all sub-steps.  ``prev`` is then a list of ode_steps states.
+    prev_path: bool = False
 
 
 class DynamicsVNet(nn.Module):
@@ -242,6 +246,8 @@ class DynamicsVNet(nn.Module):
                 core: Optional[Field] = None) -> Field:
         B = state.s.shape[0]
         cond = broadcast_batch(cond, B)
+        if isinstance(prev, list):  # stage18b path list: a single forward uses the lead's first entry
+            prev = prev[0]
         xs, xv = [state.s, cond.s], [state.v, cond.v]
         if self.cfg.prev_state:  # stage14: observed change over the previous lead (zero when no previous state)
             prev = state if prev is None else prev
@@ -336,6 +342,7 @@ class LieGuidedForecaster(nn.Module):
         relaxation (rollout steps after the first).  ``col`` (stage15a, ``VNetConfig.col_s/col_v``) are the column
         input channels at the initial time; None = not available (rollout steps after the first)."""
         if self.vnet.cfg.integrator != "ode":
+            prev = self._prev_at(prev, 0)
             P = self.physics(state, cond, g)
             d = self.vnet(state, cond, P, g, prev=prev, nudge=nudge, col=col)
             forecast = Field(state.s + d.s * self.delta_scale_s, state.v + d.v * self.delta_scale_v)
@@ -512,10 +519,11 @@ class LieGuidedForecaster(nn.Module):
         path = []
         for k in range(cfg.ode_steps):
             ck, ci = self.sub_cond(cond, g, k), (col if k == 0 else None)
-            f1 = self.rate(x, ck, g, p_map, prev=prev, col=ci)
+            pk = self._prev_at(prev, k)
+            f1 = self.rate(x, ck, g, p_map, prev=pk, col=ci)
             if cfg.ode_solver == "heun":
                 x1 = Field(x.s + f1.s, x.v + f1.v)
-                f2 = self.rate(x1, self.sub_cond(cond, g, k + 1), g, p_map, prev=prev)
+                f2 = self.rate(x1, self.sub_cond(cond, g, k + 1), g, p_map, prev=self._prev_at(prev, k + 1))
                 x = Field(x.s + 0.5 * (f1.s + f2.s), x.v + 0.5 * (f1.v + f2.v))
             else:
                 x = Field(x.s + f1.s, x.v + f1.v)
@@ -542,6 +550,21 @@ class LieGuidedForecaster(nn.Module):
         out = []
         for c in conds:
             new, _ = self(state, c, g, prev=prev, nudge=nudge, col=col)
-            prev, state, nudge, col = state, new, self.carried_nudge(), None
+            prev, state, nudge, col = self.next_prev(state), new, self.carried_nudge(), None
             out.append(state)
         return out
+
+    def _prev_at(self, prev, k: int) -> Optional[Field]:
+        """stage18b: the previous-state input of sub-step ``k``: the k-th entry of a path list when the V-Net follows
+        the path (``prev_path``), the lead's first entry otherwise; a single state is used for every sub-step."""
+        if not isinstance(prev, list):
+            return prev
+        return prev[min(k, len(prev) - 1)] if self.vnet.cfg.prev_path else prev[0]
+
+    def next_prev(self, start: Field):
+        """The ``prev`` of the next lead after a forecast started at ``start``: ``start`` itself, or with
+        ``prev_path`` (stage18b, ODE) the path of the lead just integrated, [start, X_{+6 h}, ..., X_{+lead - 6 h}]."""
+        cfg = self.vnet.cfg
+        if cfg.prev_path and cfg.integrator == "ode" and self.last_path is not None:
+            return [start] + list(self.last_path)
+        return start

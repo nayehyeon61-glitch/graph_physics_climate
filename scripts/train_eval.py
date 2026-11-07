@@ -111,6 +111,8 @@ class Run:
             # stage15b keys (intermediate-time auxiliary loss)
             self.cfg.update(inter_times=int(getattr(args, "inter_times", 0) or 0),
                             inter_weight=float(getattr(args, "inter_weight", 1.0)))
+            # stage18b key (previous-state input along the ODE path)
+            self.cfg.update(prev_path=int(getattr(args, "prev_path", 0) or 0))
             # stage17 keys (dynamic guide: sub-step forcing, learnable guide-drift gain)
             self.cfg.update(ode_path_forcing=int(getattr(args, "ode_path_forcing", 0) or 0),
                             ode_drift_gain=int(getattr(args, "ode_drift_gain", 0) or 0),
@@ -174,7 +176,10 @@ class Run:
                                 ode_drift_gain=bool(c.get("ode_drift_gain", False)),
                                 ode_drift=c.get("ode_drift", "tend") or "tend",
                                 tendency_core=bool(c.get("tendency_core", False)),
-                                core_tokens=bool(c.get("core_tokens", True) if c.get("core_tokens") is not None else True))
+                                core_tokens=bool(c.get("core_tokens", True) if c.get("core_tokens") is not None else True),
+                                prev_path=bool(c.get("prev_path", False)))
+        if self.vnet_kwargs["prev_path"] and not (self.vnet_kwargs["prev_state"] and self.vnet_kwargs["integrator"] == "ode"):
+            raise ValueError("prev_path needs the previous-state input (prev_state) and the ODE integrator")
         if self.vnet_kwargs["ode_drift_gain"] and not self.vnet_kwargs["ode_physics"]:
             raise ValueError("ode_drift_gain needs ode_physics (the gain multiplies the guide's tendency drift)")
         # stage15a: column channels as V-Net inputs at the initial time only (normalised with train-split statistics,
@@ -250,8 +255,13 @@ class Run:
         return [self.norm.state(ds.state_after(idx, j)) for j in range(1, self.inter_times + 1)]
 
     def prev(self, ds: ERA5Pairs, idx):
-        """stage14: normalised state one lead before ``idx`` (None when the run does not use it)."""
-        return self.norm.state(ds.prev_state(idx)) if self.use_prev else None
+        """stage14: normalised state one lead before ``idx`` (None when the run does not use it); stage18b
+        (``prev_path``): the list of states one lead before each 6 h sub-step of the lead."""
+        if not self.use_prev:
+            return None
+        if self.cfg.get("prev_path"):
+            return [self.norm.state(x) for x in ds.prev_path(idx)]
+        return self.norm.state(ds.prev_state(idx))
 
     def increment(self, model, ds: ERA5Pairs, idx, state_n: Field):
         """stage14b: nudging increment X_t - M(X_{t-lead}) (delta units) from ``model``'s own pre-forecast of the
@@ -317,6 +327,16 @@ class Run:
             fh.write(json.dumps(rec, default=float) + "\n")
 
 
+# guide read-out heads (grid adapter, reconstruction, aux, tendency/source, flow): Stage A --guide-heads-only (stage17c)
+# and Stage B --guide-lr with --guide-heads-only (stage18c) train only these, so the features P stay unchanged
+GUIDE_HEADS = ("head_dec.", "rec_out.", "aux_out.", "tend_out.", "flow_out.")
+
+
+def next_prev(model, start):
+    """The ``prev`` input of the next rollout lead (stage18b path list when the model follows the ODE path)."""
+    return model.next_prev(start) if hasattr(model, "next_prev") else start
+
+
 # ---------------------------------------------------------------------------- Stage A
 def stage_a(run: Run):
     a, g, w = run.args, run.g, run.w
@@ -343,7 +363,7 @@ def stage_a(run: Run):
         return Field((xt.s - x_norm.s) / run.norm.tend_s + source.s, (xt.v - x_norm.v) / run.norm.tend_v + source.v)
 
     if int(getattr(a, "guide_heads_only", 0) or 0):  # stage17c: the trunk (features P) stays exactly as it was
-        heads = ("head_dec.", "rec_out.", "aux_out.", "tend_out.", "flow_out.")
+        heads = GUIDE_HEADS
         for n_, p_ in guide.named_parameters():
             p_.requires_grad_(n_.startswith(heads))
         log(f"stage A: trunk frozen, training the heads only "
@@ -467,8 +487,12 @@ def stage_b(run: Run, use_guide: bool):
         run.load_guide(model, finetuned=False)
         model.freeze_guide()
         if guide_lr > 0:  # the guide has no dropout / batch norm, so eval mode only marks it as "not Stage A"
-            for p in model.guide.parameters():
-                p.requires_grad_(True)
+            heads_only = bool(int(getattr(a, "guide_heads_only", 0) or 0))  # stage18c: physics heads only
+            for n_, p in model.guide.named_parameters():
+                p.requires_grad_(n_.startswith(GUIDE_HEADS) if heads_only else True)
+            if heads_only:
+                log(f"stage B[{name}]: guide fine-tuning restricted to the heads {GUIDE_HEADS} "
+                    f"({sum(p.numel() for p in model.guide.parameters() if p.requires_grad)} params; trunk / P frozen)")
     groups = [{"params": [p for p in model.vnet.parameters() if p.requires_grad], "lr": a.lr, "base_lr": a.lr}]
     if guide_lr > 0:
         groups.append({"params": [p for p in model.guide.parameters() if p.requires_grad], "lr": guide_lr,
@@ -592,7 +616,7 @@ def stage_b(run: Run, use_guide: bool):
         x_prev = run.prev(run.train, idx)
         f, d = model(xs[0], cs[0], g, prev=x_prev, nudge=run.increment(model, run.train, idx, xs[0]),
                      col=run.col(run.train, idx))
-        x_prev, nud = xs[0], model.carried_nudge()
+        x_prev, nud = next_prev(model, xs[0]), model.carried_nudge()
         l_f = field_mse(scaled(f), scaled(xs[1]), w, run.loss_w)  # == delta MSE of the one-step target
         l_int = torch.zeros(())
         if run.inter_times:  # stage15b: intermediate times of the first lead, same delta units as L_f
@@ -605,7 +629,7 @@ def stage_b(run: Run, use_guide: bool):
         l_spec = spectral_energy_loss(f, xs[1], *grid_hw, grid_lat) if lam_spec > 0 else torch.zeros(())
         for k in range(2, k_now + 1):  # autoregressive steps; physics features recomputed from the forecast
             f_new, _ = model(f, cs[k - 1], g, prev=x_prev, nudge=nud)
-            x_prev, f, nud = f, f_new, model.carried_nudge()
+            x_prev, f, nud = next_prev(model, f), f_new, model.carried_nudge()
             l_roll = l_roll + field_mse(scaled(f), scaled(xs[k]), w, run.loss_w)
             if lam_spec > 0:
                 l_spec = l_spec + spectral_energy_loss(f, xs[k], *grid_hw, grid_lat)
@@ -643,7 +667,7 @@ def stage_b(run: Run, use_guide: bool):
                     cl = run.col(run.calib, val_idx2[i:i + 8])
                     for k in range(2):
                         fc_new, _ = vm(fc, run.norm.cond(conds[k]), g, prev=pv, nudge=nud, col=cl)
-                        pv, fc, nud, cl = fc, fc_new, vm.carried_nudge(), None
+                        pv, fc, nud, cl = next_prev(vm, fc), fc_new, vm.carried_nudge(), None
                     tot2 += float(field_mse(fc, run.norm.state(states[2]), w)) * len(val_idx2[i:i + 8])
                 v_mse, v_mse2 = tot / len(val_idx), tot2 / len(val_idx2)
                 x0n, x1n, cn, _ = run.prep(run.calib, val_idx[:8])
@@ -843,7 +867,7 @@ def stage_eval(run: Run):
                 for name, mdl in models.items():
                     new, _ = mdl(states[name], cn, g, prev=prevs[name], nudge=nudges[name],
                                  col=col0 if k == 1 else None)
-                    prevs[name], states[name] = states[name], new
+                    prevs[name], states[name] = next_prev(mdl, states[name]), new
                     nudges[name] = getattr(mdl, "carried_nudge", lambda: None)()
                     add(preds[name], k, states[name])
     t_det = time.time() - t0
@@ -1084,13 +1108,16 @@ def main():
     ap.add_argument("--tendency-core", type=int, default=0, choices=[0, 1],
                     help="stage18: graph tendency core (needs --integrator ode, PIGT fusion, --flow-head 1, "
                          "--ode-physics 0)")
+    ap.add_argument("--prev-path", type=int, default=0, choices=[0, 1],
+                    help="stage18b: previous-state input along the ODE path (needs --prev-state 1, --integrator ode)")
     ap.add_argument("--core-tokens", type=int, default=1, choices=[0, 1],
                     help="stage18: give the guide's core terms to PIGT as a fourth token source C")
     ap.add_argument("--ode-drift", default="tend", choices=["tend", "transport"],
                     help="stage17c: guide drift of the ODE = tendency head (tend) or Lie transport guide (transport)")
     ap.add_argument("--guide-heads-only", type=int, default=0, choices=[0, 1],
                     help="stage17c: Stage A trains only the guide heads (grid adapter, read-outs, tendency, flow); the "
-                         "trunk and hence the features P seen by the V-Net stay unchanged")
+                         "trunk and hence the features P seen by the V-Net stay unchanged.  stage18c: with --guide-lr, "
+                         "Stage B fine-tunes only these heads along the forecast path")
     ap.add_argument("--init-guide", default="",
                     help="stage17c: Stage A starts from this guide state dict (new heads keep their initialisation)")
     ap.add_argument("--init-vnet", default="",

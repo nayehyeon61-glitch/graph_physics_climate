@@ -206,6 +206,13 @@ class ERA5Pairs:
         idx = torch.as_tensor(idx, dtype=torch.long)
         return split_state(self.state[torch.clamp(idx - self.lead, min=0)], self.spec, self.names)
 
+    def prev_path(self, idx: Sequence[int]) -> List[Field]:
+        """stage18b: states one lead before each 6 h sub-step of the lead starting at ``idx``,
+        X_{t - lead + k 6 h} for k = 0..lead-1 (k = 0 is :meth:`prev_state`); clamped at the start of the split."""
+        idx = torch.as_tensor(idx, dtype=torch.long)
+        return [split_state(self.state[torch.clamp(idx - self.lead + k, min=0)], self.spec, self.names)
+                for k in range(self.lead)]
+
     def next_state(self, idx: Sequence[int]) -> Field:
         """State one data step (6 h) after ``idx`` (always available since lead >= 1)."""
         idx = torch.as_tensor(idx, dtype=torch.long)

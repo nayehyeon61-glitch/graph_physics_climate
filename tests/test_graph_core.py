@@ -172,3 +172,71 @@ def test_stage18_pipeline(files, tmp_path):
     r = subprocess.run([sys.executable, "-W", "ignore", str(ROOT / "scripts/diagnose_guide.py"), "--run", str(run_dir),
                         "--threads", "1"], capture_output=True, text=True, cwd=ROOT, timeout=600)
     assert r.returncode == 0, r.stderr[-3000:]
+
+
+def test_prev_path_follows_the_ode_path():
+    g = _graphs().view()
+    x, c = _state(2, wind=0.5)
+    torch.manual_seed(3)
+    prevs = [Field(x.s + 0.3 * torch.randn_like(x.s), x.v) for _ in range(4)]
+    outs = {}
+    for flag in (False, True):
+        torch.manual_seed(0)
+        cfg = VNetConfig(cs=8, cv=4, depth=(1, 1, 1, 1, 1), heads=2, ds=4, dv=2, hidden=16, n_basis=4, fusion="pigt",
+                         pigt_layers=1, integrator="ode", ode_steps=4, ode_drift="transport", prev_state=True,
+                         tendency_core=True, prev_path=flag)
+        m = LieGuidedForecaster(DEFAULT_SPEC, GUIDE, cfg).eval()
+        with torch.no_grad():
+            m.vnet.head_out.lin_s.weight.normal_(0, 0.1)
+            outs[flag] = (m(x, c, g, prev=prevs)[0], m(x, c, g, prev=prevs[0])[0])
+            nxt = m.next_prev(x)
+        if flag:
+            assert isinstance(nxt, list) and len(nxt) == 4 and nxt[0] is x  # [start, X+6h, X+12h, X+18h]
+            assert all(torch.equal(a.s, b.s) for a, b in zip(nxt[1:], m.last_path))
+        else:
+            assert nxt is x
+    assert torch.allclose(outs[False][0].s, outs[False][1].s)  # off: a list means its first entry for every sub-step
+    assert not torch.allclose(outs[True][0].s, outs[True][1].s)  # on: sub-step k reads its own previous state
+
+
+def test_dataset_prev_path(files):
+    from gpclimate.data.era5_wb2 import ERA5Pairs
+    base, _ = files
+    ds = ERA5Pairs(str(base), "train", DEFAULT_SPEC, lead_steps=4)
+    idx = [6, 9]
+    path = ds.prev_path(idx)
+    assert len(path) == 4 and torch.equal(path[0].s, ds.prev_state(idx).s)
+    assert torch.equal(path[3].s, ds.prev_path([i + 1 for i in idx])[2].s)  # one 6 h step later = next entry
+
+
+def test_stage18b_and_18c_pipeline(files, tmp_path):
+    base, col = files
+    common = ["--fusion", "pigt", "--pigt-layers", "1", "--pigt-ops", "1", "--curvature-ops", "1", "--prev-state", "1",
+              "--column-inputs", "fcn10", "--column-data", str(col)]
+    roll = ("--rollout-steps", "2", "--rollout-start", "0")
+    src = tmp_path / "src"
+    _run(src, base, "b_noguide", *common, "--steps", "2", "--val-every", "2")
+    _run(src, base, "a", "--steps", "2", "--val-every", "2")
+    _run(src, base, "b", "--steps", "2", "--val-every", "2")
+    run_dir = tmp_path / "run_s18b"
+    run_dir.mkdir()
+    for f in ("normalizer.pt", "column_norm.json"):
+        (run_dir / f).write_bytes((src / f).read_bytes())
+    flags = common + ["--flow-head", "1", "--integrator", "ode", "--ode-steps", "2", "--ode-drift", "transport",
+                      "--ode-path-forcing", "1", "--inter-times", "1", "--tendency-core", "1", "--prev-path", "1"]
+    _run(run_dir, base, "a", *flags, "--steps", "2", "--val-every", "2", "--init-guide", str(src / "guide.pt"),
+         "--guide-heads-only", "1")
+    assert json.load(open(run_dir / "config.json"))["prev_path"] == 1
+    _run(run_dir, base, "b_noguide", "--steps", "2", "--val-every", "2", *roll, "--init-vnet", str(src / "vnet_noguide.pt"))
+    out = _run(run_dir, base, "b", "--steps", "2", "--val-every", "2", *roll, "--init-vnet", str(src / "vnet.pt"),
+               "--guide-lr", "1e-3", "--guide-heads-only", "1")
+    assert "guide fine-tuning restricted to the heads" in out
+    import torch as _t
+    old_g, new_g = _t.load(run_dir / "guide.pt"), _t.load(run_dir / "guide_finetuned.pt")
+    heads = ("head_dec.", "rec_out.", "aux_out.", "tend_out.", "flow_out.")
+    assert all(_t.equal(old_g[k], new_g[k]) for k in old_g if not k.startswith(heads))  # trunk / P unchanged
+    assert any(not _t.equal(old_g[k], new_g[k]) for k in old_g if k.startswith(("flow_out.", "tend_out.")))
+    _run(run_dir, base, "eval", "--eval-stride", "4", "--max-lead-steps", "2", "--n-ens-cases", "0")
+    ev = json.load(open(run_dir / "eval.json"))
+    for name in ("lie_guided", "no_guide", "physics_only"):
+        assert all(np.isfinite(v) for v in ev["rmse"]["2"][name].values()), name

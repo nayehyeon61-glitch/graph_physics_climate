@@ -152,7 +152,7 @@ def main():
                 add(preds["persistence"], k, x0n)
                 for n, mdl in models.items():
                     new, _ = mdl(st[n], cn, g, prev=pv[n], col=col0 if k == 1 else None)
-                    pv[n], st[n] = st[n], new
+                    pv[n], st[n] = (mdl.next_prev(st[n]) if hasattr(mdl, "next_prev") else st[n]), new
                     add(preds[n], k, st[n])
     log(f"rollouts done in {(time.time() - t0) / 60:.1f} min")
     # ClimODE forecasts on the shared variables (same test split; align by case index)

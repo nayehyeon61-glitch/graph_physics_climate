@@ -49,3 +49,10 @@
 [11:42:38] A   200  L_rec 0.0628 L_aux 0.2201 L_tend 0.6619 L_clos 0.0000 | val rec 0.0399 aux 0.1925 tend 0.6125 clos 0.0000 (resolved only 0.0000) | 0.64 s/step
 [11:46:43] A   400  L_rec 0.0395 L_aux 0.1697 L_tend 0.4425 L_clos 0.0000 | val rec 0.0279 aux 0.1690 tend 0.4635 clos 0.0000 (resolved only 0.0000) | 0.93 s/step
 [11:57:28] A   600  L_rec 0.0786 L_aux 0.2212 L_tend 0.5181 L_clos 0.0000 | val rec 0.0239 aux 0.1604 tend 0.4189 clos 0.0000 (resolved only 0.0000) | 1.69 s/step
+[11:59:37] A   800  L_rec 0.0351 L_aux 0.1638 L_tend 0.3925 L_clos 0.0000 | val rec 0.0227 aux 0.1569 tend 0.3942 clos 0.0000 (resolved only 0.0000) | 1.43 s/step
+[12:10:56] A   999  L_rec 0.0334 L_aux 0.1603 L_tend 0.3620 L_clos 0.0000 | val rec 0.0224 aux 0.1561 tend 0.3901 clos 0.0000 (resolved only 0.0000) | 1.83 s/step
+[12:10:56] stage A done in 30.4 min, best val score 0.4906, forecast-perturbed batches 298
+[12:11:01] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:11:53] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2006_2018.npz (initial time only)
+[12:11:53] run runs/era5_64x32_s16_litsplit: pairs train 14604 calib 1460 test 2916; graph [2562, 642, 162]
+[12:11:54] stage B[vnet]: vnet params 962534, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)

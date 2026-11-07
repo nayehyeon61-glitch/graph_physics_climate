@@ -59,8 +59,8 @@ V-Net은 guide가 말하는 물리(어디로 얼마나 수송되는지, 무엇�
 
 ## 5. 다음 단계
 
-- **stage18b 경로 기억 갱신**: sub-step k의 prev = X_{t+6k h−24 h}(첫 lead는 관측 과거 상태, 이후는 예측 경로), 24 h 변화량의 의미 유지.
-- **stage18c guide 경로 미세조정**: guide를 core 경로 상태에서 작은 lr로 함께 학습(정적인 부분 1).
+- **stage18b 경로 기억 갱신** (구현, `VNetConfig.prev_path`, `--prev-path 1`, 체인 `runs/era5_64x32_s18b_prevpath/chain_s18b.sh`): sub-step k의 prev = X_{t+6k h−24 h}(첫 lead는 관측 과거 상태 `ERA5Pairs.prev_path`, 이후 lead는 앞 lead의 경로 `LieGuidedForecaster.next_prev`), 24 h 변화량의 의미 유지. guide 없는 짝도 같은 입력이라 다시 미세조정.
+- **stage18c 경로 위 guide head** (구현, `--guide-lr 3e-5 --guide-heads-only 1`, 체인 `runs/era5_64x32_s18c_guidepath/chain_s18c.sh`): stage18/18b 중 채택된 쪽 위에서 guide의 물리 head(격자 어댑터, flow, source)만 core 예보 경로에서 함께 학습(정적인 부분 1). 몸통과 특징 P는 고정합니다. stage12c에서 guide 전체를 lr 1e-4로 미세조정하자 guide가 두 번째 예보기로 바뀌어 24 h −4.3 %가 됐기 때문입니다.
 - **stage19 GPINN guide**: PINN 잔차를 core 항과 guide에 soft loss로. 성립도(`scripts/pinn_equation_check.py`, 학습 160시점, mesh 0, 중위도 var(L−R)/var(L), 작을수록 성립):
 
 | 식 | 중위도 | 판단 |
