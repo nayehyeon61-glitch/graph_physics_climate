@@ -90,3 +90,7 @@
 [21:13:17] B[vnet]  7750  L_f 0.1191 L_roll 0.2264 L_phys 0.00005 | val MSE 0.0435 2-step 0.0850 (persistence 0.3496) | 4.19 s/step
 [21:33:52] B[vnet]  8000  L_f 0.1221 L_roll 0.2351 L_phys 0.00009 | val MSE 0.0433 2-step 0.0842 (persistence 0.3496) | 4.21 s/step
 [21:54:27] B[vnet]  8250  L_f 0.1215 L_roll 0.2296 L_phys 0.00002 | val MSE 0.0432 2-step 0.0840 (persistence 0.3496) | 4.24 s/step
+[22:15:13] B[vnet]  8500  L_f 0.1234 L_roll 0.2373 L_phys 0.00008 | val MSE 0.0432 2-step 0.0838 (persistence 0.3496) | 4.26 s/step
+[22:35:29] B[vnet]  8750  L_f 0.1192 L_roll 0.2183 L_phys 0.00004 | val MSE 0.0430 2-step 0.0835 (persistence 0.3496) | 4.28 s/step
+[22:55:51] B[vnet]  8999  L_f 0.1186 L_roll 0.2277 L_phys 0.00003 | val MSE 0.0430 2-step 0.0833 (persistence 0.3496) | 4.29 s/step
+[22:55:51] stage B[vnet] done in 643.9 min, best val MSE 0.1263
