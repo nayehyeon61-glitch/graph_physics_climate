@@ -1,1 +1,3 @@
 [18:24:14] stage15b intermediate-time loss start
+[00:10:35] container restart detected (~00:09 UTC), relaunching chain (Stage B resumes from step 3750 checkpoint)
+[00:10:35] stage15b intermediate-time loss start

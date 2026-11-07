@@ -60,3 +60,17 @@
 [22:56:13] B[vnet]  2750  L_f 0.1423 L_roll 0.0000 L_phys 0.00010 L_int 0.0908 | val MSE 0.0513 2-step 0.1610 (persistence 0.3295) 6/12/18 h 0.0206/0.0326/0.0416 | 2.16 s/step
 [23:05:27] B[vnet]  3000  L_f 0.1364 L_roll 0.4862 L_phys 0.00011 L_int 0.0871 | val MSE 0.0560 2-step 0.1414 (persistence 0.3295) 6/12/18 h 0.0205/0.0332/0.0441 | 2.16 s/step
 [23:24:30] B[vnet]  3250  L_f 0.1504 L_roll 0.3128 L_phys 0.00011 L_int 0.0959 | val MSE 0.0551 2-step 0.1218 (persistence 0.3295) 6/12/18 h 0.0217/0.0356/0.0461 | 2.35 s/step
+[23:43:54] B[vnet]  3500  L_f 0.1484 L_roll 0.3070 L_phys 0.00043 L_int 0.0961 | val MSE 0.0530 2-step 0.1102 (persistence 0.3295) 6/12/18 h 0.0213/0.0343/0.0437 | 2.51 s/step
+[00:02:50] B[vnet]  3750  L_f 0.1414 L_roll 0.3123 L_phys 0.00014 L_int 0.0918 | val MSE 0.0502 2-step 0.1039 (persistence 0.3295) 6/12/18 h 0.0208/0.0329/0.0414 | 2.65 s/step
+[00:11:43] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[00:13:21] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[00:13:21] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+[00:13:21] run runs/era5_64x32_s15b_inter: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[00:13:21] stage B[vnet_noguide]: vnet params 661892, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[00:13:21] stage B[vnet_noguide] already finished in this run directory; skipping (delete vnet_noguide_done.json to retrain)
+[00:13:34] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[00:14:10] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[00:14:10] intermediate-time loss: 3 auxiliary targets (6 h, 12 h, 18 h), weight 1.0
+[00:14:10] run runs/era5_64x32_s15b_inter: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[00:14:11] stage B[vnet]: vnet params 963797, steps 9000, batch 4, rollout steps 2 from step 3000 (weight 1.0)
+[00:14:11] stage B[vnet]: resumed from step 3751 (best 0.1541, 9928 s elapsed before)
