@@ -40,3 +40,11 @@
 [11:32:34] B[vnet_noguide]  8750  L_f 0.1293 L_roll 0.2405 L_phys 0.00003 | val MSE 0.0465 2-step 0.0898 (persistence 0.3496) | 1.34 s/step
 [11:38:49] B[vnet_noguide]  8999  L_f 0.1296 L_roll 0.2485 L_phys 0.00004 | val MSE 0.0465 2-step 0.0897 (persistence 0.3496) | 1.34 s/step
 [11:38:49] stage B[vnet_noguide] done in 201.3 min, best val MSE 0.1362
+[11:39:27] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[11:40:29] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2006_2018.npz (initial time only)
+[11:40:29] run runs/era5_64x32_s16_litsplit: pairs train 14604 calib 1460 test 2916; graph [2562, 642, 162]
+[11:40:30] stage A: forecast-state perturbation from runs/era5_64x32_s16_litsplit/vnet_noguide.pt with p=0.3
+[11:40:30] stage A: guide params 276716, steps 1000, batch 4
+[11:40:36] A     0  L_rec 1.8839 L_aux 0.4798 L_tend 1.3735 L_clos 0.0000 | val rec 1.9726 aux 0.5146 tend 1.5502 clos 0.0000 (resolved only 0.0000) | 6.27 s/step
+[11:42:38] A   200  L_rec 0.0628 L_aux 0.2201 L_tend 0.6619 L_clos 0.0000 | val rec 0.0399 aux 0.1925 tend 0.6125 clos 0.0000 (resolved only 0.0000) | 0.64 s/step
+[11:46:43] A   400  L_rec 0.0395 L_aux 0.1697 L_tend 0.4425 L_clos 0.0000 | val rec 0.0279 aux 0.1690 tend 0.4635 clos 0.0000 (resolved only 0.0000) | 0.93 s/step

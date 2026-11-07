@@ -116,6 +116,10 @@ class Run:
                             ode_drift_gain=int(getattr(args, "ode_drift_gain", 0) or 0),
                             ode_drift=getattr(args, "ode_drift", "tend") or "tend",
                             flow_head=int(getattr(args, "flow_head", 0) or 0))
+            # stage18 keys (graph tendency core)
+            self.cfg.update(tendency_core=int(getattr(args, "tendency_core", 0) or 0),
+                            core_tokens=int(getattr(args, "core_tokens", 1) if getattr(args, "core_tokens", None) is not None
+                                            else 1))
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         # stage10: the state feature matrix is a named spec stored in config.json (older runs: base11)
@@ -168,7 +172,9 @@ class Run:
                                 nudge_alpha_init=float(c.get("nudge_alpha_init") or 0.12),
                                 ode_path_forcing=bool(c.get("ode_path_forcing", False)),
                                 ode_drift_gain=bool(c.get("ode_drift_gain", False)),
-                                ode_drift=c.get("ode_drift", "tend") or "tend")
+                                ode_drift=c.get("ode_drift", "tend") or "tend",
+                                tendency_core=bool(c.get("tendency_core", False)),
+                                core_tokens=bool(c.get("core_tokens", True) if c.get("core_tokens") is not None else True))
         if self.vnet_kwargs["ode_drift_gain"] and not self.vnet_kwargs["ode_physics"]:
             raise ValueError("ode_drift_gain needs ode_physics (the gain multiplies the guide's tendency drift)")
         # stage15a: column channels as V-Net inputs at the initial time only (normalised with train-split statistics,
@@ -538,7 +544,9 @@ def stage_b(run: Run, use_guide: bool):
         log(f"stage B[{name}]: graph neural ODE dynamics, {vc.ode_steps} sub-steps of {6 * lead // vc.ode_steps} h, "
             f"solver {vc.ode_solver}, physics drift {'on' if vc.ode_physics else 'off'}"
             + (" (learned gain, init 0)" if vc.ode_drift_gain else "")
-            + (", sub-step solar forcing" if vc.ode_path_forcing else ""))
+            + (", sub-step solar forcing" if vc.ode_path_forcing else "")
+            + (", graph tendency core (beta-scaled guide transport + conservative face flux + source"
+               + (", core tokens C in PIGT)" if vc.core_tokens else ")") if vc.tendency_core else ""))
     # restart safety: a finished Stage B is skipped, an interrupted one resumes from its last validation checkpoint
     start_step = 0
     ck_path, done_path = run.dir / f"{name}_train_state.pt", run.dir / f"{name}_done.json"
@@ -656,7 +664,8 @@ def stage_b(run: Run, use_guide: bool):
                             "best": best, "attention_mass": model.vnet.attention_mass(), "t": time.time() - t0,
                             **({"nudge_alpha": nb.last_alpha.tolist()} if nb is not None and nb.last_alpha is not None else {}),
                             **({"drift_gain": vm.vnet.drift_gain_s.tolist() + vm.vnet.drift_gain_v.tolist()}
-                               if vm.vnet.drift_gain_s is not None else {})})
+                               if vm.vnet.drift_gain_s is not None else {}),
+                            **({"core": vm.last_core} if getattr(vm, "last_core", None) else {})})
             log(f"B[{name}] {step:5d}  L_f {float(l_f):.4f} L_roll {float(l_roll):.4f} L_phys {float(l_phys):.5f}"
                 + (f" L_pde {float(l_pde):.4f}" if use_pde else "")
                 + (f" L_int {float(l_int):.4f}" if run.inter_times else "")
@@ -664,6 +673,9 @@ def stage_b(run: Run, use_guide: bool):
                 + (" 6/12/18 h " + "/".join(f"{x:.4f}" for x in v_int) if run.inter_times else "")
                 + (" gain " + "/".join(f"{float(x):.2f}" for x in torch.cat([vm.vnet.drift_gain_s, vm.vnet.drift_gain_v]))
                    if vm.vnet.drift_gain_s is not None else "")
+                + (" core beta " + "/".join(f"{b:.2f}" for b in vm.last_core["beta"])
+                   + f" rms T {vm.last_core['transport']:.3f} F {vm.last_core['flux']:.3f} S {vm.last_core['source']:.3f}"
+                   if getattr(vm, "last_core", None) else "")
                 + f" | {(time.time() - t0) / (step + 1):.2f} s/step")
             state = {"step": step + 1, "vnet": model.vnet.state_dict(), "opt": opt.state_dict(), "best": best,
                      "rng": rng.bit_generator.state, "torch_rng": torch.get_rng_state(), "elapsed": time.time() - t0}
@@ -783,7 +795,8 @@ def stage_eval(run: Run):
     run.load_guide(m)
     run.load_vnet(m, "vnet")
     models["lie_guided"] = m.eval()
-    if m.vnet.cfg.integrator == "ode" and m.vnet.cfg.ode_physics:  # stage S8b diagnostic: drift alone, V-Net off
+    if m.vnet.cfg.integrator == "ode" and (m.vnet.cfg.ode_physics or m.vnet.core_on):
+        # stage S8b / stage18 diagnostic: the guide's own drift (core: transport by its flow + its source), V-Net off
         models["physics_only"] = PhysicsOnlyForecaster(m).eval()
     if (run.dir / "vnet_noguide.pt").exists():
         m2 = run.forecaster(False)
@@ -1068,6 +1081,11 @@ def main():
                     help="stage17b: learnable per-variable gain on the guide drift, zero-initialised (needs --ode-physics)")
     ap.add_argument("--flow-head", type=int, default=0, choices=[0, 1],
                     help="stage17c: Lie transport guide (flow head + semi-Lagrangian transport; stored in config.json)")
+    ap.add_argument("--tendency-core", type=int, default=0, choices=[0, 1],
+                    help="stage18: graph tendency core (needs --integrator ode, PIGT fusion, --flow-head 1, "
+                         "--ode-physics 0)")
+    ap.add_argument("--core-tokens", type=int, default=1, choices=[0, 1],
+                    help="stage18: give the guide's core terms to PIGT as a fourth token source C")
     ap.add_argument("--ode-drift", default="tend", choices=["tend", "transport"],
                     help="stage17c: guide drift of the ODE = tendency head (tend) or Lie transport guide (transport)")
     ap.add_argument("--guide-heads-only", type=int, default=0, choices=[0, 1],

@@ -49,14 +49,23 @@ class EqMultiSourceAttention(MessagePassing):
     """Receiver ``i`` attends over ``{tokens_t[j] : j in N(i) U {i}, t in sources}`` with one softmax."""
 
     def __init__(self, cs_q: int, cv_q: int, src_dims: Sequence[Tuple[int, int]], heads: int = 4, ds: int = 16,
-                 dv: int = 4, n_basis: int = 8, loc_hidden: int = 16, out_scale: float = 0.1):
+                 dv: int = 4, n_basis: int = 8, loc_hidden: int = 16, out_scale: float = 0.1,
+                 extra_dims: Sequence[Tuple[int, int]] = (), extra_bias: float = -4.0):
         super().__init__(aggr="add", node_dim=-2)
         self.h, self.ds, self.dv, self.n_basis = heads, ds, dv, n_basis
-        self.n_src = len(src_dims)
+        self.n_base = len(src_dims)
+        self.n_src = len(src_dims) + len(extra_dims)
         self.q = EqLinear(cs_q, cv_q, heads * ds, heads * dv, bias=False)
         self.k = nn.ModuleList([EqLinear(cs, cv, heads * ds, heads * dv, bias=False) for cs, cv in src_dims])
         self.v = nn.ModuleList([EqLinear(cs, cv, heads * ds, heads * dv, bias=True) for cs, cv in src_dims])
-        self.type_bias = nn.Parameter(torch.zeros(self.n_src, heads))  # invariant per-source logit offset
+        self.type_bias = nn.Parameter(torch.zeros(self.n_base, heads))  # invariant per-source logit offset
+        # stage18: extra token sources (the graph tendency core terms) with their own projections; their values start
+        # at zero and their logit offset low, so a trained block keeps its function when the sources are added
+        self.k_x = nn.ModuleList([EqLinear(cs, cv, heads * ds, heads * dv, bias=False) for cs, cv in extra_dims])
+        self.v_x = nn.ModuleList([EqLinear(cs, cv, heads * ds, heads * dv, bias=True) for cs, cv in extra_dims])
+        for lin in self.v_x:
+            _scale_linear(lin, 0.0)
+        self.type_bias_x = nn.Parameter(torch.full((len(extra_dims), heads), extra_bias)) if extra_dims else None
         MultiheadLinear = repos.lietransformer_MultiheadLinear()
         Swish = repos.lieconv_Swish()
         self.loc = nn.Sequential(MultiheadLinear(heads, n_basis + 1, loc_hidden), Swish(),
@@ -74,7 +83,9 @@ class EqMultiSourceAttention(MessagePassing):
         H, ds, dv = self.h, self.ds, self.dv
         N, E = edges.n_dst, edges.src.numel()
         q = self.q(h)
-        kv = cat_fields([self.k[t](s) for t, s in enumerate(sources)] + [self.v[t](s) for t, s in enumerate(sources)])
+        ks_ = [(self.k[t] if t < self.n_base else self.k_x[t - self.n_base])(s) for t, s in enumerate(sources)]
+        vs_ = [(self.v[t] if t < self.n_base else self.v_x[t - self.n_base])(s) for t, s in enumerate(sources)]
+        kv = cat_fields(ks_ + vs_)
         # tokens of all sources stacked along the node axis: node j of source t -> index t*N + j
         T = self.n_src
         src = torch.cat([edges.src + t * N for t in range(T)])
@@ -108,7 +119,8 @@ class EqMultiSourceAttention(MessagePassing):
         qv, kvec = fq.v.unflatten(-1, (H, dv)), k_v.unflatten(-1, (H, dv))
         content = ((qs * ks * e_s).sum(-1) + ((qv.conj() * kvec).real * e_v).sum(-1)) * self.scale  # [B,E',H]
         loc = self.loc(emb[:, None, :].expand(-1, H, -1)).squeeze(-1)  # [E',H]
-        score = (content + loc + self.type_bias[tid]).clamp(-5.0, 5.0)
+        tb = self.type_bias if self.type_bias_x is None else torch.cat([self.type_bias, self.type_bias_x], 0)
+        score = (content + loc + tb[tid]).clamp(-5.0, 5.0)
         a = softmax(score, index, ptr, size_i, dim=self.node_dim)
         with torch.no_grad():  # average attention mass per source per receiver (sums to 1 over sources)
             m = a.detach().mean(-1)
@@ -123,25 +135,34 @@ class PIGTLayer(nn.Module):
     """H <- H + Attn(H; [H, P, O]); H <- H + FFN(H);  P <- P + Attn(P; [P, H]); P <- P + FFN(P)."""
 
     def __init__(self, cs: int, cv: int, cs_p: int, cv_p: int, ops_dims: Optional[Tuple[int, int]], heads: int, ds: int,
-                 dv: int, n_basis: int, update_p: bool = True):
+                 dv: int, n_basis: int, update_p: bool = True, core_dims: Optional[Tuple[int, int]] = None):
         super().__init__()
         self.with_ops = ops_dims is not None
+        self.with_core = core_dims is not None
         self.update_p = update_p
         self.norm_h, self.norm_p = EqNorm(cs, cv), EqNorm(cs_p, cv_p)
         src = [(cs, cv), (cs_p, cv_p)]
         if self.with_ops:
             self.norm_o = EqNorm(*ops_dims)
             src.append(tuple(ops_dims))
-        self.attn_h = EqMultiSourceAttention(cs, cv, src, heads, ds, dv, n_basis)
+        if self.with_core:  # stage18: graph tendency core terms as a fourth token source C
+            self.norm_c = EqNorm(*core_dims)
+        self.attn_h = EqMultiSourceAttention(cs, cv, src, heads, ds, dv, n_basis,
+                                             extra_dims=[tuple(core_dims)] if self.with_core else ())
         self.norm_h2, self.ffn_h = EqNorm(cs, cv), EqFFN(cs, cv)
         if update_p:
             self.norm_hp = EqNorm(cs, cv)
             self.attn_p = EqMultiSourceAttention(cs_p, cv_p, [(cs_p, cv_p), (cs, cv)], heads, ds, dv, n_basis)
             self.norm_p2, self.ffn_p = EqNorm(cs_p, cv_p), EqFFN(cs_p, cv_p)
 
-    def forward(self, h: Field, p: Field, o: Optional[Field], edges: EdgeSet) -> Tuple[Field, Field]:
+    def forward(self, h: Field, p: Field, o: Optional[Field], edges: EdgeSet,
+                c: Optional[Field] = None) -> Tuple[Field, Field]:
         hn, pn = self.norm_h(h), self.norm_p(p)
         srcs = [hn, pn] + ([self.norm_o(o)] if self.with_ops else [])
+        if self.with_core:
+            if c is None:
+                raise ValueError("this PIGT layer has a core token source; pass the core terms ``c``")
+            srcs.append(self.norm_c(c))
         h = h + self.attn_h(hn, srcs, edges)
         h = h + self.ffn_h(self.norm_h2(h))
         if self.update_p:
@@ -158,16 +179,18 @@ class PhysicsIntegration(nn.Module):
     """Stack of PIGT layers for one resolution level (drop-in for ``PhysicsFusion``)."""
 
     def __init__(self, cs: int, cv: int, cs_p: int, cv_p: int, ops_dims: Optional[Tuple[int, int]], n_layers: int = 2,
-                 heads: int = 4, ds: int = 16, dv: int = 4, n_basis: int = 8, update_p: bool = True):
+                 heads: int = 4, ds: int = 16, dv: int = 4, n_basis: int = 8, update_p: bool = True,
+                 core_dims: Optional[Tuple[int, int]] = None):
         super().__init__()
         self.layers = nn.ModuleList([PIGTLayer(cs, cv, cs_p, cv_p, ops_dims, heads, ds, dv, n_basis,
-                                               update_p=update_p and (i < n_layers - 1 or n_layers == 1))
+                                               update_p=update_p and (i < n_layers - 1 or n_layers == 1),
+                                               core_dims=core_dims)
                                      for i in range(n_layers)])
-        self.source_names = ["H", "P"] + (["O"] if ops_dims is not None else [])
+        self.source_names = ["H", "P"] + (["O"] if ops_dims is not None else []) + (["C"] if core_dims else [])
 
-    def forward(self, h: Field, p: Field, o: Optional[Field], edges: EdgeSet) -> Field:
+    def forward(self, h: Field, p: Field, o: Optional[Field], edges: EdgeSet, c: Optional[Field] = None) -> Field:
         for layer in self.layers:
-            h, p = layer(h, p, o, edges)
+            h, p = layer(h, p, o, edges, c)
         return h
 
     @property

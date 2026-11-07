@@ -89,6 +89,15 @@ class VNetConfig:
     # stage17c: what the guide drift is — "tend": the guide's 6 h tendency head (stage8b / stage17b); "transport": the
     # Lie transport guide G(X) - X = [semi-Lagrangian transport by the guide's flow] - X + source (GuideConfig.flow_head)
     ode_drift: str = "tend"
+    # stage18 graph tendency core (PG-Flow tendency core on the grid's face graph, gpclimate/nn/graph_core.py): every
+    # 6 h sub-step is  X_{k+1} = SL_{beta V}(X_k) - div_G J_theta + S_theta  with V the guide's flow re-evaluated on X_k
+    # (stage17c flow head), beta [cells x level groups] the share of that flow the dynamics use (V-Net head, 0 at
+    # start), J_theta an antisymmetric face flux read from the V-Net embedding (conservative by construction, scalars),
+    # and S_theta the V-Net's own output as the source.  The guide's core terms (its transport change and its source)
+    # enter the V-Net every sub-step: added to the grid embedding and, with core_tokens, as a fourth PIGT token
+    # source C next to H / P / O.  Needs integrator "ode", PIGT fusion and a guide with the flow head.
+    tendency_core: bool = False
+    core_tokens: bool = True
 
 
 class DynamicsVNet(nn.Module):
@@ -98,6 +107,11 @@ class DynamicsVNet(nn.Module):
         cs, cv, nb, hd = cfg.cs, cfg.cv, cfg.n_basis, cfg.hidden
         n_prev_s, n_prev_v = (spec.n_s, spec.n_v) if cfg.prev_state else (0, 0)
         self.use_col = cfg.col_s + cfg.col_v > 0
+        # stage18: the guide-free pair has no guide and hence no core (it stays the plain ODE V-Net)
+        self.core_on = bool(cfg.tendency_core and cfg.use_guide)
+        self.core_dims = (2 * spec.n_s, 2 * spec.n_v) if self.core_on else None
+        if self.core_on and not (cfg.fusion == "pigt" and cfg.integrator == "ode"):
+            raise ValueError("tendency_core needs PIGT fusion and the ODE integrator")
         n_col_s, n_col_v = (cfg.col_s + 1, cfg.col_v) if self.use_col else (0, 0)  # + availability flag
         self.lift = GridLift(spec.n_s + spec.n_cond_s + n_prev_s + n_col_s, spec.n_v + spec.n_cond_v + n_prev_v + n_col_v,
                              cs, cv, nb, hd)
@@ -109,8 +123,10 @@ class DynamicsVNet(nn.Module):
             if cfg.pigt_ops:
                 self.phys_ops = PhysicsOperators(spec.n_s, spec.n_v, spec.n_cond_s)
                 ops_dims = self.phys_ops.out_dims
+            core_tok = self.core_dims if (self.core_on and cfg.core_tokens) else None
             self.fusion = nn.ModuleList([
-                PhysicsIntegration(cs, cv, pcs, pcv, ops_dims, cfg.pigt_layers, cfg.heads, cfg.ds, cfg.dv, nb)
+                PhysicsIntegration(cs, cv, pcs, pcv, ops_dims, cfg.pigt_layers, cfg.heads, cfg.ds, cfg.dv, nb,
+                                   core_dims=core_tok)
                 for _ in range(5)])
         elif cfg.use_guide:
             pcs, pcv = guide_dims
@@ -139,6 +155,20 @@ class DynamicsVNet(nn.Module):
         if cfg.ode_drift_gain and cfg.use_guide:  # stage17b: real gains keep the vector drift gauge-equivariant
             self.drift_gain_s = nn.Parameter(torch.zeros(spec.n_s))
             self.drift_gain_v = nn.Parameter(torch.zeros(spec.n_v))
+        self.core_embed = self.beta_head = self.flux_head = None
+        self.last_emb: Optional[Field] = None
+        if self.core_on:  # stage18: all new parts start at zero (a trained V-Net keeps its function)
+            from gpclimate.nn.graph_core import FaceFluxHead
+            self.core_embed = EqLinear(*self.core_dims, cs, cv)
+            self.beta_head = EqLinear(cs, cv, 3, 0)
+            self.flux_head = FaceFluxHead(cs, cv, spec.n_s, hd)
+            with torch.no_grad():
+                for lin in (self.core_embed, self.beta_head):
+                    lin.lin_s.weight.zero_()
+                    lin.lin_s.bias.zero_()
+                    if lin.w_re is not None:
+                        lin.w_re.zero_()
+                        lin.w_im.zero_()
         self.nudge_block = None
         if cfg.nudge:
             from gpclimate.nn.nudging import InitialNudging
@@ -154,12 +184,33 @@ class DynamicsVNet(nn.Module):
                     head.w_im.zero_()
 
     def _fuse(self, k: int, h: Field, physics: Optional[Dict[str, Field]], key: str, edges,
-              ops: Optional[Field] = None) -> Field:
+              ops: Optional[Field] = None, core: Optional[Field] = None) -> Field:
         if self.fusion is None or physics is None:
             return h
         if self.cfg.fusion == "pigt":
-            return self.fusion[k](h, physics[key], ops, edges)
+            return self.fusion[k](h, physics[key], ops, edges, core)
         return self.fusion[k](h, physics[key], edges)
+
+    def core_tokens(self, core: Optional[Field], g: GraphView) -> List[Optional[Field]]:
+        """stage18: the guide's core terms pooled (with transport) to every mesh level, or Nones."""
+        if core is None or not (self.core_on and self.cfg.core_tokens):
+            return [None] * len(g.mesh_edges)
+        out, raw = [], transport_interpolate(core, g.grid2mesh)
+        for lvl in range(len(g.mesh_edges)):
+            if lvl > 0:
+                raw = transport_interpolate(raw, g.down[lvl - 1])
+            out.append(raw)
+        return out
+
+    def core_beta(self, emb: Field) -> torch.Tensor:
+        """stage18: share of the guide's flow per cell and level group [B, N, 3] (0 at the start, clipped)."""
+        return self.beta_head(emb).s.clamp(-0.5, 2.0)
+
+    def core_flux(self, emb: Field, faces, gauge: torch.Tensor) -> torch.Tensor:
+        """stage18: -div_G J_theta of the scalar channels [B, N, n_s] in units of the face graph's mean edge length
+        (an O(1) flux changes a cell by O(1) of the delta scale)."""
+        J = self.flux_head(emb, faces, gauge)
+        return -faces.divergence(J) * faces.mean_length
 
     def operator_tokens(self, state: Field, cond: Field, g: GraphView) -> List[Optional[Field]]:
         """Fixed physics-operator terms O_l on every mesh level (state pooled with transport), or Nones."""
@@ -187,7 +238,8 @@ class DynamicsVNet(nn.Module):
         return Field(torch.cat([col.s, col.s.new_ones(B, G, 1)], -1), col.v)
 
     def forward(self, state: Field, cond: Field, physics: Optional[Dict[str, Field]], g: GraphView,
-                prev: Optional[Field] = None, nudge: Optional[Field] = None, col: Optional[Field] = None) -> Field:
+                prev: Optional[Field] = None, nudge: Optional[Field] = None, col: Optional[Field] = None,
+                core: Optional[Field] = None) -> Field:
         B = state.s.shape[0]
         cond = broadcast_batch(cond, B)
         xs, xv = [state.s, cond.s], [state.v, cond.v]
@@ -200,19 +252,24 @@ class DynamicsVNet(nn.Module):
         if self.use_col:  # stage15a: lift input only (the stage13 operator block keeps its own input layout)
             c = self.column_input(col, B, state.s.shape[1], state)
             x_in = Field(torch.cat([x.s, c.s], -1), torch.cat([x.v, c.v], -1))
-        grid_emb, m0 = self.lift(x_in, g)
+        if self.core_embed is not None and core is None and physics is not None:
+            raise ValueError("the graph tendency core V-Net needs the guide's core terms (``core``)")
+        extra = self.core_embed(broadcast_batch(core, B)) if (self.core_embed is not None and core is not None) else None
+        grid_emb, m0 = self.lift(x_in, g, extra=extra)
         O = self.operator_tokens(state, cond, g) if (physics is not None and self.cfg.fusion == "pigt") else [None] * 3
+        C = self.core_tokens(core, g)
         H0 = self.gnn[0](m0, g.mesh_edges[0])
-        F0 = self._fuse(0, H0, physics, "P0", g.attn_edges[0], O[0])
+        F0 = self._fuse(0, H0, physics, "P0", g.attn_edges[0], O[0], C[0])
         H1 = self.gnn[1](self.down01(F0, g.down[0]), g.mesh_edges[1])
-        F1 = self._fuse(1, H1, physics, "P1", g.attn_edges[1], O[1])
+        F1 = self._fuse(1, H1, physics, "P1", g.attn_edges[1], O[1], C[1])
         H2 = self.gnn[2](self.down12(F1, g.down[1]), g.mesh_edges[2])
-        F2 = self._fuse(2, H2, physics, "P2", g.attn_edges[2], O[2])
+        F2 = self._fuse(2, H2, physics, "P2", g.attn_edges[2], O[2], C[2])
         H1u = self.gnn[3](self.merge1(self.up21(F2, g.up[1]), H1), g.mesh_edges[1])
-        F1u = self._fuse(3, H1u, physics, "P1u", g.attn_edges[1], O[1])
+        F1u = self._fuse(3, H1u, physics, "P1u", g.attn_edges[1], O[1], C[1])
         H0u = self.gnn[4](self.merge0(self.up10(F1u, g.up[0]), H0), g.mesh_edges[0])
-        F0u = self._fuse(4, H0u, physics, "P0u", g.attn_edges[0], O[0])
+        F0u = self._fuse(4, H0u, physics, "P0u", g.attn_edges[0], O[0], C[0])
         emb = self.head_dec(F0u, g.mesh2grid, extra=grid_emb)
+        self.last_emb = emb
         out = self.head_out(emb)
         if self.head_inter is not None:  # stage15b: intermediate-time changes from the same embedding
             self.last_inter = self.head_inter(emb)
@@ -251,6 +308,12 @@ class LieGuidedForecaster(nn.Module):
         self.last_path: Optional[List[Field]] = None  # stage17: path states of the last ODE forward (K - 1 of them)
         names = list(spec.static_scalars) + list(spec.forcing_scalars)
         self._toa_idx = [names.index(n) for n in ("toa_t", "toa_t1") if n in names]
+        self._faces = None  # stage18: finite-volume face graph of the grid (lazy)
+        self.last_core: Optional[Dict[str, object]] = None  # stage18: term sizes of the last core sub-step
+        if self.vnet.core_on and not guide_cfg.flow_head:
+            raise ValueError("tendency_core needs a guide with the flow head (GuideConfig.flow_head)")
+        if vnet_cfg.tendency_core and vnet_cfg.ode_physics:
+            raise ValueError("tendency_core replaces the guide drift: set ode_physics = 0")
 
     def freeze_guide(self) -> None:
         """Freeze guide *weights*; gradients w.r.t. its inputs still flow (needed for rollout losses)."""
@@ -321,7 +384,7 @@ class LieGuidedForecaster(nn.Module):
         """Change of the normalised state over one sub-step from the frozen guide's 6 h tendency (times the learned
         stage17b gain unless ``use_gain`` is False, as in the pure-physics diagnostic)."""
         assert self.guide is not None, "ode_physics needs the physics guide"
-        if self.vnet.cfg.ode_drift == "transport":
+        if self.vnet.cfg.ode_drift == "transport" or self.vnet.core_on:  # stage18: the guide's own core
             return self.transport_drift(x, g, P, use_gain)
         T = self.guide.physics_tendency(P, x, g)
         assert T is not None, "ode_physics needs a guide with a tendency head or a closure head"
@@ -375,6 +438,8 @@ class LieGuidedForecaster(nn.Module):
         coupled along the whole integration path.  ``p_map`` (diagnostics only) transforms the physics features
         of every sub-step, e.g. zeroing or shuffling them to measure the guide dependence of the ODE dynamics."""
         cfg = self.vnet.cfg
+        if self.vnet.core_on:
+            return self.core_rate(x, cond, g, p_map, prev=prev, col=col)
         P = self.physics(x, cond, g)
         if p_map is not None and P is not None:
             P = p_map(P)
@@ -385,6 +450,56 @@ class LieGuidedForecaster(nn.Module):
             drift = self.physics_drift(x, cond, g, P)
             f = Field(f.s + drift.s, f.v + drift.v)
         return f
+
+    def faces(self, g: GraphView):
+        """stage18: the finite-volume face graph of the grid (built once per grid)."""
+        H, W = g.extras["grid_hw"]
+        if self._faces is None or (self._faces.H, self._faces.W) != (H, W):
+            from gpclimate.nn.graph_core import GridFaceGraph
+            self._faces = GridFaceGraph(g.extras["grid_lat"], g.extras["grid_lon"])
+        return self._faces.to(self.delta_scale_s.device)
+
+    def core_terms(self, x: Field, P: Dict[str, Field], g: GraphView) -> Tuple[torch.Tensor, Field, Field]:
+        """stage18: (guide flow [B, N, 3] m/s, guide transport change SL_V(X) - X, guide source * dt) over one
+        sub-step, all from the (re-evaluated) guide features ``P`` of the current state."""
+        steps = self.lead_steps / self.vnet.cfg.ode_steps
+        flow, S = self.guide.core_parts(P, x, g)
+        xt = self.guide.transport(None, x, g, steps, flow=flow)
+        tr = Field(xt.s - x.s, xt.v - x.v)
+        src = Field(S.s * self.tend_scale_s * steps, S.v * self.tend_scale_v * steps)
+        return flow, tr, src
+
+    def core_rate(self, x: Field, cond: Field, g: GraphView, p_map: Optional[Callable] = None,
+                  prev: Optional[Field] = None, col: Optional[Field] = None) -> Field:
+        """stage18 graph tendency core, one 6 h sub-step:
+            X_{k+1} - X_k = [SL_{beta V}(X_k) - X_k] - div_G J_theta + S_theta
+        V = guide flow on X_k, beta / J_theta from the V-Net embedding, S_theta = the V-Net output (lead-change units
+        / K).  The guide's own terms (transport change, source) are the V-Net's core input.  ``p_map`` (diagnostics)
+        maps the guide features before anything is read from them (flow, source, tokens)."""
+        cfg = self.vnet.cfg
+        P = self.physics(x, cond, g)
+        if p_map is not None:
+            P = p_map(P)
+        flow, tr, src = self.core_terms(x, P, g)
+        core = Field(torch.cat([tr.s, src.s], -1), torch.cat([tr.v, src.v], -1))
+        d = self.vnet(x, cond, P, g, prev=prev, col=col, core=core)
+        emb = self.vnet.last_emb
+        beta = self.vnet.core_beta(emb)
+        steps = self.lead_steps / cfg.ode_steps
+        xb = self.guide.transport(None, x, g, steps, flow=flow, beta=beta)
+        faces = self.faces(g)
+        gauge = g.extras["grid_gauge"].to(x.s.device)
+        C = self.vnet.core_flux(emb, faces, gauge) * self.delta_scale_s / cfg.ode_steps
+        h = 1.0 / cfg.ode_steps
+        S_s, S_v = d.s * self.delta_scale_s * h, d.v * self.delta_scale_v * h
+        with torch.no_grad():  # share of each core term (rms over the batch, normalised units) for the logs
+            rms = lambda t: float(t.abs().pow(2).mean().sqrt())  # noqa: E731
+            self.last_core = {"beta": [float(b) for b in beta.mean((0, 1))],
+                              "beta_sd": [float(b) for b in beta.std((0, 1))],
+                              "transport": rms(torch.cat([(xb.s - x.s).flatten(), (xb.v - x.v).abs().flatten()])),
+                              "flux": rms(C), "source": rms(torch.cat([S_s.flatten(), S_v.abs().flatten()])),
+                              "guide_transport": rms(torch.cat([tr.s.flatten(), tr.v.abs().flatten()]))}
+        return Field(xb.s - x.s + C + S_s, xb.v - x.v + S_v)
 
     def integrate(self, state: Field, cond: Field, g: GraphView, p_map: Optional[Callable] = None,
                   prev: Optional[Field] = None, col: Optional[Field] = None) -> Field:

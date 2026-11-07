@@ -86,8 +86,11 @@ class GridLift(nn.Module):
         self.ffn = EqFFN(cs, cv)
         self.enc = GaugeTransfer(cs, cv, cs, cv, n_basis, hidden)
 
-    def forward(self, x: Field, g: GraphView) -> Tuple[Field, Field]:
+    def forward(self, x: Field, g: GraphView, extra: Optional[Field] = None) -> Tuple[Field, Field]:
+        """``extra`` (stage18): an embedding added to the input embedding (e.g. the guide's core terms)."""
         e = self.embed(x)
+        if extra is not None:
+            e = Field(e.s + extra.s, e.v + extra.v)
         e = e + self.ffn(self.norm(e))
         return e, self.enc(e, g.grid2mesh)
 
@@ -240,16 +243,24 @@ class LiePhysicalGNN(nn.Module):
         corr = self.flow_out(self.head_dec(feats["P0u"], g.mesh2grid)).v
         return (state_norm.v[..., self._flow_vec] + corr) * self.flow_v_scale[self._flow_vec]
 
-    def transport(self, feats: Dict[str, Field], state_norm: Field, g: GraphView, steps: float = 1.0) -> Field:
+    def transport(self, feats: Optional[Dict[str, Field]], state_norm: Field, g: GraphView, steps: float = 1.0,
+                  flow: Optional[torch.Tensor] = None, beta: Optional[torch.Tensor] = None) -> Field:
         """The (normalised) state carried by the guide's flow over ``steps`` data steps of 6 h: semi-Lagrangian
         transport of every channel by its level group's flow, vectors parallel-transported (gauge-equivariant: the
-        computation runs in the canonical east/north frame and the result is rotated back into the node frames)."""
+        computation runs in the canonical east/north frame and the result is rotated back into the node frames).
+        ``flow`` [B, N, G] (complex, m/s, node frames) skips recomputing the flow head; ``beta`` [B, N, G] (real,
+        stage18 graph tendency core) scales the flow per cell and group (the share of the guide's flow that carries
+        the state there)."""
         H, W = g.extras["grid_hw"]
         if self._sl is None or (self._sl.H, self._sl.W) != (H, W):
             self._sl = SphereSemiLagrangian(g.extras["grid_lat"], g.extras["grid_lon"])
         sl = self._sl.to(state_norm.s.device)
         rot = torch.exp(1j * g.extras["grid_gauge"].to(state_norm.s))[:, None]  # node frame -> canonical
-        flow = self.flow(feats, state_norm, g) * rot
+        if flow is None:
+            flow = self.flow(feats, state_norm, g)
+        if beta is not None:
+            flow = flow * beta
+        flow = flow * rot
         xv = state_norm.v * rot
         B = state_norm.s.shape[0]
 
@@ -263,6 +274,14 @@ class LiePhysicalGNN(nn.Module):
             out_s[..., si] = ts.flatten(2).transpose(1, 2)
             out_v[..., vi] = tv.flatten(2).transpose(1, 2)
         return Field(out_s, out_v * rot.conj())
+
+    def core_parts(self, feats: Dict[str, Field], state_norm: Field, g: GraphView) -> Tuple[torch.Tensor, Field]:
+        """stage18: (carrying flow [B, N, G] m/s, source = tendency head [normalised 6 h tendency units]) from one
+        grid decoding of the guide features."""
+        assert self.flow_out is not None and self.tend_out is not None
+        d = self.head_dec(feats["P0u"], g.mesh2grid)
+        flow = (state_norm.v[..., self._flow_vec] + self.flow_out(d).v) * self.flow_v_scale[self._flow_vec]
+        return flow, self.tend_out(d)
 
     def heads_all(self, feats: Dict[str, Field], g: GraphView) -> Tuple[Field, torch.Tensor, Optional[Field]]:
         """(reconstruction, aux diagnostics, one-step tendency or None)."""
