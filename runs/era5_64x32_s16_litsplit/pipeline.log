@@ -62,3 +62,5 @@
 [13:02:09] B[vnet]   750  L_f 0.2198 L_roll 0.0000 L_phys 0.00021 | val MSE 0.0804 2-step 0.1884 (persistence 0.3496) | 4.01 s/step
 [13:11:55] B[vnet]  1000  L_f 0.1952 L_roll 0.0000 L_phys 0.00010 | val MSE 0.0738 2-step 0.1961 (persistence 0.3496) | 3.60 s/step
 [13:21:32] B[vnet]  1250  L_f 0.1886 L_roll 0.0000 L_phys 0.00020 | val MSE 0.0668 2-step 0.1725 (persistence 0.3496) | 3.34 s/step
+[13:32:23] B[vnet]  1500  L_f 0.1716 L_roll 0.0000 L_phys 0.00011 | val MSE 0.0630 2-step 0.1667 (persistence 0.3496) | 3.22 s/step
+[13:41:56] B[vnet]  1750  L_f 0.1841 L_roll 0.0000 L_phys 0.00036 | val MSE 0.0599 2-step 0.1656 (persistence 0.3496) | 3.08 s/step
