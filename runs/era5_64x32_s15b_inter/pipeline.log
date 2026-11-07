@@ -106,3 +106,6 @@
 [06:18:14] B[vnet]  8250  L_f 0.1250 L_roll 0.2301 L_phys 0.00006 L_int 0.0819 | val MSE 0.0417 2-step 0.0825 (persistence 0.3295) 6/12/18 h 0.0192/0.0292/0.0358 | 3.79 s/step
 [06:38:18] B[vnet]  8500  L_f 0.1322 L_roll 0.2548 L_phys 0.00003 L_int 0.0859 | val MSE 0.0416 2-step 0.0825 (persistence 0.3295) 6/12/18 h 0.0192/0.0292/0.0359 | 3.82 s/step
 [06:58:26] B[vnet]  8750  L_f 0.1150 L_roll 0.2165 L_phys 0.00004 L_int 0.0795 | val MSE 0.0416 2-step 0.0823 (persistence 0.3295) 6/12/18 h 0.0192/0.0292/0.0357 | 3.85 s/step
+[07:18:50] B[vnet]  8999  L_f 0.1182 L_roll 0.2207 L_phys 0.00005 L_int 0.0807 | val MSE 0.0415 2-step 0.0821 (persistence 0.3295) 6/12/18 h 0.0192/0.0291/0.0357 | 3.88 s/step
+[07:18:50] stage B[vnet] done in 581.7 min, best val MSE 0.1237
+[07:18:54] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
