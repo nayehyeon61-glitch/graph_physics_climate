@@ -113,7 +113,9 @@ class Run:
                             inter_weight=float(getattr(args, "inter_weight", 1.0)))
             # stage17 keys (dynamic guide: sub-step forcing, learnable guide-drift gain)
             self.cfg.update(ode_path_forcing=int(getattr(args, "ode_path_forcing", 0) or 0),
-                            ode_drift_gain=int(getattr(args, "ode_drift_gain", 0) or 0))
+                            ode_drift_gain=int(getattr(args, "ode_drift_gain", 0) or 0),
+                            ode_drift=getattr(args, "ode_drift", "tend") or "tend",
+                            flow_head=int(getattr(args, "flow_head", 0) or 0))
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         # stage10: the state feature matrix is a named spec stored in config.json (older runs: base11)
@@ -151,7 +153,8 @@ class Run:
                                      resolved_terms=tuple(c.get("resolved_terms") or DEFAULT_TERMS),
                                      resolved_coef=c.get("resolved_coef"),
                                      curvature_ops=bool(c.get("curvature_ops", False)),
-                                     simplicial=int(c.get("simplicial", 0)))
+                                     simplicial=int(c.get("simplicial", 0)),
+                                     flow_head=bool(c.get("flow_head", False)))
         self.vnet_kwargs = dict(cs=c["cs"], cv=c["cv"], depth=tuple(c["depth"]), heads=c["heads"], ds=c["ds"],
                                 dv=c["dv"], n_basis=c["n_basis"], hidden=c["hidden"],
                                 fusion=c.get("fusion", "gated"), pigt_layers=int(c.get("pigt_layers", 2)),
@@ -164,7 +167,8 @@ class Run:
                                 nudge_carry=bool(c.get("nudge_carry", True) if c.get("nudge_carry") is not None else True),
                                 nudge_alpha_init=float(c.get("nudge_alpha_init") or 0.12),
                                 ode_path_forcing=bool(c.get("ode_path_forcing", False)),
-                                ode_drift_gain=bool(c.get("ode_drift_gain", False)))
+                                ode_drift_gain=bool(c.get("ode_drift_gain", False)),
+                                ode_drift=c.get("ode_drift", "tend") or "tend")
         if self.vnet_kwargs["ode_drift_gain"] and not self.vnet_kwargs["ode_physics"]:
             raise ValueError("ode_drift_gain needs ode_physics (the gain multiplies the guide's tendency drift)")
         # stage15a: column channels as V-Net inputs at the initial time only (normalised with train-split statistics,
@@ -274,6 +278,8 @@ class Run:
             m.guide.curv_ops.v_scale.copy_(self.norm.v_scale)
         if getattr(m.vnet, "phys_ops", None) is not None:
             m.vnet.phys_ops.v_scale.copy_(self.norm.v_scale)
+        if m.guide is not None and getattr(m.guide, "flow_out", None) is not None:  # stage17c flow in m/s
+            m.guide.flow_v_scale.copy_(self.norm.v_scale)
         if m.guide is not None and m.guide.resolved is not None:
             m.guide.resolved.set_scales(self.norm.s_mean, self.norm.s_std, self.norm.v_scale, self.norm.tend_s,
                                         self.norm.tend_v)
@@ -315,7 +321,28 @@ def stage_a(run: Run):
         return
     model = run.forecaster(True)
     guide = model.guide
-    opt = torch.optim.Adam(guide.parameters(), lr=a.lr)
+    init_guide = getattr(a, "init_guide", "") or ""
+    if init_guide:  # stage17c: start from a trained guide (new heads keep their initialisation)
+        missing, unexpected = guide.load_state_dict(torch.load(init_guide), strict=False)
+        if unexpected:
+            raise ValueError(f"--init-guide {init_guide}: unexpected keys {unexpected}")
+        log(f"stage A: guide initialised from {init_guide}" + (f" (new: {missing})" if missing else ""))
+    use_flow = getattr(guide, "flow_out", None) is not None
+    if use_flow:
+        log("stage A: Lie transport guide — tendency = semi-Lagrangian transport by the guide flow + source head")
+
+    def step_tendency(feats, x_norm, gview, source):
+        """stage17c: guide 6 h tendency (normalised tendency units) = transport by the guide's flow + source."""
+        xt = guide.transport(feats, x_norm, gview)
+        return Field((xt.s - x_norm.s) / run.norm.tend_s + source.s, (xt.v - x_norm.v) / run.norm.tend_v + source.v)
+
+    if int(getattr(a, "guide_heads_only", 0) or 0):  # stage17c: the trunk (features P) stays exactly as it was
+        heads = ("head_dec.", "rec_out.", "aux_out.", "tend_out.", "flow_out.")
+        for n_, p_ in guide.named_parameters():
+            p_.requires_grad_(n_.startswith(heads))
+        log(f"stage A: trunk frozen, training the heads only "
+            f"({sum(p_.numel() for p_ in guide.parameters() if p_.requires_grad)} trainable of {n_params(guide)})")
+    opt = torch.optim.Adam([p_ for p_ in guide.parameters() if p_.requires_grad], lr=a.lr)
     gen = torch.Generator().manual_seed(a.seed)
     rng = np.random.default_rng(a.seed)
     val_idx = list(np.linspace(0, len(run.calib) - 1, 16).round().astype(int))
@@ -357,6 +384,8 @@ def stage_a(run: Run):
         l_tend = torch.zeros(())
         if tend is not None:
             tend_t = run.norm.tendency(x0, run.train.next_state(idx)).gauge(tg)
+            if use_flow:
+                tend = step_tendency(feats, xg, gv, tend)
             l_tend = field_mse(tend, tend_t, w, run.loss_w)
             loss = loss + a.tend_weight * l_tend
         l_clos = torch.zeros(())
@@ -367,7 +396,7 @@ def stage_a(run: Run):
             loss = loss + a.tend_weight * l_clos
         opt.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(guide.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_([p_ for p_ in guide.parameters() if p_.requires_grad], 1.0)
         opt.step()
         if step % 25 == 0:
             run.jlog("a", {"step": step, "l_rec": float(l_rec), "l_aux": float(l_aux), "l_tend": float(l_tend),
@@ -381,9 +410,15 @@ def stage_a(run: Run):
                 v_rec = float(field_mse(rec, x0n, w))
                 v_aux = float((((aux - run.calib.aux_targets(x0) / run.norm.aux_std) ** 2) * w[None, :, None]).mean()
                               / w.mean())
-                v_tend = 0.0
+                v_tend, v_tr, v_zero = 0.0, None, None
                 if tend is not None:
-                    v_tend = float(field_mse(tend, run.norm.tendency(x0, run.calib.next_state(val_idx)), w))
+                    tend_true = run.norm.tendency(x0, run.calib.next_state(val_idx))
+                    if use_flow:
+                        zero = Field(torch.zeros_like(tend.s), torch.zeros_like(tend.v))
+                        v_tr = float(field_mse(step_tendency(feats, x0n, g, zero), tend_true, w))  # transport alone
+                        v_zero = float(field_mse(zero, tend_true, w))  # persistence
+                        tend = step_tendency(feats, x0n, g, tend)
+                    v_tend = float(field_mse(tend, tend_true, w))
                 v_clos, v_full, rfrac = 0.0, 0.0, None
                 if guide.closure_out is not None:
                     tend_m = guide.resolved.pool(run.norm.tendency(x0, run.calib.next_state(val_idx)), g)
@@ -399,10 +434,13 @@ def stage_a(run: Run):
                 torch.save(guide.state_dict(), run.dir / "guide.pt")
             run.jlog("a", {"step": step, "val_rec": v_rec, "val_aux": v_aux, "val_tend": v_tend, "val_clos": v_clos,
                            "val_resolved_only": v_full, "resolved_fraction": rfrac, "best": best,
+                           **({"val_transport_only": v_tr, "val_persistence": v_zero} if use_flow else {}),
                            "t": time.time() - t0})
             log(f"A {step:5d}  L_rec {float(l_rec):.4f} L_aux {float(l_aux):.4f} L_tend {float(l_tend):.4f}"
                 f" L_clos {float(l_clos):.4f} | val rec {v_rec:.4f} aux {v_aux:.4f} tend {v_tend:.4f} clos {v_clos:.4f}"
-                f" (resolved only {v_full:.4f}) | {(time.time() - t0) / (step + 1):.2f} s/step")
+                f" (resolved only {v_full:.4f})"
+                + (f" transport only {v_tr:.4f} persistence {v_zero:.4f}" if use_flow else "")
+                + f" | {(time.time() - t0) / (step + 1):.2f} s/step")
     json.dump({"steps": int(a.steps), "best": best, "finished_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
               open(done_path, "w"))
     log(f"stage A done in {(time.time() - t0) / 60:.1f} min, best val score {best:.4f}"
@@ -1028,6 +1066,15 @@ def main():
                     help="stage17: solar forcing follows the ODE sub-step time (stored in config.json)")
     ap.add_argument("--ode-drift-gain", type=int, default=0, choices=[0, 1],
                     help="stage17b: learnable per-variable gain on the guide drift, zero-initialised (needs --ode-physics)")
+    ap.add_argument("--flow-head", type=int, default=0, choices=[0, 1],
+                    help="stage17c: Lie transport guide (flow head + semi-Lagrangian transport; stored in config.json)")
+    ap.add_argument("--ode-drift", default="tend", choices=["tend", "transport"],
+                    help="stage17c: guide drift of the ODE = tendency head (tend) or Lie transport guide (transport)")
+    ap.add_argument("--guide-heads-only", type=int, default=0, choices=[0, 1],
+                    help="stage17c: Stage A trains only the guide heads (grid adapter, read-outs, tendency, flow); the "
+                         "trunk and hence the features P seen by the V-Net stay unchanged")
+    ap.add_argument("--init-guide", default="",
+                    help="stage17c: Stage A starts from this guide state dict (new heads keep their initialisation)")
     ap.add_argument("--init-vnet", default="",
                     help="stage17: Stage B starts from this V-Net state dict (paired fine-tuning; fresh optimiser and lr)")
     ap.add_argument("--perturb-model", default=None,

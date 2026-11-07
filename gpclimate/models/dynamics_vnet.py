@@ -86,6 +86,9 @@ class VNetConfig:
     # X_{t + k 6 h} are kept in ``last_path`` for the path-supervision loss (train_eval --inter-times with ode).
     ode_path_forcing: bool = False
     ode_drift_gain: bool = False
+    # stage17c: what the guide drift is — "tend": the guide's 6 h tendency head (stage8b / stage17b); "transport": the
+    # Lie transport guide G(X) - X = [semi-Lagrangian transport by the guide's flow] - X + source (GuideConfig.flow_head)
+    ode_drift: str = "tend"
 
 
 class DynamicsVNet(nn.Module):
@@ -318,6 +321,8 @@ class LieGuidedForecaster(nn.Module):
         """Change of the normalised state over one sub-step from the frozen guide's 6 h tendency (times the learned
         stage17b gain unless ``use_gain`` is False, as in the pure-physics diagnostic)."""
         assert self.guide is not None, "ode_physics needs the physics guide"
+        if self.vnet.cfg.ode_drift == "transport":
+            return self.transport_drift(x, g, P, use_gain)
         T = self.guide.physics_tendency(P, x, g)
         assert T is not None, "ode_physics needs a guide with a tendency head or a closure head"
         steps = self.lead_steps / self.vnet.cfg.ode_steps  # data steps (6 h) per sub-step
@@ -325,6 +330,26 @@ class LieGuidedForecaster(nn.Module):
         if gs is not None and use_gain:  # stage17b: learned share of the guide's own tendency
             return Field(T.s * self.tend_scale_s * steps * gs, T.v * self.tend_scale_v * steps * gv)
         return Field(T.s * self.tend_scale_s * steps, T.v * self.tend_scale_v * steps)
+
+    def transport_drift(self, x: Field, g: GraphView, P: Dict[str, Field], use_gain: bool = True,
+                        parts: bool = False):
+        """stage17c: change of the normalised state over one sub-step from the Lie transport guide,
+        G(X) - X = [T_u(X) - X] + S_theta(X) * tend_scale * steps (times the learned gain unless ``use_gain`` is False).
+        ``parts=True`` returns the (transport, source) pieces separately, without the gain (diagnostics)."""
+        steps = self.lead_steps / self.vnet.cfg.ode_steps
+        if self.guide.flow_out is None:
+            raise ValueError("ode_drift='transport' needs a guide with the flow head (GuideConfig.flow_head)")
+        xt = self.guide.transport(P, x, g, steps)
+        S = self.guide.physics_tendency(P, x, g)
+        tr = Field(xt.s - x.s, xt.v - x.v)
+        src = Field(S.s * self.tend_scale_s * steps, S.v * self.tend_scale_v * steps)
+        if parts:
+            return tr, src
+        ds, dv = tr.s + src.s, tr.v + src.v
+        gs, gv = self.vnet.drift_gain_s, self.vnet.drift_gain_v
+        if gs is not None and use_gain:
+            ds, dv = ds * gs, dv * gv
+        return Field(ds, dv)
 
     def sub_cond(self, cond: Field, g: GraphView, k: float) -> Field:
         """stage17: conditions at sub-step ``k`` of the lead (``k`` may be fractional for Heun's end point).  With

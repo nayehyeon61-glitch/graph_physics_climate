@@ -33,7 +33,9 @@ from gpclimate.geometry.graphs import GraphView
 from gpclimate.nn.gauge_conv import GaugeStack, GaugeTransfer, Merge, transport_interpolate
 from gpclimate.nn.connection_ops import ConnectionCurvatureOperators
 from gpclimate.nn.physics_ops import PhysicsOperators
+from gpclimate.nn.physics_ops import EARTH_RADIUS
 from gpclimate.nn.primitive2d import DEFAULT_TERMS, ReducedPrimitiveTendencies
+from gpclimate.nn.semi_lagrangian import SphereSemiLagrangian
 from gpclimate.nn.simplicial import SimplicialBlock
 from gpclimate.nn.so2 import EqFFN, EqLinear, EqNorm, Field
 
@@ -61,6 +63,17 @@ class GuideConfig:
     # stage11b: simplicial vertex-edge-face message passing on mesh 0 (0 = off, 1 = block on the mesh-0 input,
     # 2 = blocks on the mesh-0 input and on the decoder output P0u)
     simplicial: int = 0
+    # stage17c (Lie transport guide): a flow head gives, per level group (850 hPa: t850 q700 u/v850; 500 hPa: z500
+    # u/v500; surface: t2m msl u/v10), an equivariant correction to that level's wind; the corrected flow carries the
+    # state one 6 h step by semi-Lagrangian transport with parallel-transported vectors (gpclimate.nn.semi_lagrangian)
+    # and the tendency head becomes the source term: G(X) = T_u(X) + S_theta(X) dt.  Needs tend_head.
+    flow_head: bool = False
+
+
+# stage17c level groups: the wind that carries each state channel
+FLOW_WINDS = ("u850", "u500", "u10")
+FLOW_SCALAR_GROUP = {"z500": 1, "t850": 0, "q700": 0, "t2m": 2, "msl": 2}
+DT_DATA = 6 * 3600.0
 
 
 class GridLift(nn.Module):
@@ -130,6 +143,24 @@ class LiePhysicalGNN(nn.Module):
             self.resolved = ReducedPrimitiveTendencies(spec, tuple(cfg.resolved_terms))
             self.resolved.set_coefficients(cfg.resolved_coef)
             self.closure_out = EqLinear(cs, cv, spec.n_s, spec.n_v)
+        # stage17c flow head (zero-initialised: the flow starts as the level winds themselves)
+        self.flow_out: Optional[EqLinear] = None
+        self._sl: Optional[SphereSemiLagrangian] = None
+        if cfg.flow_head:
+            if not cfg.tend_head:
+                raise ValueError("flow_head needs tend_head (the tendency head becomes the source term)")
+            winds = [a for a, _ in spec.vectors]
+            missing = [n for n in FLOW_WINDS if n not in winds] + [n for n in spec.scalars if n not in FLOW_SCALAR_GROUP]
+            if missing:
+                raise ValueError(f"flow_head supports the base11 layout only; no flow group for {missing}")
+            self._flow_vec = [winds.index(n) for n in FLOW_WINDS]
+            self._flow_groups = [([i for i, n in enumerate(spec.scalars) if FLOW_SCALAR_GROUP[n] == k], [self._flow_vec[k]])
+                                 for k in range(len(FLOW_WINDS))]
+            self.flow_out = EqLinear(cs, cv, 0, len(FLOW_WINDS))
+            with torch.no_grad():
+                self.flow_out.w_re.zero_()
+                self.flow_out.w_im.zero_()
+            self.register_buffer("flow_v_scale", torch.ones(spec.n_v), persistent=False)  # m/s per normalised unit
 
     @property
     def feature_dims(self) -> Tuple[int, int]:
@@ -201,6 +232,37 @@ class LiePhysicalGNN(nn.Module):
         if self.tend_out is not None:
             return self.tend_out(self.head_dec(feats["P0u"], g.mesh2grid))
         return None
+
+    # ---------------------------------------------------------------- stage17c: Lie transport guide
+    def flow(self, feats: Dict[str, Field], state_norm: Field, g: GraphView) -> torch.Tensor:
+        """Carrying flow per level group [B, G, 3] (complex, m/s, grid node frames): level wind + learned correction."""
+        assert self.flow_out is not None
+        corr = self.flow_out(self.head_dec(feats["P0u"], g.mesh2grid)).v
+        return (state_norm.v[..., self._flow_vec] + corr) * self.flow_v_scale[self._flow_vec]
+
+    def transport(self, feats: Dict[str, Field], state_norm: Field, g: GraphView, steps: float = 1.0) -> Field:
+        """The (normalised) state carried by the guide's flow over ``steps`` data steps of 6 h: semi-Lagrangian
+        transport of every channel by its level group's flow, vectors parallel-transported (gauge-equivariant: the
+        computation runs in the canonical east/north frame and the result is rotated back into the node frames)."""
+        H, W = g.extras["grid_hw"]
+        if self._sl is None or (self._sl.H, self._sl.W) != (H, W):
+            self._sl = SphereSemiLagrangian(g.extras["grid_lat"], g.extras["grid_lon"])
+        sl = self._sl.to(state_norm.s.device)
+        rot = torch.exp(1j * g.extras["grid_gauge"].to(state_norm.s))[:, None]  # node frame -> canonical
+        flow = self.flow(feats, state_norm, g) * rot
+        xv = state_norm.v * rot
+        B = state_norm.s.shape[0]
+
+        def img(t: torch.Tensor) -> torch.Tensor:
+            return t.transpose(1, 2).reshape(B, t.shape[-1], H, W)
+
+        out_s, out_v = torch.zeros_like(state_norm.s), torch.zeros_like(xv)
+        disp = flow * (steps * DT_DATA / EARTH_RADIUS)  # radians of arc
+        for k, (si, vi) in enumerate(self._flow_groups):
+            ts, tv = sl(img(state_norm.s[..., si]), img(xv[..., vi]), disp[..., k].reshape(B, H, W))
+            out_s[..., si] = ts.flatten(2).transpose(1, 2)
+            out_v[..., vi] = tv.flatten(2).transpose(1, 2)
+        return Field(out_s, out_v * rot.conj())
 
     def heads_all(self, feats: Dict[str, Field], g: GraphView) -> Tuple[Field, torch.Tensor, Optional[Field]]:
         """(reconstruction, aux diagnostics, one-step tendency or None)."""

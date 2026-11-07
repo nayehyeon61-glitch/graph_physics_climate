@@ -315,6 +315,7 @@ class SphereGraphs:
                     "complexes": [cx.gauge_transformed(tm[l]) for l, cx in enumerate(self.complexes)],
                     "grid_hw": (self.n_lat, self.n_lon),
                     "grid_lat": torch.as_tensor(self.lat, dtype=torch.float32),
+                    "grid_lon": torch.as_tensor(self.lon, dtype=torch.float32),
                     "grid_gauge": tg.to(torch.float32)}
         return v
 
@@ -346,6 +347,7 @@ class GraphView:
                    {"grid2mesh_lin": g.grid2mesh_lin, "complexes": list(g.complexes),
                     # stage13: the grid-space neural operator needs the lat-lon layout (row-major lat-slow nodes)
                     "grid_hw": (g.n_lat, g.n_lon), "grid_lat": torch.as_tensor(g.lat, dtype=torch.float32),
+                    "grid_lon": torch.as_tensor(g.lon, dtype=torch.float32),  # stage17c semi-Lagrangian transport
                     # grid frame angle w.r.t. the canonical (east, north) frame: 0 unless gauge-transformed
                     "grid_gauge": torch.zeros(g.grid.n)})
 

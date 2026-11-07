@@ -31,3 +31,8 @@
 [10:23:40] B[vnet_noguide]  6500  L_f 0.1293 L_roll 0.2623 L_phys 0.00006 | val MSE 0.0483 2-step 0.0946 (persistence 0.3496) | 1.16 s/step
 [10:29:34] B[vnet_noguide]  6750  L_f 0.1293 L_roll 0.2630 L_phys 0.00011 | val MSE 0.0479 2-step 0.0934 (persistence 0.3496) | 1.17 s/step
 [10:35:39] B[vnet_noguide]  7000  L_f 0.1275 L_roll 0.2488 L_phys 0.00010 | val MSE 0.0476 2-step 0.0928 (persistence 0.3496) | 1.18 s/step
+[10:48:13] B[vnet_noguide]  7250  L_f 0.1242 L_roll 0.2397 L_phys 0.00004 | val MSE 0.0476 2-step 0.0927 (persistence 0.3496) | 1.25 s/step
+[10:54:25] B[vnet_noguide]  7500  L_f 0.1374 L_roll 0.2706 L_phys 0.00007 | val MSE 0.0472 2-step 0.0920 (persistence 0.3496) | 1.25 s/step
+[11:00:38] B[vnet_noguide]  7750  L_f 0.1273 L_roll 0.2482 L_phys 0.00003 | val MSE 0.0470 2-step 0.0916 (persistence 0.3496) | 1.26 s/step
+[11:06:53] B[vnet_noguide]  8000  L_f 0.1304 L_roll 0.2555 L_phys 0.00007 | val MSE 0.0467 2-step 0.0906 (persistence 0.3496) | 1.27 s/step
+[11:13:21] B[vnet_noguide]  8250  L_f 0.1291 L_roll 0.2420 L_phys 0.00002 | val MSE 0.0468 2-step 0.0904 (persistence 0.3496) | 1.28 s/step
