@@ -111,6 +111,9 @@ class Run:
             # stage15b keys (intermediate-time auxiliary loss)
             self.cfg.update(inter_times=int(getattr(args, "inter_times", 0) or 0),
                             inter_weight=float(getattr(args, "inter_weight", 1.0)))
+            # stage17 keys (dynamic guide: sub-step forcing, learnable guide-drift gain)
+            self.cfg.update(ode_path_forcing=int(getattr(args, "ode_path_forcing", 0) or 0),
+                            ode_drift_gain=int(getattr(args, "ode_drift_gain", 0) or 0))
             json.dump(self.cfg, open(cfg_path, "w"), indent=2)
         c = self.cfg
         # stage10: the state feature matrix is a named spec stored in config.json (older runs: base11)
@@ -159,7 +162,11 @@ class Run:
                                 no_layers=int(c.get("no_layers", 2)), no_modes=tuple(c.get("no_modes") or (16, 32)),
                                 prev_state=bool(c.get("prev_state", False)), nudge=bool(c.get("nudge", False)),
                                 nudge_carry=bool(c.get("nudge_carry", True) if c.get("nudge_carry") is not None else True),
-                                nudge_alpha_init=float(c.get("nudge_alpha_init") or 0.12))
+                                nudge_alpha_init=float(c.get("nudge_alpha_init") or 0.12),
+                                ode_path_forcing=bool(c.get("ode_path_forcing", False)),
+                                ode_drift_gain=bool(c.get("ode_drift_gain", False)))
+        if self.vnet_kwargs["ode_drift_gain"] and not self.vnet_kwargs["ode_physics"]:
+            raise ValueError("ode_drift_gain needs ode_physics (the gain multiplies the guide's tendency drift)")
         # stage15a: column channels as V-Net inputs at the initial time only (normalised with train-split statistics,
         # cached in column_norm.json so an external benchmark year uses the same scaling)
         self.use_col = bool(c.get("column_inputs"))
@@ -173,11 +180,18 @@ class Run:
         if self.inter_times:
             if self.inter_times >= int(c["lead"]):
                 raise ValueError(f"inter_times must be < lead ({c['lead']} data steps)")
-            if c.get("integrator", "delta") != "delta":
-                raise ValueError("inter_times needs the delta integrator")
-            self.vnet_kwargs.update(inter_times=self.inter_times)
-            log(f"intermediate-time loss: {self.inter_times} auxiliary targets "
-                f"({', '.join(f'{6 * j} h' for j in range(1, self.inter_times + 1))}), weight {self.inter_weight}")
+            if c.get("integrator", "delta") == "ode":  # stage17: supervise the integration path itself
+                if int(c.get("ode_steps", 4)) != int(c["lead"]) or self.inter_times != int(c["lead"]) - 1:
+                    raise ValueError("ODE path supervision needs ode_steps == lead (6 h sub-steps) and "
+                                     "inter_times == lead - 1")
+                log(f"ODE path supervision: {self.inter_times} path states "
+                    f"({', '.join(f'{6 * j} h' for j in range(1, self.inter_times + 1))}), weight {self.inter_weight}")
+            elif c.get("integrator", "delta") != "delta":
+                raise ValueError("inter_times needs the delta or ode integrator")
+            else:
+                self.vnet_kwargs.update(inter_times=self.inter_times)
+                log(f"intermediate-time loss: {self.inter_times} auxiliary targets "
+                    f"({', '.join(f'{6 * j} h' for j in range(1, self.inter_times + 1))}), weight {self.inter_weight}")
         self.use_prev = bool(c.get("prev_state", False))  # stage14: V-Net input includes X_t - X_{t-lead}
         self.use_nudge = bool(c.get("nudge", False))  # stage14b: first step relaxes toward X_t - M(X_{t-lead})
         # earliest training index whose previous states exist (prev: X_{t-lead}; nudge pre-forecast: X_{t-2 lead})
@@ -484,7 +498,9 @@ def stage_b(run: Run, use_guide: bool):
     if model.vnet.cfg.integrator == "ode":  # stage S8
         vc = model.vnet.cfg
         log(f"stage B[{name}]: graph neural ODE dynamics, {vc.ode_steps} sub-steps of {6 * lead // vc.ode_steps} h, "
-            f"solver {vc.ode_solver}, physics drift {'on' if vc.ode_physics else 'off'}")
+            f"solver {vc.ode_solver}, physics drift {'on' if vc.ode_physics else 'off'}"
+            + (" (learned gain, init 0)" if vc.ode_drift_gain else "")
+            + (", sub-step solar forcing" if vc.ode_path_forcing else ""))
     # restart safety: a finished Stage B is skipped, an interrupted one resumes from its last validation checkpoint
     start_step = 0
     ck_path, done_path = run.dir / f"{name}_train_state.pt", run.dir / f"{name}_done.json"
@@ -511,6 +527,14 @@ def stage_b(run: Run, use_guide: bool):
             rows = [line for line in open(lp) if json.loads(line)["step"] < start_step]
             open(lp, "w").writelines(rows)
         log(f"stage B[{name}]: resumed from step {start_step} (best {best:.4f}, {time.time() - t0:.0f} s elapsed before)")
+    init_vnet = getattr(a, "init_vnet", "") or ""
+    if start_step == 0 and init_vnet:  # stage17: paired fine-tuning from a trained V-Net (new parameters keep their init)
+        missing, unexpected = model.vnet.load_state_dict(torch.load(init_vnet), strict=False)
+        if unexpected:
+            raise ValueError(f"--init-vnet {init_vnet}: unexpected keys {unexpected}")
+        if ema_model is not None:
+            ema_model.vnet.load_state_dict(model.vnet.state_dict())
+        log(f"stage B[{name}]: V-Net initialised from {init_vnet}" + (f" (new: {missing})" if missing else ""))
     for step in range(start_step, a.steps):
         for pg in opt.param_groups:
             pg["lr"] = cosine_lr(step, a.steps, pg.get("base_lr", a.lr))
@@ -592,12 +616,16 @@ def stage_b(run: Run, use_guide: bool):
             run.jlog(name, {"step": step, "val_mse": v_mse, "val_mse2": v_mse2, "val_persistence_mse": pers,
                             **({"val_inter_mse": v_int} if run.inter_times else {}),
                             "best": best, "attention_mass": model.vnet.attention_mass(), "t": time.time() - t0,
-                            **({"nudge_alpha": nb.last_alpha.tolist()} if nb is not None and nb.last_alpha is not None else {})})
+                            **({"nudge_alpha": nb.last_alpha.tolist()} if nb is not None and nb.last_alpha is not None else {}),
+                            **({"drift_gain": vm.vnet.drift_gain_s.tolist() + vm.vnet.drift_gain_v.tolist()}
+                               if vm.vnet.drift_gain_s is not None else {})})
             log(f"B[{name}] {step:5d}  L_f {float(l_f):.4f} L_roll {float(l_roll):.4f} L_phys {float(l_phys):.5f}"
                 + (f" L_pde {float(l_pde):.4f}" if use_pde else "")
                 + (f" L_int {float(l_int):.4f}" if run.inter_times else "")
                 + f" | val MSE {v_mse:.4f} 2-step {v_mse2:.4f} (persistence {pers:.4f})"
                 + (" 6/12/18 h " + "/".join(f"{x:.4f}" for x in v_int) if run.inter_times else "")
+                + (" gain " + "/".join(f"{float(x):.2f}" for x in torch.cat([vm.vnet.drift_gain_s, vm.vnet.drift_gain_v]))
+                   if vm.vnet.drift_gain_s is not None else "")
                 + f" | {(time.time() - t0) / (step + 1):.2f} s/step")
             state = {"step": step + 1, "vnet": model.vnet.state_dict(), "opt": opt.state_dict(), "best": best,
                      "rng": rng.bit_generator.state, "torch_rng": torch.get_rng_state(), "elapsed": time.time() - t0}
@@ -996,6 +1024,12 @@ def main():
                     help="stage13b: Stage B weight of the zonal spectral energy loss (0 = off)")
     ap.add_argument("--ode-physics", type=int, default=0, choices=[0, 1],
                     help="stage S8: add the frozen guide's 6 h tendency as the known drift of the ODE")
+    ap.add_argument("--ode-path-forcing", type=int, default=0, choices=[0, 1],
+                    help="stage17: solar forcing follows the ODE sub-step time (stored in config.json)")
+    ap.add_argument("--ode-drift-gain", type=int, default=0, choices=[0, 1],
+                    help="stage17b: learnable per-variable gain on the guide drift, zero-initialised (needs --ode-physics)")
+    ap.add_argument("--init-vnet", default="",
+                    help="stage17: Stage B starts from this V-Net state dict (paired fine-tuning; fresh optimiser and lr)")
     ap.add_argument("--perturb-model", default=None,
                     help="Stage A: vnet state dict of a guide-free forecaster whose lead-time forecast replaces the "
                          "input with probability --perturb-prob (structured, forecast-like perturbations)")

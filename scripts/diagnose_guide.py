@@ -87,7 +87,7 @@ def main():
                     p_map = {"true_P": None,
                              "zero_P": lambda P: {k: Field(torch.zeros_like(f.s), torch.zeros_like(f.v)) for k, f in P.items()},
                              "shuffled_P": lambda P: {k: Field(f.s[perm], f.v[perm]) for k, f in P.items()}}[name]
-                    fc = model.integrate(x0n, cn, g, p_map)
+                    fc = model.integrate(x0n, cn, g, p_map, prev=prev, col=cl)
                 else:
                     d = model.vnet(x0n, cn, PP, g, prev=prev, nudge=nud, col=cl)
                     fc = Field(x0n.s + d.s * model.delta_scale_s, x0n.v + d.v * model.delta_scale_v)

@@ -78,6 +78,14 @@ class VNetConfig:
     # evaluations) — an auxiliary head on the shared decoder embedding predicts the changes to X_{t + j 6 h}, j =
     # 1..inter_times (3 = 6/12/18 h inside a 24 h lead).  Used only by the training loss; forecasts are unchanged.
     inter_times: int = 0
+    # stage17 (dynamic guide, integrator "ode"): the guide and the fixed operators are re-evaluated on every 6 h path
+    # state.  ode_path_forcing: the solar forcing channels follow the sub-step time (toa_t / toa_t1 rotated by the
+    # sub-step offset in longitude, exact for the insolation proxy up to the declination drift of < 0.1 deg per 6 h);
+    # ode_drift_gain: learnable per-variable gain on the guide's 6 h tendency drift (zero-initialised, needs
+    # ode_physics), so training decides how much of the guide's own tendency enters the dynamics.  Path states
+    # X_{t + k 6 h} are kept in ``last_path`` for the path-supervision loss (train_eval --inter-times with ode).
+    ode_path_forcing: bool = False
+    ode_drift_gain: bool = False
 
 
 class DynamicsVNet(nn.Module):
@@ -124,6 +132,10 @@ class DynamicsVNet(nn.Module):
             from gpclimate.nn.neural_operator import ContinuousOperatorBlock
             self.cont_op = ContinuousOperatorBlock(spec.n_s, spec.n_v, spec.n_cond_s, spec.n_cond_v, cfg.no_hidden,
                                                    cfg.no_layers, tuple(cfg.no_modes), cfg.neural_op)
+        self.drift_gain_s = self.drift_gain_v = None
+        if cfg.ode_drift_gain and cfg.use_guide:  # stage17b: real gains keep the vector drift gauge-equivariant
+            self.drift_gain_s = nn.Parameter(torch.zeros(spec.n_s))
+            self.drift_gain_v = nn.Parameter(torch.zeros(spec.n_v))
         self.nudge_block = None
         if cfg.nudge:
             from gpclimate.nn.nudging import InitialNudging
@@ -233,6 +245,9 @@ class LieGuidedForecaster(nn.Module):
         self.register_buffer("tend_scale_s", torch.ones(spec.n_s))
         self.register_buffer("tend_scale_v", torch.ones(spec.n_v))
         self.lead_steps = 4
+        self.last_path: Optional[List[Field]] = None  # stage17: path states of the last ODE forward (K - 1 of them)
+        names = list(spec.static_scalars) + list(spec.forcing_scalars)
+        self._toa_idx = [names.index(n) for n in ("toa_t", "toa_t1") if n in names]
 
     def freeze_guide(self) -> None:
         """Freeze guide *weights*; gradients w.r.t. its inputs still flow (needed for rollout losses)."""
@@ -259,13 +274,18 @@ class LieGuidedForecaster(nn.Module):
             d = self.vnet(state, cond, P, g, prev=prev, nudge=nudge, col=col)
             forecast = Field(state.s + d.s * self.delta_scale_s, state.v + d.v * self.delta_scale_v)
             return forecast, d
-        forecast = self.integrate(state, cond, g)
+        if nudge is not None:
+            raise ValueError("nudging (stage14b) is not supported with the ODE integrator")
+        forecast = self.integrate(state, cond, g, prev=prev, col=col)
         d = Field((forecast.s - state.s) / self.delta_scale_s, (forecast.v - state.v) / self.delta_scale_v)
         return forecast, d
 
     def inter_forecasts(self, state: Field) -> List[Field]:
         """stage15b: intermediate-time states X_{t + j 6 h}, j = 1..inter_times, predicted by the intermediate-time head in
         the last forward call that started from ``state`` (same units as ``state``; delta-scale changes)."""
+        if self.vnet.cfg.integrator == "ode":  # stage17: the integration path itself (X_{t + k 6 h}, k = 1..K-1)
+            assert self.last_path is not None, "no ODE forward has been run yet"
+            return list(self.last_path)
         cfg, d = self.vnet.cfg, self.vnet.last_inter
         assert cfg.inter_times > 0 and d is not None, "the V-Net has no intermediate-time head or has not been called"
         n_s, n_v = self.spec.n_s, self.spec.n_v
@@ -293,15 +313,38 @@ class LieGuidedForecaster(nn.Module):
         return nb.last_term
 
     # ---------------------------------------------------------------- stage S8: graph neural ODE dynamics
-    def physics_drift(self, x: Field, cond: Field, g: GraphView, P: Optional[Dict[str, Field]]) -> Field:
-        """Change of the normalised state over one sub-step from the frozen guide's 6 h tendency."""
+    def physics_drift(self, x: Field, cond: Field, g: GraphView, P: Optional[Dict[str, Field]],
+                      use_gain: bool = True) -> Field:
+        """Change of the normalised state over one sub-step from the frozen guide's 6 h tendency (times the learned
+        stage17b gain unless ``use_gain`` is False, as in the pure-physics diagnostic)."""
         assert self.guide is not None, "ode_physics needs the physics guide"
         T = self.guide.physics_tendency(P, x, g)
         assert T is not None, "ode_physics needs a guide with a tendency head or a closure head"
         steps = self.lead_steps / self.vnet.cfg.ode_steps  # data steps (6 h) per sub-step
+        gs, gv = self.vnet.drift_gain_s, self.vnet.drift_gain_v
+        if gs is not None and use_gain:  # stage17b: learned share of the guide's own tendency
+            return Field(T.s * self.tend_scale_s * steps * gs, T.v * self.tend_scale_v * steps * gv)
         return Field(T.s * self.tend_scale_s * steps, T.v * self.tend_scale_v * steps)
 
-    def rate(self, x: Field, cond: Field, g: GraphView, p_map: Optional[Callable] = None) -> Field:
+    def sub_cond(self, cond: Field, g: GraphView, k: float) -> Field:
+        """stage17: conditions at sub-step ``k`` of the lead (``k`` may be fractional for Heun's end point).  With
+        ``ode_path_forcing`` the solar channels are rotated westward by the elapsed time (15 deg per hour), which is
+        how the insolation proxy moves; static fields and the Coriolis parameter do not change."""
+        cfg = self.vnet.cfg
+        if not cfg.ode_path_forcing or k == 0 or not self._toa_idx:
+            return cond
+        H, W = g.extras["grid_hw"]
+        hours = 6.0 * self.lead_steps * k / cfg.ode_steps
+        shift = W * hours / 24.0
+        if abs(shift - round(shift)) > 1e-6:
+            raise ValueError(f"sub-step offset {hours} h is not a whole number of longitude columns (W={W})")
+        s = cond.s.clone()
+        for i in self._toa_idx:
+            s[..., i] = torch.roll(cond.s[..., i].unflatten(-1, (H, W)), -int(round(shift)), dims=-1).flatten(-2)
+        return Field(s, cond.v)
+
+    def rate(self, x: Field, cond: Field, g: GraphView, p_map: Optional[Callable] = None,
+             prev: Optional[Field] = None, col: Optional[Field] = None) -> Field:
         """Increment of one sub-step: [physics drift] + learned correction (V-Net output in lead-change units / K).
         Physics features are recomputed from the current sub-step state, so the guide and the learned dynamics stay
         coupled along the whole integration path.  ``p_map`` (diagnostics only) transforms the physics features
@@ -310,34 +353,43 @@ class LieGuidedForecaster(nn.Module):
         P = self.physics(x, cond, g)
         if p_map is not None and P is not None:
             P = p_map(P)
-        d = self.vnet(x, cond, P, g)
+        d = self.vnet(x, cond, P, g, prev=prev, col=col)
         h = 1.0 / cfg.ode_steps
         f = Field(d.s * self.delta_scale_s * h, d.v * self.delta_scale_v * h)
-        if cfg.ode_physics:
+        if cfg.ode_physics and self.guide is not None:  # the guide-free pair has no guide and hence no drift
             drift = self.physics_drift(x, cond, g, P)
             f = Field(f.s + drift.s, f.v + drift.v)
         return f
 
-    def integrate(self, state: Field, cond: Field, g: GraphView, p_map: Optional[Callable] = None) -> Field:
-        """Fixed-step integration over the lead (explicit Euler or Heun); conditions are held fixed within the lead."""
+    def integrate(self, state: Field, cond: Field, g: GraphView, p_map: Optional[Callable] = None,
+                  prev: Optional[Field] = None, col: Optional[Field] = None) -> Field:
+        """Fixed-step integration over the lead (explicit Euler or Heun).  Conditions are held fixed within the lead
+        unless ``ode_path_forcing`` (stage17).  ``prev`` (stage14) is the observed change before the lead and is given
+        to every sub-step; the column inputs ``col`` (stage15a) exist at the initial time only, i.e. sub-step 0.
+        The intermediate path states are kept in ``last_path`` (stage17 path supervision)."""
         cfg = self.vnet.cfg
         x = state
-        for _ in range(cfg.ode_steps):
-            f1 = self.rate(x, cond, g, p_map)
+        path = []
+        for k in range(cfg.ode_steps):
+            ck, ci = self.sub_cond(cond, g, k), (col if k == 0 else None)
+            f1 = self.rate(x, ck, g, p_map, prev=prev, col=ci)
             if cfg.ode_solver == "heun":
                 x1 = Field(x.s + f1.s, x.v + f1.v)
-                f2 = self.rate(x1, cond, g, p_map)
+                f2 = self.rate(x1, self.sub_cond(cond, g, k + 1), g, p_map, prev=prev)
                 x = Field(x.s + 0.5 * (f1.s + f2.s), x.v + 0.5 * (f1.v + f2.v))
             else:
                 x = Field(x.s + f1.s, x.v + f1.v)
+            path.append(x)
+        self.last_path = path[:-1]
         return x
 
     def physics_only(self, state: Field, cond: Field, g: GraphView) -> Field:
         """Forecast from the physics drift alone (V-Net switched off): diagnostic of the guide's tendency."""
         cfg = self.vnet.cfg
         x = state
-        for _ in range(cfg.ode_steps):
-            drift = self.physics_drift(x, cond, g, self.physics(x, cond, g))
+        for k in range(cfg.ode_steps):
+            ck = self.sub_cond(cond, g, k)
+            drift = self.physics_drift(x, ck, g, self.physics(x, ck, g), use_gain=False)
             x = Field(x.s + drift.s, x.v + drift.v)
         return x
 
