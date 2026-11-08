@@ -6,3 +6,8 @@
 [04:05:21] runs/era5_64x32_s17a_dyn pipeline exit 0
 [04:05:51] stage17a guided Stage B OOM-killed (14 GB, batch 4 ODE); chain stopped by hand before decide/marker
 [04:21:28] stage17a resume (guided Stage B with ODE checkpointing)
+[13:41:14] runs/era5_64x32_s17a_dyn pipeline exit 0
+[13:57:48] runs/era5_64x32_s17a_dyn eval_2020 exit 0
+[14:15:24] runs/era5_64x32_s17a_dyn eval_2022 exit 0
+{"adopt": false, "improved_leads": 0, "mean_gain_pct": -3.0, "gain_pct": {"1": -3.28, "2": -3.39, "3": -3.27, "4": -2.81, "5": -2.27}, "candidate": "runs/era5_64x32_s17a_dyn/eval.json", "baseline": "runs/era5_64x32_s17_ctl/eval.json"}
+[14:15:25] stage17a done CHAIN_S17A_DONE

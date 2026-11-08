@@ -37,3 +37,124 @@ runs/era5_64x32_s17a_dyn/chain_s17a.sh: line 33:  1707 Killed                  p
 [06:41:52] B[vnet]   250  L_f 0.1521 L_roll 0.3030 L_phys 0.00017 L_int 0.1169 | val MSE 0.0478 2-step 0.0958 (persistence 0.3295) 6/12/18 h 0.0229/0.0330/0.0416 | 33.13 s/step
 [09:01:48] B[vnet]   500  L_f 0.1370 L_roll 0.2692 L_phys 0.00008 L_int 0.1013 | val MSE 0.0451 2-step 0.0928 (persistence 0.3295) 6/12/18 h 0.0211/0.0305/0.0388 | 33.36 s/step
 [11:16:15] B[vnet]   750  L_f 0.1293 L_roll 0.2431 L_phys 0.00007 L_int 0.0975 | val MSE 0.0430 2-step 0.0860 (persistence 0.3295) 6/12/18 h 0.0204/0.0294/0.0372 | 33.00 s/step
+[13:20:23] B[vnet]   999  L_f 0.1266 L_roll 0.2312 L_phys 0.00004 L_int 0.0953 | val MSE 0.0426 2-step 0.0852 (persistence 0.3295) 6/12/18 h 0.0203/0.0291/0.0368 | 32.23 s/step
+[13:20:23] stage B[vnet] done in 537.1 min, best val MSE 0.1277
+[13:20:28] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[13:21:22] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[13:21:22] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[13:21:22] run runs/era5_64x32_s17a_dyn: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[13:21:24] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[13:36:35] deterministic rollouts done in 15.2 min
+[13:36:38] eval written to runs/era5_64x32_s17a_dyn/eval.json
+[13:36:43] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[13:37:35] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[13:37:35] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+{
+ "run": "runs/era5_64x32_s17a_dyn",
+ "p_dependence_mse": {
+  "true_P": 0.04349068117638429,
+  "zero_P": 0.09235965460538864,
+  "shuffled_P": 0.0862913044790427,
+  "persistence": 0.349194457133611
+ },
+ "p_dependence_relative": {
+  "true_P": 1.0,
+  "zero_P": 2.12366539468093,
+  "shuffled_P": 1.984133201525926,
+  "persistence": 8.029178842184375
+ },
+ "linear_probe_r2_24h_scalar_tendency": {
+  "channels": [
+   "z500",
+   "t850",
+   "q700",
+   "t2m",
+   "msl"
+  ],
+  "state_only": [
+   0.06653839349746704,
+   0.13508695363998413,
+   0.0911257266998291,
+   0.05969017744064331,
+   0.07599544525146484
+  ],
+  "guide_only": [
+   0.38847649097442627,
+   0.4108617901802063,
+   0.2908627390861511,
+   0.24366497993469238,
+   0.34789735078811646
+  ],
+  "state_plus_guide": [
+   0.40748000144958496,
+   0.44545978307724,
+   0.29592597484588623,
+   0.25483405590057373,
+   0.355243444442749
+  ],
+  "physics_ops_only": [
+   0.27005261182785034,
+   0.32458430528640747,
+   0.24744313955307007,
+   0.21593844890594482,
+   0.33570122718811035
+  ],
+  "state_plus_physics_ops": [
+   0.2782202363014221,
+   0.34189629554748535,
+   0.2526128888130188,
+   0.2219122052192688,
+   0.34223324060440063
+  ]
+ },
+ "linear_probe_r2_mean": {
+  "state_only": 0.08568733930587769,
+  "guide_only": 0.33635267019271853,
+  "state_plus_guide": 0.3517886519432068,
+  "physics_ops_only": 0.27874394655227663,
+  "state_plus_physics_ops": 0.28737497329711914
+ },
+ "pigt_attention_mass": {
+  "sources": [
+   "H",
+   "P",
+   "O"
+  ],
+  "P0": [
+   [
+    0.1588324010372162,
+    0.26556071639060974,
+    0.575605571269989
+   ]
+  ],
+  "P1": [
+   [
+    0.21392586827278137,
+    0.31177839636802673,
+    0.47429588437080383
+   ]
+  ],
+  "P2": [
+   [
+    0.3233180344104767,
+    0.26340949535369873,
+    0.41327229142189026
+   ]
+  ],
+  "P1u": [
+   [
+    0.4718396067619324,
+    0.25080016255378723,
+    0.2773611843585968
+   ]
+  ],
+  "P0u": [
+   [
+    0.3361778259277344,
+    0.32411885261535645,
+    0.3397029936313629
+   ]
+  ]
+ }
+}
+PIPELINE_DONE
