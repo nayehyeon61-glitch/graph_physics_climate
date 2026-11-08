@@ -23,3 +23,4 @@
 [14:28:54] stage B[vnet]: V-Net initialised from runs/era5_64x32_s9b_merged/vnet.pt (new: ['drift_gain_s', 'drift_gain_v'])
 [14:32:06] B[vnet]     0  L_f 0.2848 L_roll 0.4867 L_phys 0.00004 L_int 0.3587 | val MSE 0.1009 2-step 0.1685 (persistence 0.3295) 6/12/18 h 0.0511/0.0902/0.0984 gain 0.00/0.00/0.00/0.00/0.00/0.00/-0.00/0.00 | 191.30 s/step
 [16:36:01] B[vnet]   250  L_f 0.1514 L_roll 0.3021 L_phys 0.00015 L_int 0.1158 | val MSE 0.0475 2-step 0.0955 (persistence 0.3295) 6/12/18 h 0.0226/0.0327/0.0413 gain 0.02/0.02/0.03/0.03/0.02/0.03/0.03/0.02 | 30.39 s/step
+[18:48:25] B[vnet]   500  L_f 0.1363 L_roll 0.2678 L_phys 0.00007 L_int 0.1002 | val MSE 0.0448 2-step 0.0924 (persistence 0.3295) 6/12/18 h 0.0208/0.0302/0.0385 gain 0.03/0.04/0.05/0.03/0.04/0.04/0.04/0.04 | 31.08 s/step
