@@ -1,1 +1,22 @@
 [02:15:48] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[02:16:32] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[02:16:32] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[02:16:32] run runs/era5_64x32_s17a_dyn: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[02:16:33] stage B[vnet_noguide]: vnet params 660629, steps 1000, batch 4, rollout steps 2 from step 0 (weight 1.0)
+[02:16:33] stage B[vnet_noguide]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift off, sub-step solar forcing
+[02:16:33] stage B[vnet_noguide]: V-Net initialised from runs/era5_64x32_s9b_merged/vnet_noguide.pt
+[02:17:24] B[vnet_noguide]     0  L_f 0.2873 L_roll 0.4905 L_phys 0.00003 L_int 0.3610 | val MSE 0.1022 2-step 0.1699 (persistence 0.3295) 6/12/18 h 0.0509/0.0903/0.0993 | 51.26 s/step
+[02:43:44] B[vnet_noguide]   250  L_f 0.1629 L_roll 0.3073 L_phys 0.00009 L_int 0.1925 | val MSE 0.0508 2-step 0.1019 (persistence 0.3295) 6/12/18 h 0.0252/0.0364/0.0451 | 6.50 s/step
+[03:10:26] B[vnet_noguide]   500  L_f 0.1555 L_roll 0.3016 L_phys 0.00004 L_int 0.1404 | val MSE 0.0485 2-step 0.0985 (persistence 0.3295) 6/12/18 h 0.0234/0.0339/0.0427 | 6.45 s/step
+[03:36:38] B[vnet_noguide]   750  L_f 0.1462 L_roll 0.2733 L_phys 0.00011 L_int 0.1230 | val MSE 0.0468 2-step 0.0941 (persistence 0.3295) 6/12/18 h 0.0226/0.0327/0.0412 | 6.40 s/step
+[04:03:21] B[vnet_noguide]   999  L_f 0.1432 L_roll 0.2612 L_phys 0.00005 L_int 0.1200 | val MSE 0.0463 2-step 0.0929 (persistence 0.3295) 6/12/18 h 0.0224/0.0323/0.0407 | 6.41 s/step
+[04:03:21] stage B[vnet_noguide] done in 106.8 min, best val MSE 0.1392
+[04:04:01] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[04:05:08] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[04:05:08] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[04:05:08] run runs/era5_64x32_s17a_dyn: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[04:05:09] stage B[vnet]: vnet params 962534, steps 1000, batch 4, rollout steps 2 from step 0 (weight 1.0)
+[04:05:09] stage B[vnet]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift off, sub-step solar forcing
+[04:05:09] stage B[vnet]: V-Net initialised from runs/era5_64x32_s9b_merged/vnet.pt
+runs/era5_64x32_s17a_dyn/chain_s17a.sh: line 33:  1707 Killed                  python -W ignore scripts/train_eval.py --run $D $FT --stage b --init-vnet $S9B/vnet.pt
+[04:21:31] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions

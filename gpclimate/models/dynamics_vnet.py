@@ -53,6 +53,11 @@ class VNetConfig:
     ode_steps: int = 4  # sub-steps per lead (4 x 6 h for a 24 h lead)
     ode_solver: str = "euler"  # "euler" | "heun" (Heun = 2 evaluations per sub-step)
     ode_physics: bool = False
+    # Gradient checkpointing of every ODE sub-step while training: activations of a sub-step are recomputed in the
+    # backward pass instead of kept, so memory no longer grows with ode_steps x rollout (the guided ODE V-Net at
+    # batch 4, rollout 2 needed 14 GB and was OOM-killed on the 16 GB machine, stage17a 2026-11-08).  Same numbers,
+    # about one extra forward pass per step.  No effect without gradients (evaluation, sampling).
+    ode_checkpoint: bool = True
     # stage13: continuous neural-operator layer on the grid after the mesh V-Net ("" = off, "fft" = Fourier
     # neural operator, "sht" = spherical neural operator via torch_harmonics); residual on the delta, zero-initialised
     neural_op: str = ""
@@ -543,19 +548,27 @@ class LieGuidedForecaster(nn.Module):
         cfg = self.vnet.cfg
         x = state
         path = []
+        ckpt = cfg.ode_checkpoint and torch.is_grad_enabled()
         for k in range(cfg.ode_steps):
-            ck, ci = self.sub_cond(cond, g, k), (col if k == 0 else None)
-            pk = self._prev_at(prev, k)
-            f1 = self.rate(x, ck, g, p_map, prev=pk, col=ci)
-            if cfg.ode_solver == "heun":
-                x1 = Field(x.s + f1.s, x.v + f1.v)
-                f2 = self.rate(x1, self.sub_cond(cond, g, k + 1), g, p_map, prev=self._prev_at(prev, k + 1))
-                x = Field(x.s + 0.5 * (f1.s + f2.s), x.v + 0.5 * (f1.v + f2.v))
+            if ckpt:
+                from torch.utils.checkpoint import checkpoint
+                x = checkpoint(self._sub_step, x, cond, g, k, p_map, prev, col, use_reentrant=False)
             else:
-                x = Field(x.s + f1.s, x.v + f1.v)
+                x = self._sub_step(x, cond, g, k, p_map, prev, col)
             path.append(x)
         self.last_path = path[:-1]
         return x
+
+    def _sub_step(self, x: Field, cond: Field, g: GraphView, k: int, p_map: Optional[Callable], prev, col) -> Field:
+        """One sub-step ``k`` of ``integrate`` (explicit Euler or Heun)."""
+        cfg = self.vnet.cfg
+        ck, ci = self.sub_cond(cond, g, k), (col if k == 0 else None)
+        f1 = self.rate(x, ck, g, p_map, prev=self._prev_at(prev, k), col=ci)
+        if cfg.ode_solver == "heun":
+            x1 = Field(x.s + f1.s, x.v + f1.v)
+            f2 = self.rate(x1, self.sub_cond(cond, g, k + 1), g, p_map, prev=self._prev_at(prev, k + 1))
+            return Field(x.s + 0.5 * (f1.s + f2.s), x.v + 0.5 * (f1.v + f2.v))
+        return Field(x.s + f1.s, x.v + f1.v)
 
     def physics_only(self, state: Field, cond: Field, g: GraphView) -> Field:
         """Forecast from the physics drift alone (V-Net switched off): diagnostic of the guide's tendency."""

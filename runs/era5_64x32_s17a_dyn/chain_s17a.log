@@ -3,3 +3,6 @@
 [02:06:13] runs/era5_64x32_s17_ctl pipeline exit 0
 [02:10:59] runs/era5_64x32_s17_ctl eval_2020 exit 0
 [02:15:45] runs/era5_64x32_s17_ctl eval_2022 exit 0
+[04:05:21] runs/era5_64x32_s17a_dyn pipeline exit 0
+[04:05:51] stage17a guided Stage B OOM-killed (14 GB, batch 4 ODE); chain stopped by hand before decide/marker
+[04:21:28] stage17a resume (guided Stage B with ODE checkpointing)
