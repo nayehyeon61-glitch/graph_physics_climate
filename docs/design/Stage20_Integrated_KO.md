@@ -43,4 +43,5 @@ stage9(stage3–15 이점 통합)와 같은 방식으로, stage17–19에서 이
 ## 4. 비용과 위험
 
 - ODE 4 sub-step(guide와 core를 매 sub-step 다시 계산)은 delta보다 step당 약 5배 비쌉니다. guide 모델 3000 step은 약 17 h, 짝은 약 5 h, 대조군은 약 4 h, Stage C와 평가는 약 2 h로 전체 약 1.2일입니다. stage17a 실측으로 다시 확인합니다.
+- **stage17a 실측(2026-11-08 14:20 KST)으로 다시 계산:** guide 모델 ODE Stage B는 batch 4에서 메모리 14 GB를 넘겨 종료됐고, sub-step gradient checkpointing(같은 기울기, 최대 6.7 GB)을 넣은 뒤 step당 약 31초입니다(delta guide 모델 4.7초의 6.6배). guide 없는 ODE 짝은 checkpointing 전 6.4초였고, 지금은 약 8초로 봅니다. 그래서 guide 모델 3000 step은 약 26–31 h(core 구성은 더 김), 짝은 약 7 h, 대조군은 약 5 h, Stage C와 평가는 약 2 h로 전체 약 1.7–1.9일입니다.
 - 누적 구성이라, 선택된 run에는 그 경로에서 단독으로는 기각된 구성이 포함될 수 있습니다. 예를 들어 19a가 기각돼도 19b에는 PINN이 남습니다. 그래도 대조군 대비 가장 좋은 조합이라는 점은 실측으로 확인된 것이고, 어떤 구성이 들어갔는지는 `compose.json`에 그대로 기록합니다.
