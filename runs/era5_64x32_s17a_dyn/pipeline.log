@@ -34,3 +34,4 @@ runs/era5_64x32_s17a_dyn/chain_s17a.sh: line 33:  1707 Killed                  p
 [04:23:15] stage B[vnet]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift off, sub-step solar forcing
 [04:23:15] stage B[vnet]: V-Net initialised from runs/era5_64x32_s9b_merged/vnet.pt
 [04:26:28] B[vnet]     0  L_f 0.2848 L_roll 0.4867 L_phys 0.00004 L_int 0.3587 | val MSE 0.1009 2-step 0.1685 (persistence 0.3295) 6/12/18 h 0.0511/0.0902/0.0984 | 192.77 s/step
+[06:41:52] B[vnet]   250  L_f 0.1521 L_roll 0.3030 L_phys 0.00017 L_int 0.1169 | val MSE 0.0478 2-step 0.0958 (persistence 0.3295) 6/12/18 h 0.0229/0.0330/0.0416 | 33.13 s/step
