@@ -243,3 +243,7 @@ stage9 갱신(2026-11-05 21:00 KST): 통합 구조 stage9는 ClimODE 기준 지�
 출처(2025–26): SDECast https://arxiv.org/abs/2610.03313, PINN-Cast https://arxiv.org/abs/2604.27313, PASSAT https://www.ijcai.org/proceedings/2025/0885.pdf, ClimateLLM https://arxiv.org/abs/2502.11059, PhyDL-NWP https://arxiv.org/abs/2505.14555, FlowCast-ODE https://arxiv.org/abs/2509.14775, WB2 Aurora gs://weatherbench2/datasets/aurora/2022-64x32_equiangular_conservative.zarr, FGN gs://weatherbench2/datasets/fgn/2022-64x32_equiangular_conservative_mean.zarr.
 
 출처: ClimODE https://arxiv.org/abs/2404.10024, CoDiCast https://arxiv.org/abs/2409.05975 (표: NODE·ClimaX·FourCastNet·ClimODE·IFS 재현값 포함), WeatherODE https://arxiv.org/abs/2410.06560, ClimPhyDM https://arxiv.org/abs/2608.26907, WeatherBench2 데이터 gs://weatherbench2/datasets/ (hres/pangu/ifs_ens …64x32_equiangular_conservative.zarr).
+
+## 3단계 결과 — stage16 문헌 분할 재학습(2017–2018 직접 비교, 2026-11-08 09:20 KST)
+
+같은 분할(학습 2006–2015, 시험 2017–2018)로 재학습한 stage16을 같은 182개 초기 시각에서 ClimODE와 직접 비교했다(`reports/compare_stage16.md`). ClimODE 기준 지수는 z500 24/72 h **+30.1/+27.5 %**, t850 24/72 h **+24.6/+31.9 %**로, 같은 학습 기간 모델(ClimaX, FourCastNet, CoDiCast, ClimODE)과 SDECast보다 모든 칸에서 앞서고 PINN-Cast(t850 24 h)와 WeatherODE(t850 72 h)도 넘는다. WeatherODE(37년·1시간 간격·48변수)에 남은 차이는 z500 24/72 h −10.7/−4.7 %p, t850 24 h −8.3 %p. 2019에서 stage16은 stage9b와 같은 수준(평균 −0.06 %)이라 학습 연도 차이가 결과를 바꾸지 않는다.
