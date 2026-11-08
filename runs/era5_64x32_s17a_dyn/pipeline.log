@@ -36,3 +36,4 @@ runs/era5_64x32_s17a_dyn/chain_s17a.sh: line 33:  1707 Killed                  p
 [04:26:28] B[vnet]     0  L_f 0.2848 L_roll 0.4867 L_phys 0.00004 L_int 0.3587 | val MSE 0.1009 2-step 0.1685 (persistence 0.3295) 6/12/18 h 0.0511/0.0902/0.0984 | 192.77 s/step
 [06:41:52] B[vnet]   250  L_f 0.1521 L_roll 0.3030 L_phys 0.00017 L_int 0.1169 | val MSE 0.0478 2-step 0.0958 (persistence 0.3295) 6/12/18 h 0.0229/0.0330/0.0416 | 33.13 s/step
 [09:01:48] B[vnet]   500  L_f 0.1370 L_roll 0.2692 L_phys 0.00008 L_int 0.1013 | val MSE 0.0451 2-step 0.0928 (persistence 0.3295) 6/12/18 h 0.0211/0.0305/0.0388 | 33.36 s/step
+[11:16:15] B[vnet]   750  L_f 0.1293 L_roll 0.2431 L_phys 0.00007 L_int 0.0975 | val MSE 0.0430 2-step 0.0860 (persistence 0.3295) 6/12/18 h 0.0204/0.0294/0.0372 | 33.00 s/step
