@@ -1,3 +1,23 @@
 ClimODE {'class': 'Climate_encoder_free_uncertain', 'solver': 'euler', 'params': 2752099, 'eval_mode': False, 'ckpt_url': 'https://raw.githubusercontent.com/Aalto-QuML/ClimODE/e729d23e8799ce0e075699e76d60227d848d8d0c/checkpoints/ClimODE_global.pt', 'climode_dir': '/home/claude/nayehyeon61-glitch/physical_guide_flowmatching/third_party/climode'}; shard 0/1: 24 init times, leads [24, 48, 72, 96, 120] h
 ic 2/24 (19s, vel-fit loss 1.27e-04)
 ic 4/24 (38s, vel-fit loss 1.22e-04)
+ic 6/24 (58s, vel-fit loss 1.24e-04)
+ic 8/24 (76s, vel-fit loss 1.22e-04)
+ic 10/24 (95s, vel-fit loss 1.24e-04)
+ic 12/24 (112s, vel-fit loss 1.23e-04)
+ic 14/24 (129s, vel-fit loss 1.22e-04)
+ic 16/24 (147s, vel-fit loss 1.25e-04)
+ic 18/24 (165s, vel-fit loss 1.22e-04)
+ic 20/24 (183s, vel-fit loss 1.15e-04)
+ic 22/24 (201s, vel-fit loss 1.19e-04)
+ic 24/24 (218s, vel-fit loss 1.32e-04)
+shard 0/1 written: runs/climode_1718_trainmode_crps/shard_0of1.npz
+# ClimODE (published checkpoint) on the 2019 test protocol: 24 init times
+
+| lead | z500 ClimODE / persistence | t850 ClimODE / persistence | t2m ClimODE / persistence | u10 ClimODE / persistence | v10 ClimODE / persistence |
+|---|---|---|---|---|---|
+| 24 h | 222.6 / 588.4 | 1.357 / 2.773 | 1.847 / 1.834 | 1.696 / 3.41 | 1.716 / 4.077 |
+| 48 h | 373.2 / 821.8 | 1.975 / 3.711 | 3.461 / 2.518 | 2.213 / 4.137 | 2.273 / 4.701 |
+| 72 h | 517 / 911.5 | 2.542 / 4.09 | 3.453 / 2.86 | 2.786 / 4.262 | 2.926 / 4.725 |
+| 96 h | 658.4 / 984.5 | 3.088 / 4.328 | 3.858 / 3.077 | 3.245 / 4.483 | 3.502 / 4.855 |
+| 120 h | 784.3 / 1029 | 3.636 / 4.472 | 4.401 / 3.226 | 3.71 / 4.65 | 4.102 / 4.915 |
