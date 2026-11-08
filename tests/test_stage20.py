@@ -28,27 +28,34 @@ def _eval(path: Path, scale: float):
     json.dump({"rmse": rmse}, open(path / "eval.json", "w"))
 
 
-def test_compose_picks_the_best_run_that_passes_against_the_control(tmp_path):
+def test_compose_picks_the_best_ode_run_against_stage17a(tmp_path):
+    """Rule of the 2026-11-08 decision card: the best run against stage17a (adoption rule), else stage17a itself;
+    the gains against the 1000-step delta control are only recorded."""
     runs = {"stage17a": "r17a", "stage18": "r18", "stage18c": "r18c", "stage19c": "r19c"}
     _eval(tmp_path / "ctl", 1.0)
-    _eval(tmp_path / "r17a", 0.99)  # +1 %
-    _eval(tmp_path / "r18", 1.01)  # worse
-    _eval(tmp_path / "r18c", 0.97)  # +3 %, best
-    _eval(tmp_path / "r19c", 0.98)
+    _eval(tmp_path / "r17a", 1.03)  # -3 % vs the control, like the real stage17a
+    _eval(tmp_path / "r18", 1.04)  # worse than 17a
+    _eval(tmp_path / "r18c", 1.00)  # +2.9 % vs 17a, best
+    _eval(tmp_path / "r19c", 1.02)  # +1 % vs 17a
     for d in ("r17a", "r18", "r18c", "r19c"):
         json.dump({"integrator": "ode", "tendency_core": int(d != "r17a")}, open(tmp_path / d / "config.json", "w"))
     (tmp_path / "r18c" / "guide_finetuned.pt").write_bytes(b"x")
     (tmp_path / "r18c" / "guide.pt").write_bytes(b"x")
+    (tmp_path / "r17a" / "guide.pt").write_bytes(b"x")
     res = compose(tmp_path, ctl="ctl", runs=runs)
-    assert res["chosen"] == "stage18c" and res["src"] == "r18c"
+    assert res["chosen"] == "stage18c" and res["src"] == "r18c" and res["base"] == "stage17a"
     assert res["bflags"] == "--guide-lr 3e-5 --guide-heads-only 1" and res["files"] == ["guide.pt"]
-    assert not res["vs_control"]["stage18"]["adopt"] and res["vs_control"]["stage18c"]["mean_gain_pct"] == 3.0
-    _eval(tmp_path / "r18c", 1.02)
-    _eval(tmp_path / "r17a", 1.003)  # below the 0.5 % mean-gain threshold
-    _eval(tmp_path / "r19c", 1.05)
-    assert compose(tmp_path, ctl="ctl", runs=runs)["chosen"] is None  # nothing passes: stage20 stays stage9b
-    _eval(tmp_path / "r19c", 0.95)
+    assert not res["vs_base"]["stage18"]["adopt"] and res["vs_base"]["stage18c"]["mean_gain_pct"] == 2.91
+    assert not res["vs_control"]["stage17a"]["adopt"] and "stage17a" not in res["vs_base"]
+    _eval(tmp_path / "r18c", 1.04)
+    _eval(tmp_path / "r19c", 1.028)  # +0.2 %: below the 0.5 % mean-gain threshold
+    res = compose(tmp_path, ctl="ctl", runs=runs)
+    assert res["chosen"] == "stage17a" and res["bflags"] == "" and res["files"] == ["guide.pt"]  # nothing beats 17a
+    _eval(tmp_path / "r19c", 0.98)
     assert compose(tmp_path, ctl="ctl", runs=runs)["bflags"] == "--pinn-weight-b 0.02"
+    import shutil
+    shutil.rmtree(tmp_path / "r17a")
+    assert compose(tmp_path, ctl="ctl", runs=runs)["chosen"] is None  # no stage17a result: stage20 is not trained
 
 
 @pytest.fixture(scope="module")

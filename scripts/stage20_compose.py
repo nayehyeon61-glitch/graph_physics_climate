@@ -4,15 +4,20 @@ choose the configuration that collects the advantages of stage17–19.
 
 Every stage17–19 run was trained with the same paired fine-tuning from stage9b (1000 steps), was decided against the
 stage right before it, and -- because each chain builds on the member the previous chain adopted -- its config.json
-already carries the components adopted along its path.  The integrated configuration is therefore the run with the
-largest mean gain against the common same-budget control (stage17-ctl: stage9b fine-tuned 1000 steps without the new
-structure) among the runs that pass the adoption rule against that control (``decide_adoption``: >= 3 of 5 leads and
-mean >= 0.5 %).  With none passing, stage20 has no new structure and the chain only reports that.
+already carries the components adopted along its path.
+
+Selection rule (decision card 2026-11-08 08:10 KST, 감자 chose "계속 + stage20 규칙 완화"): stage17a (the ODE dynamic
+guide every later stage builds on) lost -3 % against the same-budget delta control stage17-ctl at 1000 steps, which
+may be under-training of the ODE rather than the structure.  So the configuration is chosen inside the ODE family:
+the run with the largest mean gain against stage17a among the runs that pass the adoption rule against stage17a
+(``decide_adoption``: >= 3 of 5 leads and mean >= 0.5 %); with none passing, stage17a itself.  stage20 then trains it
+with the larger budget (budget.env, 3000 steps) and the final verdict is against the same-budget (3000-step) delta
+control.  Every run's gain against stage17-ctl is still recorded (``vs_control``) for the report.
 
     python scripts/stage20_compose.py --out runs/era5_64x32_s20_integrated
 
-writes ``<out>/compose.json`` (every run's gain vs the control, the choice, the files and Stage B flags to reuse) and
-prints shell assignments (SRC=..., BFLAGS=...) for ``chain_s20.sh``.
+writes ``<out>/compose.json`` (every run's gain vs stage17a and vs the control, the choice, the files and Stage B flags
+to reuse) and prints shell assignments (SRC=..., BFLAGS=...) for ``chain_s20.sh``.
 """
 
 from __future__ import annotations
@@ -28,6 +33,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from decide_adoption import decide  # noqa: E402
 
 CTL = "runs/era5_64x32_s17_ctl"
+BASE = "stage17a"  # the ODE dynamic guide every stage17c-19c run builds on
 # stage -> run directory, in chain order
 RUNS = {
     "stage17a": "runs/era5_64x32_s17a_dyn",
@@ -46,35 +52,36 @@ EXTRA_B = {"stage19c": "--pinn-weight-b 0.02"}
 GUIDE_FILES = ("guide.pt", "a_done.json", "log_a.jsonl", "pinn_scales.json", "graph_embed.npy")
 
 
-def compose(root: Path, ctl: str = CTL, runs=None, min_mean_gain: float = 0.5) -> dict:
+def compose(root: Path, ctl: str = CTL, runs=None, min_mean_gain: float = 0.5, base: str = BASE) -> dict:
     runs = RUNS if runs is None else runs
     ctl_eval = root / ctl / "eval.json"
     if not ctl_eval.exists():
         raise FileNotFoundError(f"control {ctl_eval} missing")
-    base = json.load(open(ctl_eval))
-    table = {}
-    for stage, d in runs.items():
-        ev = root / d / "eval.json"
-        if ev.exists():
-            table[stage] = decide(json.load(open(ev)), base, min_mean_gain=min_mean_gain)
-    passing = {s: r for s, r in table.items() if r["adopt"]}
-    out = {"control": ctl, "vs_control": table, "chosen": None}
-    if passing:
-        stage = max(passing, key=lambda s: passing[s]["mean_gain_pct"])
-        d = root / runs[stage]
-        cfg = json.load(open(d / "config.json"))
-        bflags = []
-        if (d / "guide_finetuned.pt").exists():
-            bflags.append("--guide-lr 3e-5 --guide-heads-only 1")
-        if stage in EXTRA_B:
-            bflags.append(EXTRA_B[stage])
-        out.update(chosen=stage, src=runs[stage], bflags=" ".join(bflags),
-                   files=[f for f in GUIDE_FILES if (d / f).exists()],
-                   components={k: cfg.get(k) for k in ("integrator", "ode_steps", "ode_path_forcing", "inter_times",
-                                                        "flow_head", "ode_physics", "ode_drift", "tendency_core",
-                                                        "core_tokens", "prev_path", "core_laplace", "graph_embed")})
-        if (d / "pinn_scales.json").exists():
-            out["components"]["pinn_stage_a"] = True
+    evals = {s: json.load(open(root / d / "eval.json")) for s, d in runs.items() if (root / d / "eval.json").exists()}
+    ctl_ev = json.load(open(ctl_eval))
+    table = {s: decide(ev, ctl_ev, min_mean_gain=min_mean_gain) for s, ev in evals.items()}
+    out = {"rule": f"best run vs {base} (adoption rule), else {base}; final verdict vs the same-budget control",
+           "base": base, "control": ctl, "vs_control": table, "vs_base": {}, "chosen": None}
+    if base not in evals:
+        return out
+    vs_base = {s: decide(ev, evals[base], min_mean_gain=min_mean_gain) for s, ev in evals.items() if s != base}
+    out["vs_base"] = vs_base
+    passing = {s: r for s, r in vs_base.items() if r["adopt"]}
+    stage = max(passing, key=lambda s: passing[s]["mean_gain_pct"]) if passing else base
+    d = root / runs[stage]
+    cfg = json.load(open(d / "config.json"))
+    bflags = []
+    if (d / "guide_finetuned.pt").exists():
+        bflags.append("--guide-lr 3e-5 --guide-heads-only 1")
+    if stage in EXTRA_B:
+        bflags.append(EXTRA_B[stage])
+    out.update(chosen=stage, src=runs[stage], bflags=" ".join(bflags),
+               files=[f for f in GUIDE_FILES if (d / f).exists()],
+               components={k: cfg.get(k) for k in ("integrator", "ode_steps", "ode_path_forcing", "inter_times",
+                                                    "flow_head", "ode_physics", "ode_drift", "tendency_core",
+                                                    "core_tokens", "prev_path", "core_laplace", "graph_embed")})
+    if (d / "pinn_scales.json").exists():
+        out["components"]["pinn_stage_a"] = True
     return out
 
 

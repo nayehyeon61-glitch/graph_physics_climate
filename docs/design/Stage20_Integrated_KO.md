@@ -10,10 +10,11 @@ stage9(stage3–15 이점 통합)와 같은 방식으로, stage17–19에서 이
 ## 1. 구성 선택 규칙 (`scripts/stage20_compose.py`)
 
 - stage17–19의 모든 run은 같은 짝 미세조정(stage9b에서 1000 step)으로 학습했습니다. 각 run은 바로 앞 stage와 비교해 판정했고, 체인마다 앞에서 채택된 쪽 위에 쌓았기 때문에 각 run의 `config.json`에는 그 경로에서 채택된 구성이 이미 누적되어 있습니다.
-- 그래서 통합 구성은 **공통 대조군 stage17-ctl(같은 예산, 새 구조 없음)에 대해 채택 기준(5개 선행 중 3개 이상 개선, 평균 ≥ 0.5 %)을 통과한 run 중 평균 이득이 가장 큰 run의 구성**으로 정합니다.
+- ~~처음 규칙: 공통 대조군 stage17-ctl(같은 예산, 새 구조 없음)에 대해 채택 기준(5개 선행 중 3개 이상 개선, 평균 ≥ 0.5 %)을 통과한 run 중 평균 이득이 가장 큰 run의 구성.~~
+- **바뀐 규칙(결정 카드 2026-11-08 08:10 KST, 감자 선택 "계속 + stage20 규칙 완화"):** stage17a(ODE 동적 guide)가 1000 step에서 delta 대조군보다 −3.0 % 나빴고, 이것이 구조 탓인지 ODE의 학습 부족 탓인지 1000 step으로는 가릴 수 없습니다. 그래서 구성은 **ODE 계열 안에서** 고릅니다. stage17a 대비 채택 기준(5개 lead 중 3개 이상 개선, 평균 ≥ 0.5 %)을 통과한 run 중 평균 이득이 가장 큰 run이고, 통과한 run이 없으면 stage17a 자체입니다. 이 구성을 3000 step으로 학습하고, 최종 판정은 3000 step delta 대조군(`runs/era5_64x32_s20_ctl`) 대비로 합니다. 1000 step 대조군 대비 이득은 보고용으로 `compose.json`의 `vs_control`에 남깁니다.
 - 그 run의 guide(Stage A, PINN 전처리 `pinn_scales.json`, 그래프 임베딩 `graph_embed.npy`)는 그대로 씁니다.
 - 그 run이 Stage B에서 쓴 옵션도 그대로 씁니다. guide head 경로 미세조정은 `guide_finetuned.pt`가 있으면, 경로 PINN은 stage19c인 경우입니다.
-- 통과한 run이 없으면 stage20은 학습하지 않고, 통합 모델은 stage9b로 남는다고 기록합니다.
+- ~~통과한 run이 없으면 stage20은 학습하지 않음~~ → 바뀐 규칙에서는 stage17a 결과가 없을 때만 학습하지 않습니다(체인 로그의 "no stage17-19 run passes ..." 문구는 실행 중인 스크립트라 고치지 않았고, 이 경우를 뜻합니다).
 - 선택 결과와 모든 run의 대조군 대비 이득은 `runs/era5_64x32_s20_integrated/compose.json`에 남습니다.
 
 ## 2. 학습 (`runs/era5_64x32_s20_integrated/budget.env`, 결정 카드의 선택)

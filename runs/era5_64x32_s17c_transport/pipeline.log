@@ -25,3 +25,10 @@
 [16:36:01] B[vnet]   250  L_f 0.1514 L_roll 0.3021 L_phys 0.00015 L_int 0.1158 | val MSE 0.0475 2-step 0.0955 (persistence 0.3295) 6/12/18 h 0.0226/0.0327/0.0413 gain 0.02/0.02/0.03/0.03/0.02/0.03/0.03/0.02 | 30.39 s/step
 [18:48:25] B[vnet]   500  L_f 0.1363 L_roll 0.2678 L_phys 0.00007 L_int 0.1002 | val MSE 0.0448 2-step 0.0924 (persistence 0.3295) 6/12/18 h 0.0208/0.0302/0.0385 gain 0.03/0.04/0.05/0.03/0.04/0.04/0.04/0.04 | 31.08 s/step
 [21:05:56] B[vnet]   750  L_f 0.1284 L_roll 0.2422 L_phys 0.00006 L_int 0.0963 | val MSE 0.0427 2-step 0.0858 (persistence 0.3295) 6/12/18 h 0.0201/0.0291/0.0368 gain 0.04/0.05/0.06/0.03/0.04/0.05/0.05/0.05 | 31.72 s/step
+[23:08:05] B[vnet]   999  L_f 0.1257 L_roll 0.2300 L_phys 0.00004 L_int 0.0942 | val MSE 0.0423 2-step 0.0850 (persistence 0.3295) 6/12/18 h 0.0199/0.0288/0.0365 gain 0.04/0.05/0.06/0.03/0.04/0.05/0.05/0.05 | 31.15 s/step
+[23:08:06] stage B[vnet] done in 519.2 min, best val MSE 0.1272
+[23:08:10] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[23:09:06] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[23:09:06] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[23:09:06] run runs/era5_64x32_s17c_transport: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[23:09:07] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'physics_only', 'no_guide']
