@@ -1,0 +1,25 @@
+[14:17:04] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[14:18:00] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[14:18:00] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[14:18:00] run runs/era5_64x32_s17c_transport: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[14:18:01] stage A: guide initialised from runs/era5_64x32_s9b_merged/guide.pt (new: ['flow_out.w_re', 'flow_out.w_im'])
+[14:18:01] stage A: Lie transport guide — tendency = semi-Lagrangian transport by the guide flow + source head
+[14:18:01] stage A: trunk frozen, training the heads only (25000 trainable of 276764)
+[14:18:01] stage A: forecast-state perturbation from runs/era5_64x32_s17a_dyn/vnet_noguide.pt with p=0.3
+[14:18:01] stage A: guide params 276764, steps 1000, batch 4
+[14:18:08] A     0  L_rec 0.0749 L_aux 0.2044 L_tend 0.8293 L_clos 0.0000 | val rec 0.0223 aux 0.1490 tend 0.8857 clos 0.0000 (resolved only 0.0000) transport only 1.0047 persistence 0.9569 | 6.92 s/step
+[14:20:13] A   200  L_rec 0.0485 L_aux 0.1749 L_tend 0.4159 L_clos 0.0000 | val rec 0.0255 aux 0.1489 tend 0.3836 clos 0.0000 (resolved only 0.0000) transport only 0.7417 persistence 0.9569 | 0.66 s/step
+[14:22:12] A   400  L_rec 0.0366 L_aux 0.1602 L_tend 0.3680 L_clos 0.0000 | val rec 0.0241 aux 0.1468 tend 0.3599 clos 0.0000 (resolved only 0.0000) transport only 0.7049 persistence 0.9569 | 0.63 s/step
+[14:24:13] A   600  L_rec 0.0808 L_aux 0.2223 L_tend 0.5008 L_clos 0.0000 | val rec 0.0233 aux 0.1454 tend 0.3518 clos 0.0000 (resolved only 0.0000) transport only 0.6910 persistence 0.9569 | 0.62 s/step
+[14:26:09] A   800  L_rec 0.0353 L_aux 0.1606 L_tend 0.3682 L_clos 0.0000 | val rec 0.0233 aux 0.1452 tend 0.3497 clos 0.0000 (resolved only 0.0000) transport only 0.6836 persistence 0.9569 | 0.61 s/step
+[14:27:54] A   999  L_rec 0.0352 L_aux 0.1526 L_tend 0.3609 L_clos 0.0000 | val rec 0.0232 aux 0.1451 tend 0.3490 clos 0.0000 (resolved only 0.0000) transport only 0.6825 persistence 0.9569 | 0.59 s/step
+[14:27:54] stage A done in 9.9 min, best val score 0.4447, forecast-perturbed batches 298
+[14:27:58] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[14:28:54] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[14:28:54] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[14:28:54] run runs/era5_64x32_s17c_transport: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[14:28:54] stage B[vnet]: vnet params 962542, steps 1000, batch 4, rollout steps 2 from step 0 (weight 1.0)
+[14:28:54] stage B[vnet]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift on (learned gain, init 0), sub-step solar forcing
+[14:28:54] stage B[vnet]: V-Net initialised from runs/era5_64x32_s9b_merged/vnet.pt (new: ['drift_gain_s', 'drift_gain_v'])
+[14:32:06] B[vnet]     0  L_f 0.2848 L_roll 0.4867 L_phys 0.00004 L_int 0.3587 | val MSE 0.1009 2-step 0.1685 (persistence 0.3295) 6/12/18 h 0.0511/0.0902/0.0984 gain 0.00/0.00/0.00/0.00/0.00/0.00/-0.00/0.00 | 191.30 s/step
+[16:36:01] B[vnet]   250  L_f 0.1514 L_roll 0.3021 L_phys 0.00015 L_int 0.1158 | val MSE 0.0475 2-step 0.0955 (persistence 0.3295) 6/12/18 h 0.0226/0.0327/0.0413 gain 0.02/0.02/0.03/0.03/0.02/0.03/0.03/0.02 | 30.39 s/step
