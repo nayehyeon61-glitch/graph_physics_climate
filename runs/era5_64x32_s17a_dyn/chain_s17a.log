@@ -1,2 +1,5 @@
 [10:46:12] stage17a waits for POST_S16_DONE
 [00:16:15] stage17a start
+[02:06:13] runs/era5_64x32_s17_ctl pipeline exit 0
+[02:10:59] runs/era5_64x32_s17_ctl eval_2020 exit 0
+[02:15:45] runs/era5_64x32_s17_ctl eval_2022 exit 0
