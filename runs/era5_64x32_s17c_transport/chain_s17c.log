@@ -2,3 +2,8 @@
 [11:38:42] old chain (waiting on 17b) stopped; relaunched to follow stage17a
 [11:38:54] stage17c waits for CHAIN_S17A_DONE
 [14:17:01] stage17c start
+[23:29:31] stage17c pipeline exit 0
+[23:47:10] stage17c eval_2020 exit 0
+[00:05:32] stage17c eval_2022 exit 0
+{"adopt": false, "improved_leads": 5, "mean_gain_pct": 0.16, "gain_pct": {"1": 0.33, "2": 0.19, "3": 0.14, "4": 0.08, "5": 0.05}, "candidate": "runs/era5_64x32_s17c_transport/eval.json", "baseline": "runs/era5_64x32_s17a_dyn/eval.json"}
+[00:05:32] stage17c done CHAIN_S17C_DONE
