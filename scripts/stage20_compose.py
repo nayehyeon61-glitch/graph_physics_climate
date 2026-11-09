@@ -42,6 +42,7 @@ RUNS = {
     "stage18b": "runs/era5_64x32_s18b_prevpath",
     "stage18c": "runs/era5_64x32_s18c_guidepath",
     "stage18d": "runs/era5_64x32_s18d_laplace",
+    "stage18e": "runs/era5_64x32_s18e_tv",
     "stage19a": "runs/era5_64x32_s19a_gpinn",
     "stage19b": "runs/era5_64x32_s19b_gpinn",
     "stage19c": "runs/era5_64x32_s19c_gpinn",

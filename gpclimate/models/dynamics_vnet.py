@@ -111,6 +111,14 @@ class VNetConfig:
     core_laplace: bool = False
     core_k_ref: float = 1.0e5
     core_k_gain: float = 8.0
+    # stage18e edge-preserving diffusion in the Laplace block (Kovac & Smith 2009, arXiv 0911.1928, "Regression on a
+    # graph": an L1 penalty on the edge differences keeps jumps and fronts while smoothing the rest).  The face
+    # diffusivity is multiplied by eps / sqrt((q_j - q_i)^2 + eps^2): linear diffusion across small differences, a
+    # bounded flux across fronts (the eps-regularised gradient flow of sum_f |q_j - q_i|, total-variation flow).  eps
+    # per scalar variable = the median neighbour difference of the training states (preprocessing, buffer ``tv_eps0``)
+    # times a learned factor exp(tv_log_gain) (init 1).  Conservation and the stability cap are unchanged (factor <= 1).
+    # Needs core_laplace.
+    core_tv: bool = False
     # stage18b: the previous-state input follows the path — sub-step k of an ODE lead gets the state one lead before
     # *its own* time, X_{t + k 6 h - lead} (observed past states in the first lead, the previous lead's path later),
     # instead of X_{t - lead} for all sub-steps.  ``prev`` is then a list of ode_steps states.
@@ -193,6 +201,13 @@ class DynamicsVNet(nn.Module):
                 with torch.no_grad():
                     self.laplace_head.lin_s.weight.zero_()
                     self.laplace_head.lin_s.bias.fill_(-5.0 / cfg.core_k_gain)
+        self.tv_log_gain = None
+        if cfg.core_tv:  # stage18e: edge scale per scalar variable (preprocessing value x learned factor, init 1)
+            if not cfg.core_laplace:
+                raise ValueError("core_tv (stage18e) is the edge-preserving form of the Laplace block: set core_laplace")
+            if self.core_on:
+                self.register_buffer("tv_eps0", torch.ones(spec.n_s))
+                self.tv_log_gain = nn.Parameter(torch.zeros(spec.n_s))
         self.nudge_block = None
         if cfg.nudge:
             from gpclimate.nn.nudging import InitialNudging
@@ -233,6 +248,12 @@ class DynamicsVNet(nn.Module):
     def core_diffusivity(self, emb: Field) -> torch.Tensor:
         """stage18d: diffusivity K [B, N, n_s] (m^2/s, >= 0) of the scalar channels per cell."""
         return self.cfg.core_k_ref * nn.functional.softplus(self.cfg.core_k_gain * self.laplace_head(emb).s)
+
+    def core_tv_eps(self) -> Optional[torch.Tensor]:
+        """stage18e: edge scale eps [n_s] (normalised units) of the edge-preserving diffusion, None without core_tv."""
+        if self.tv_log_gain is None:
+            return None
+        return self.tv_eps0 * torch.exp(self.tv_log_gain)
 
     def core_flux(self, emb: Field, faces, gauge: torch.Tensor) -> torch.Tensor:
         """stage18: -div_G J_theta of the scalar channels [B, N, n_s] in units of the face graph's mean edge length
@@ -523,10 +544,11 @@ class LieGuidedForecaster(nn.Module):
         C = self.vnet.core_flux(emb, faces, gauge) * self.delta_scale_s / cfg.ode_steps
         h = 1.0 / cfg.ode_steps
         S_s, S_v = d.s * self.delta_scale_s * h, d.v * self.delta_scale_v * h
-        D, K = None, None
+        D, K, eps = None, None, None
         if self.vnet.laplace_head is not None:  # stage18d: Laplace block, diffusion of the transported scalars
             K = self.vnet.core_diffusivity(emb)
-            D = faces.diffusion(xb.s, faces.face_mean(K), 6 * 3600.0 * steps)
+            eps = self.vnet.core_tv_eps()  # stage18e: edge-preserving factor on the face diffusivity
+            D = faces.diffusion(xb.s, faces.face_mean(K), 6 * 3600.0 * steps, edge_eps=eps)
         with torch.no_grad():  # share of each core term (rms over the batch, normalised units) for the logs
             rms = lambda t: float(t.abs().pow(2).mean().sqrt())  # noqa: E731
             self.last_core = {"beta": [float(b) for b in beta.mean((0, 1))],
@@ -536,6 +558,11 @@ class LieGuidedForecaster(nn.Module):
                               "guide_transport": rms(torch.cat([tr.s.flatten(), tr.v.abs().flatten()]))}
             if D is not None:
                 self.last_core.update(diffusion=rms(D), K=[float(k) for k in K.mean((0, 1))])
+            if eps is not None:  # edge scale, learned factor and the mean kept share of the diffusivity per variable
+                dq = xb.s.index_select(1, faces.dst) - xb.s.index_select(1, faces.src)
+                self.last_core.update(tv_eps=[float(e) for e in eps],
+                                      tv_gain=[float(v) for v in torch.exp(self.vnet.tv_log_gain)],
+                                      tv_keep=[float(v) for v in faces.edge_factor(dq, eps).mean((0, 1))])
         ds = xb.s - x.s + C + S_s + (D if D is not None else 0.0)
         return Field(ds, xb.v - x.v + S_v)
 

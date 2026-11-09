@@ -29,11 +29,20 @@ channel (PhyMPGN's learnable correction of the operator itself is the antisymmet
 6 h diffusion step is unstable near the poles (east faces of a polar cell are 30 km apart), so the face number
 nu = K w dt / min(A_i, A_j) is capped smoothly at ``nu_max`` (0.12): with four faces per cell the update is a convex
 combination of the cell and its neighbours (no new extrema) and the area integral is conserved exactly.
+
+stage18e edge-preserving diffusion (Kovac & Smith 2009, arXiv 0911.1928, "Regression on a graph"): their fit
+minimises  sum_i (y_i - f_i)^2 + lambda sum_edges |f_j - f_i|,  an L1 (total-variation) penalty on the edge differences
+whose minimisers are piecewise constant: jumps survive, noise is removed.  The gradient flow of the eps-regularised
+penalty  sum_f sqrt((q_j - q_i)^2 + eps^2)  is a diffusion with the face diffusivity  K eps / sqrt(dq^2 + eps^2):
+linear diffusion where |dq| << eps and a bounded flux  K eps sign(dq)  across a jump.  ``diffusion(..., edge_eps)``
+multiplies the learned K by this factor (``edge_factor`` <= 1, so the stability cap and the conservation are unchanged);
+eps is a per-variable scale (the median neighbour difference of the training states, times a learned factor).
 """
 
 from __future__ import annotations
 
 import math
+from typing import Optional
 
 import torch
 from torch import nn
@@ -109,14 +118,26 @@ class GridFaceGraph(nn.Module):
         dq = q.index_select(1, self.dst) - q.index_select(1, self.src)
         return self._exchange(self.weight[None, :, None] * dq)
 
-    def diffusion(self, q: torch.Tensor, K: torch.Tensor, dt: float, nu_max: float = 0.12) -> torch.Tensor:
+    def diffusion(self, q: torch.Tensor, K: torch.Tensor, dt: float, nu_max: float = 0.12,
+                  edge_eps: Optional[torch.Tensor] = None) -> torch.Tensor:
         """stage18d: change of ``q`` [B, N, C] by one explicit diffusion step of ``dt`` seconds with the face
         diffusivity ``K`` [B, F, C] (m^2/s, >= 0).  For small K it is  dt K lap q;  the face number
-        nu = K (l/d) dt / min(A_i, A_j) is capped smoothly at ``nu_max`` (stable, monotone, area integral conserved)."""
+        nu = K (l/d) dt / min(A_i, A_j) is capped smoothly at ``nu_max`` (stable, monotone, area integral conserved).
+        stage18e: with ``edge_eps`` [C] (> 0, units of q) the face diffusivity is multiplied by the edge-preserving
+        factor ``edge_factor``: linear diffusion across differences << eps, a bounded flux across fronts (the
+        eps-regularised gradient flow of the total variation sum_f |q_j - q_i|, Kovac & Smith 2009)."""
+        dq = q.index_select(1, self.dst) - q.index_select(1, self.src)
+        if edge_eps is not None:
+            K = K * self.edge_factor(dq, edge_eps)
         x = K * (self.weight * dt / self.face_mass)[None, :, None]
         nu = nu_max * torch.tanh(x / nu_max)
-        dq = q.index_select(1, self.dst) - q.index_select(1, self.src)
         return self._exchange(nu * self.face_mass[None, :, None] * dq)
+
+    @staticmethod
+    def edge_factor(dq: torch.Tensor, eps: torch.Tensor) -> torch.Tensor:
+        """stage18e: eps / sqrt(dq^2 + eps^2) in (0, 1] for the face differences ``dq`` [B, F, C] and the edge scale
+        ``eps`` [C]:  1 - O(dq^2 / eps^2) for small differences, eps / |dq| across a jump (flux eps sign dq)."""
+        return eps / torch.sqrt(dq * dq + eps * eps)
 
     def face_mean(self, c: torch.Tensor) -> torch.Tensor:
         """Symmetric face value of a cell field [B, N, C] -> [B, F, C]."""

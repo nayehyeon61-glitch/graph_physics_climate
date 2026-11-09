@@ -115,8 +115,9 @@ class Run:
             self.cfg.update(prev_path=int(getattr(args, "prev_path", 0) or 0))
             # stage19b key (GPINN graph embedding of the guide)
             self.cfg.update(graph_embed=int(getattr(args, "graph_embed", 0) or 0))
-            # stage18d key (Laplace block in the graph tendency core)
-            self.cfg.update(core_laplace=int(getattr(args, "core_laplace", 0) or 0))
+            # stage18d / stage18e keys (Laplace block in the graph tendency core; its edge-preserving form)
+            self.cfg.update(core_laplace=int(getattr(args, "core_laplace", 0) or 0),
+                            core_tv=int(getattr(args, "core_tv", 0) or 0))
             # stage17 keys (dynamic guide: sub-step forcing, learnable guide-drift gain)
             self.cfg.update(ode_path_forcing=int(getattr(args, "ode_path_forcing", 0) or 0),
                             ode_drift_gain=int(getattr(args, "ode_drift_gain", 0) or 0),
@@ -183,7 +184,8 @@ class Run:
                                 tendency_core=bool(c.get("tendency_core", False)),
                                 core_tokens=bool(c.get("core_tokens", True) if c.get("core_tokens") is not None else True),
                                 prev_path=bool(c.get("prev_path", False)),
-                                core_laplace=bool(c.get("core_laplace", False)))
+                                core_laplace=bool(c.get("core_laplace", False)),
+                                core_tv=bool(c.get("core_tv", False)))
         if self.vnet_kwargs["prev_path"] and not (self.vnet_kwargs["prev_state"] and self.vnet_kwargs["integrator"] == "ode"):
             raise ValueError("prev_path needs the previous-state input (prev_state) and the ODE integrator")
         if self.vnet_kwargs["ode_drift_gain"] and not self.vnet_kwargs["ode_physics"]:
@@ -307,7 +309,33 @@ class Run:
         if m.guide is not None and m.guide.resolved is not None:
             m.guide.resolved.set_scales(self.norm.s_mean, self.norm.s_std, self.norm.v_scale, self.norm.tend_s,
                                         self.norm.tend_v)
+        if getattr(m.vnet, "tv_log_gain", None) is not None:  # stage18e: edge scale from the training states
+            m.vnet.tv_eps0.copy_(self.tv_eps())
         return m
+
+    def tv_eps(self) -> torch.Tensor:
+        """stage18e: edge scale eps per scalar variable (normalised units) = the median neighbour difference
+        |q_j - q_i| over the faces of 64 training states (the noise-level estimate of Kovac & Smith 2009 up to its
+        constant, which the learned factor absorbs), cached in ``tv_eps.json`` so every stage of the run uses it."""
+        path = self.dir / "tv_eps.json"
+        names = list(self.spec.scalars)
+        if path.exists():
+            c = json.load(open(path))
+            if c.get("variables") == names:
+                return torch.as_tensor(c["eps"], dtype=torch.float32)
+        from gpclimate.nn.graph_core import GridFaceGraph
+        fg = GridFaceGraph(torch.as_tensor(np.asarray(self.train.lat), dtype=torch.float64),
+                           torch.as_tensor(np.asarray(self.train.lon), dtype=torch.float64))
+        idx = list(np.linspace(0, len(self.train) - 1, 64).round().astype(int))
+        diffs = []
+        for i in range(0, 64, 8):
+            x0n, _, _, _ = self.prep(self.train, idx[i:i + 8])
+            diffs.append((x0n.s.index_select(1, fg.dst) - x0n.s.index_select(1, fg.src)).abs().flatten(0, 1))
+        eps = torch.cat(diffs).median(0).values.clamp_min(1e-4)
+        json.dump({"eps": eps.tolist(), "variables": names, "states": len(idx)}, open(path, "w"), indent=1)
+        log("edge-preserving diffusion preprocessing on 64 training states: median neighbour difference "
+            + " ".join(f"{n} {float(e):.3f}" for n, e in zip(names, eps)) + f" -> {path.name}")
+        return eps
 
     def graph_embedding(self) -> torch.Tensor:
         """stage19b: terrain / coastline weighted grid-Laplacian eigenvectors [n_grid, graph_embed] from the data's
@@ -651,7 +679,8 @@ def stage_b(run: Run, use_guide: bool):
             + (", sub-step solar forcing" if vc.ode_path_forcing else "")
             + (", graph tendency core (beta-scaled guide transport + conservative face flux + source"
                + (", core tokens C in PIGT" if vc.core_tokens else "")
-               + (", Laplace block" if vc.core_laplace else "") + ")" if vc.tendency_core else ""))
+               + (", Laplace block" + (" (edge-preserving, TV flow)" if vc.core_tv else "") if vc.core_laplace else "")
+               + ")" if vc.tendency_core else ""))
     # restart safety: a finished Stage B is skipped, an interrupted one resumes from its last validation checkpoint
     start_step = 0
     ck_path, done_path = run.dir / f"{name}_train_state.pt", run.dir / f"{name}_done.json"
@@ -792,6 +821,9 @@ def stage_b(run: Run, use_guide: bool):
                    + f" rms T {vm.last_core['transport']:.3f} F {vm.last_core['flux']:.3f} S {vm.last_core['source']:.3f}"
                    + (f" D {vm.last_core['diffusion']:.4f} K {sum(vm.last_core['K']) / len(vm.last_core['K']):.0f}"
                       if "diffusion" in vm.last_core else "")
+                   + (f" tv gain {sum(vm.last_core['tv_gain']) / len(vm.last_core['tv_gain']):.2f}"
+                      f" keep {sum(vm.last_core['tv_keep']) / len(vm.last_core['tv_keep']):.2f}"
+                      if "tv_gain" in vm.last_core else "")
                    if getattr(vm, "last_core", None) else "")
                 + f" | {(time.time() - t0) / (step + 1):.2f} s/step")
             state = {"step": step + 1, "vnet": model.vnet.state_dict(), "opt": opt.state_dict(), "best": best,
@@ -903,6 +935,12 @@ class PhysicsOnlyForecaster(torch.nn.Module):
         return f, Field((f.s - state.s) / self.base.delta_scale_s, (f.v - state.v) / self.base.delta_scale_v)
 
 
+def grad_mean(a: np.ndarray) -> float:
+    """Mean |neighbour difference| of fields ``a`` [..., H, W] over the zonal (periodic) and meridional faces."""
+    dz, dm = np.abs(a - np.roll(a, -1, axis=-1)), np.abs(np.diff(a, axis=-2))
+    return float((dz.sum() + dm.sum()) / (dz.size + dm.size))
+
+
 def stage_eval(run: Run):
     a, g, test = run.args, run.g, run.test
     H, W, lead = len(test.lat), len(test.lon), run.cfg["lead"]
@@ -967,15 +1005,19 @@ def stage_eval(run: Run):
     log(f"deterministic rollouts done in {t_det / 60:.1f} min")
 
     stack = lambda d: {v: np.stack(x, 0) for v, x in d.items()}  # noqa: E731
-    results = {"n_cases": len(cases), "lead_hours": {}, "rmse": {}, "finite": {}}
+    results = {"n_cases": len(cases), "lead_hours": {}, "rmse": {}, "finite": {}, "sharpness": {}}
     for k in range(1, K + 1):
         times = np.asarray(valid_times[k]).astype("datetime64[ns]")
         results["lead_hours"][k] = 6 * lead * k
-        results["rmse"][k] = {}
+        results["rmse"][k], results["sharpness"][k] = {}, {}
+        tr_k = stack(truth[k])
         for name, st in preds.items():
             arr = stack(st[k])
             results["finite"].setdefault(name, {})[k] = bool(all(np.isfinite(x).all() for x in arr.values()))
-            results["rmse"][k][name] = wb2_scores(arr, stack(truth[k]), test.lat, test.lon, times)["rmse"]
+            results["rmse"][k][name] = wb2_scores(arr, tr_k, test.lat, test.lon, times)["rmse"]
+            # stage18e diagnostic: gradient sharpness = mean |neighbour difference| of the forecast / of the truth
+            # (RMSE rewards smoothing; a value < 1 is a smoother field than the truth)
+            results["sharpness"][k][name] = {v: grad_mean(arr[v]) / grad_mean(tr_k[v]) for v in arr}
 
     # ensemble at the first lead: diffusion vs. deterministic + independent Gaussian noise of the residual scale
     # (--n-ens-cases 0 skips it, e.g. for the external benchmark years; there is nothing to score then)
@@ -1096,6 +1138,17 @@ def write_markdown(run: Run, r: dict, tag: str = ""):
             lines += ["", "| 변수 | 앙상블평균−결정론 RMS (diffusion) | 〃 (Gaussian) |", "|---|---|---|"]
             for v in run.eval_vars:
                 lines.append(f"| {v} | {b['diffusion'][v]:.4g} | {b['gaussian'][v]:.4g} |")
+    if "sharpness" in r:  # stage18e diagnostic
+        sh = r["sharpness"]
+        leads = list(r["lead_hours"].keys())
+        lines += ["", "## 경사 선명도 (예보의 평균 |이웃 차| / 실측의 평균 |이웃 차|, 1 = 실측과 같은 선명도)"]
+        for n in names:
+            if n in ("persistence", "climatology"):
+                continue
+            lines += ["", f"### {n}", "", "| 변수 | " + " | ".join(f"{r['lead_hours'][k]} h" for k in leads) + " |",
+                      "|---|" + "---|" * len(leads)]
+            for v in run.eval_vars:
+                lines.append(f"| {v} | " + " | ".join(f"{sh[k][n][v]:.3f}" for k in leads) + " |")
     (run.dir / f"eval{tag}.md").write_text("\n".join(lines) + "\n")
 
 
@@ -1214,6 +1267,9 @@ def main():
                     help="stage18b: previous-state input along the ODE path (needs --prev-state 1, --integrator ode)")
     ap.add_argument("--core-laplace", type=int, default=0, choices=[0, 1],
                     help="stage18d: Laplace block in the graph tendency core (PhyMPGN-style diffusion with learned K)")
+    ap.add_argument("--core-tv", type=int, default=0, choices=[0, 1],
+                    help="stage18e: edge-preserving (total-variation flow) form of the Laplace block, eps per variable "
+                         "from the training states (tv_eps.json) x a learned factor (needs --core-laplace 1)")
     ap.add_argument("--core-tokens", type=int, default=1, choices=[0, 1],
                     help="stage18: give the guide's core terms to PIGT as a fourth token source C")
     ap.add_argument("--ode-drift", default="tend", choices=["tend", "transport"],
