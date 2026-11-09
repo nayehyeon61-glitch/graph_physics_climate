@@ -130,6 +130,11 @@ class VNetConfig:
     # operator (flux divergence, Laplace block) follow.  Needs tendency_core.
     core_geometry: bool = False
     core_geom_shift: float = 0.25
+    # stage21a physics-first core (감자 2026-11-09 15:07 KST): beta starts at core_beta_init (1 = the guide's whole flow
+    # carries the state from the first step) and Stage B adds a source budget, the squared share of the V-Net source in
+    # the sub-step change (``--source-penalty``), so the learned part is pushed into the structured terms (transport
+    # share beta, conservative face flux, diffusion).  ``last_core["phys_share"]`` reports rms(physics terms) / rms(total).
+    core_beta_init: float = 0.0
     # stage18b: the previous-state input follows the path — sub-step k of an ODE lead gets the state one lead before
     # *its own* time, X_{t + k 6 h - lead} (observed past states in the first lead, the previous lead's path later),
     # instead of X_{t - lead} for all sub-steps.  ``prev`` is then a list of ode_steps states.
@@ -207,6 +212,7 @@ class DynamicsVNet(nn.Module):
                     if lin.w_re is not None:
                         lin.w_re.zero_()
                         lin.w_im.zero_()
+                self.beta_head.lin_s.bias.fill_(float(cfg.core_beta_init))  # stage21a: physics-first start
             if cfg.core_laplace:  # stage18d: diffusivity head, uniform and ~ 0 at the start
                 self.laplace_head = EqLinear(cs, cv, spec.n_s, 0)
                 with torch.no_grad():
@@ -392,6 +398,8 @@ class LieGuidedForecaster(nn.Module):
         self.register_buffer("tend_scale_v", torch.ones(spec.n_v))
         self.lead_steps = 4
         self.last_path: Optional[List[Field]] = None  # stage17: path states of the last ODE forward (K - 1 of them)
+        self.source_cost: Optional[torch.Tensor] = None  # stage21a: squared source share of the last ODE forward
+        self._src_cost: Optional[torch.Tensor] = None
         names = list(spec.static_scalars) + list(spec.forcing_scalars)
         self._toa_idx = [names.index(n) for n in ("toa_t", "toa_t1") if n in names]
         self._faces = None  # stage18: finite-volume face graph of the grid (lazy)
@@ -533,6 +541,7 @@ class LieGuidedForecaster(nn.Module):
         d = self.vnet(x, cond, P, g, prev=prev, col=col)
         h = 1.0 / cfg.ode_steps
         f = Field(d.s * self.delta_scale_s * h, d.v * self.delta_scale_v * h)
+        self._src_cost = x.s.new_zeros(())  # no structured terms to budget against (stage21a is a core option)
         if cfg.ode_physics and self.guide is not None:  # the guide-free pair has no guide and hence no drift
             drift = self.physics_drift(x, cond, g, P)
             f = Field(f.s + drift.s, f.v + drift.v)
@@ -617,7 +626,17 @@ class LieGuidedForecaster(nn.Module):
                                       geom_shift_max=float(geom["shift"].abs().max()),
                                       geom_area=[float(geom["area_ratio"].min()), float(geom["area_ratio"].max())])
         ds = xb.s - x.s + C + S_s + (D if D is not None else 0.0)
-        return Field(ds, xb.v - x.v + S_v)
+        dv = xb.v - x.v + S_v
+        # stage21a: source budget = squared share of the V-Net source in the sub-step change (scale-free), and the
+        # physics share rms(transport + flux + diffusion) / rms(total) for the logs
+        s2 = S_s.pow(2).mean() + S_v.abs().pow(2).mean()
+        t2 = ds.pow(2).mean() + dv.abs().pow(2).mean()
+        self._src_cost = s2 / (t2 + 1e-8)
+        with torch.no_grad():
+            p2 = (ds - S_s).pow(2).mean() + (dv - S_v).abs().pow(2).mean()
+            self.last_core["phys_share"] = float((p2 / (t2 + 1e-8)).sqrt())
+            self.last_core["source_share"] = float(self._src_cost.sqrt())
+        return Field(ds, dv)
 
     def integrate(self, state: Field, cond: Field, g: GraphView, p_map: Optional[Callable] = None,
                   prev: Optional[Field] = None, col: Optional[Field] = None) -> Field:
@@ -627,28 +646,33 @@ class LieGuidedForecaster(nn.Module):
         The intermediate path states are kept in ``last_path`` (stage17 path supervision)."""
         cfg = self.vnet.cfg
         x = state
-        path = []
+        path, costs = [], []
         ckpt = cfg.ode_checkpoint and torch.is_grad_enabled()
         for k in range(cfg.ode_steps):
             if ckpt:
                 from torch.utils.checkpoint import checkpoint
-                x = checkpoint(self._sub_step, x, cond, g, k, p_map, prev, col, use_reentrant=False)
+                x, cost = checkpoint(self._sub_step, x, cond, g, k, p_map, prev, col, use_reentrant=False)
             else:
-                x = self._sub_step(x, cond, g, k, p_map, prev, col)
+                x, cost = self._sub_step(x, cond, g, k, p_map, prev, col)
             path.append(x)
+            costs.append(cost)
         self.last_path = path[:-1]
+        self.source_cost = torch.stack(costs).mean()  # stage21a: mean squared source share over the sub-steps
         return x
 
-    def _sub_step(self, x: Field, cond: Field, g: GraphView, k: int, p_map: Optional[Callable], prev, col) -> Field:
-        """One sub-step ``k`` of ``integrate`` (explicit Euler or Heun)."""
+    def _sub_step(self, x: Field, cond: Field, g: GraphView, k: int, p_map: Optional[Callable], prev,
+                  col) -> Tuple[Field, torch.Tensor]:
+        """One sub-step ``k`` of ``integrate`` (explicit Euler or Heun) and its source budget term (stage21a; returned
+        with the state so that gradient checkpointing recomputes both consistently)."""
         cfg = self.vnet.cfg
         ck, ci = self.sub_cond(cond, g, k), (col if k == 0 else None)
         f1 = self.rate(x, ck, g, p_map, prev=self._prev_at(prev, k), col=ci)
+        cost = self._src_cost
         if cfg.ode_solver == "heun":
             x1 = Field(x.s + f1.s, x.v + f1.v)
             f2 = self.rate(x1, self.sub_cond(cond, g, k + 1), g, p_map, prev=self._prev_at(prev, k + 1))
-            return Field(x.s + 0.5 * (f1.s + f2.s), x.v + 0.5 * (f1.v + f2.v))
-        return Field(x.s + f1.s, x.v + f1.v)
+            return Field(x.s + 0.5 * (f1.s + f2.s), x.v + 0.5 * (f1.v + f2.v)), 0.5 * (cost + self._src_cost)
+        return Field(x.s + f1.s, x.v + f1.v), cost
 
     def physics_only(self, state: Field, cond: Field, g: GraphView) -> Field:
         """Forecast from the physics drift alone (V-Net switched off): diagnostic of the guide's tendency."""

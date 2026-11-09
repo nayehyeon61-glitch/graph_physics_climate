@@ -121,6 +121,8 @@ class Run:
             # stage18f / stage18g keys (dual-space edge conductance theta_p, learned dual geometry theta_g)
             self.cfg.update(core_edge=int(getattr(args, "core_edge", 0) or 0),
                             core_geometry=int(getattr(args, "core_geometry", 0) or 0))
+            # stage21a key (physics-first core: initial transport share beta)
+            self.cfg.update(core_beta_init=float(getattr(args, "core_beta_init", 0.0) or 0.0))
             # stage17 keys (dynamic guide: sub-step forcing, learnable guide-drift gain)
             self.cfg.update(ode_path_forcing=int(getattr(args, "ode_path_forcing", 0) or 0),
                             ode_drift_gain=int(getattr(args, "ode_drift_gain", 0) or 0),
@@ -190,7 +192,8 @@ class Run:
                                 core_laplace=bool(c.get("core_laplace", False)),
                                 core_tv=bool(c.get("core_tv", False)),
                                 core_edge=bool(c.get("core_edge", False)),
-                                core_geometry=bool(c.get("core_geometry", False)))
+                                core_geometry=bool(c.get("core_geometry", False)),
+                                core_beta_init=float(c.get("core_beta_init", 0.0) or 0.0))
         if self.vnet_kwargs["prev_path"] and not (self.vnet_kwargs["prev_state"] and self.vnet_kwargs["integrator"] == "ode"):
             raise ValueError("prev_path needs the previous-state input (prev_state) and the ODE integrator")
         if self.vnet_kwargs["ode_drift_gain"] and not self.vnet_kwargs["ode_physics"]:
@@ -459,6 +462,37 @@ def stage_a(run: Run):
         xt = guide.transport(feats, x_norm, gview)
         return Field((xt.s - x_norm.s) / run.norm.tend_s + source.s, (xt.v - x_norm.v) / run.norm.tend_v + source.v)
 
+    # stage21b: the guide as a dynamical core of its own -- its dynamics x_{j+1} = SL_V(x_j) + S(x_j) tend_scale (the
+    # core terms the V-Net is given, re-evaluated on the guide's own path state) are rolled path_steps x 6 h from the
+    # input and matched to the observed states, so the guide-only forecast (physics_only) is trained directly
+    path_steps = int(getattr(a, "guide_path_steps", 0) or 0)
+    path_w = float(getattr(a, "guide_path_weight", 1.0) or 0.0)
+    if path_steps:
+        if not use_flow or guide.tend_out is None:
+            raise ValueError("--guide-path-steps needs the Lie transport guide (flow head) and its tendency head")
+        log(f"stage A: guide dynamical-core objective -- its own dynamics rolled {path_steps} x 6 h from the input and "
+            f"matched to the observed states (weight {path_w}, error in 6 h tendency units)")
+
+    def guide_path(x_norm, ds, idx, gview, gauge):
+        """stage21b: [(state reached by the guide's own dynamics after j+1 steps, observed state)] for j < path_steps,
+        normalised units, gauge ``gauge`` (None = the node frames of ``gview``)."""
+        out, xk = [], x_norm
+        for j in range(path_steps):
+            ck = run.cond_at(ds, idx + j)
+            fk = guide(xk, ck.gauge(gauge) if gauge is not None else ck, torch.zeros(xk.s.shape[0]), gview)
+            flow, S = guide.core_parts(fk, xk, gview)
+            xt = guide.transport(None, xk, gview, 1.0, flow=flow)
+            xk = Field(xt.s + S.s * run.norm.tend_s, xt.v + S.v * run.norm.tend_v)
+            tk = run.norm.state(ds.state_after(idx, j + 1))
+            out.append((xk, tk.gauge(gauge) if gauge is not None else tk))
+        return out
+
+    def path_loss(pairs):
+        """mean over the path of the error in normalised 6 h tendency units (j = 1 is the clean-input tendency loss)."""
+        return sum(field_mse(Field(xk.s / run.norm.tend_s, xk.v / run.norm.tend_v),
+                             Field(tk.s / run.norm.tend_s, tk.v / run.norm.tend_v), w, run.loss_w)
+                   for xk, tk in pairs) / len(pairs)
+
     if int(getattr(a, "guide_heads_only", 0) or 0):  # stage17c: the trunk (features P) stays exactly as it was
         heads = GUIDE_HEADS
         for n_, p_ in guide.named_parameters():
@@ -486,7 +520,8 @@ def stage_a(run: Run):
     for step in range(a.steps):
         for pg in opt.param_groups:
             pg["lr"] = cosine_lr(step, a.steps, a.lr)
-        idx = rng.integers(lead if fm is not None else 0, len(run.train), a.batch)
+        # (stage21b: the conditions along the guide's path need idx + j < len(train) for j < path_steps)
+        idx = rng.integers(lead if fm is not None else 0, len(run.train) - max(0, path_steps - 1), a.batch)
         x0n, _, cn, x0 = run.prep(run.train, idx)
         xin = x0n
         if fm is not None and rng.random() < a.perturb_prob:
@@ -511,6 +546,10 @@ def stage_a(run: Run):
                 tend = step_tendency(feats, xg, gv, tend)
             l_tend = field_mse(tend, tend_t, w, run.loss_w)
             loss = loss + a.tend_weight * l_tend
+        l_path = torch.zeros(())
+        if path_steps:  # stage21b: the guide's own path from the (possibly forecast-perturbed) input, clean features
+            l_path = path_loss(guide_path(xin.gauge(tg), run.train, idx, gv, tg))
+            loss = loss + path_w * l_path
         l_pinn = torch.zeros(())
         if pinn is not None:  # stage19: physics residuals of the guide's own outputs (denoised state, its 6 h step)
             nxt = None
@@ -530,7 +569,8 @@ def stage_a(run: Run):
         opt.step()
         if step % 25 == 0:
             run.jlog("a", {"step": step, "l_rec": float(l_rec), "l_aux": float(l_aux), "l_tend": float(l_tend),
-                           "l_clos": float(l_clos), "l_pinn": float(l_pinn), "t": time.time() - t0})
+                           "l_clos": float(l_clos), "l_pinn": float(l_pinn), "t": time.time() - t0,
+                           **({"l_path": float(l_path)} if path_steps else {})})
         if step % a.val_every == 0 or step == a.steps - 1:
             guide.eval()
             with torch.no_grad():
@@ -549,6 +589,10 @@ def stage_a(run: Run):
                         v_zero = float(field_mse(zero, tend_true, w))  # persistence
                         tend = step_tendency(feats, x0n, g, tend)
                     v_tend = float(field_mse(tend, tend_true, w))
+                v_path = None
+                if path_steps:  # stage21b: the guide-only path error on the calibration states (path inside the split)
+                    vp = np.asarray([i for i in val_idx if i < len(run.calib) - (path_steps - 1)])
+                    v_path = float(path_loss(guide_path(run.prep(run.calib, vp)[0], run.calib, vp, g, None)))
                 v_pinn = None
                 if pinn is not None:  # stage19: var(L-R)/var(L) of the guide's outputs vs of ERA5 itself
                     x1n_v = run.norm.state(run.calib.next_state(val_idx))
@@ -564,7 +608,7 @@ def stage_a(run: Run):
                     v_full = float(field_mse(F, tend_m, w_m))  # resolved dynamics alone (no closure)
                     rfrac = resolved_fraction(tend_m, F, w_m)
             guide.train()
-            score = v_rec + a.aux_weight * v_aux + a.tend_weight * (v_tend + v_clos)
+            score = v_rec + a.aux_weight * v_aux + a.tend_weight * (v_tend + v_clos) + (path_w * v_path if path_steps else 0.0)
             if score < best:
                 best = score
                 torch.save(guide.state_dict(), run.dir / "guide.pt")
@@ -572,11 +616,14 @@ def stage_a(run: Run):
                            "val_resolved_only": v_full, "resolved_fraction": rfrac, "best": best,
                            **({"val_transport_only": v_tr, "val_persistence": v_zero} if use_flow else {}),
                            **({"val_pinn": v_pinn} if v_pinn is not None else {}),
+                           **({"val_path": v_path} if path_steps else {}),
                            "t": time.time() - t0})
             log(f"A {step:5d}  L_rec {float(l_rec):.4f} L_aux {float(l_aux):.4f} L_tend {float(l_tend):.4f}"
-                f" L_clos {float(l_clos):.4f} | val rec {v_rec:.4f} aux {v_aux:.4f} tend {v_tend:.4f} clos {v_clos:.4f}"
+                f" L_clos {float(l_clos):.4f}" + (f" L_path {float(l_path):.4f}" if path_steps else "")
+                + f" | val rec {v_rec:.4f} aux {v_aux:.4f} tend {v_tend:.4f} clos {v_clos:.4f}"
                 f" (resolved only {v_full:.4f})"
                 + (f" transport only {v_tr:.4f} persistence {v_zero:.4f}" if use_flow else "")
+                + (f" path {v_path:.4f}" if path_steps else "")
                 + (" | PINN guide/ERA5 " + " ".join(f"{k} {v:.2f}/{v_pinn['era5'][k]:.2f}"
                                                      for k, v in v_pinn["guide"].items()) if v_pinn is not None else "")
                 + f" | {(time.time() - t0) / (step + 1):.2f} s/step")
@@ -653,6 +700,12 @@ def stage_b(run: Run, use_guide: bool):
 
     lam_pde = float(getattr(a, "pde_weight", 0.0))
     lam_spec = float(getattr(a, "spec_energy_weight", 0.0) or 0.0)  # stage13b: spectral energy continuity
+    # stage21a physics-first core: source budget = squared share of the V-Net source in the core's sub-step change
+    # (mean over the sub-steps and the rollout leads), scale-free, so lam_src ~ 0.1 is a mild preference for the
+    # structured terms (transport share beta, conservative face flux, diffusion) over the free source
+    lam_src = float(getattr(a, "source_penalty", 0.0) or 0.0)
+    if lam_src > 0 and not (model.vnet.cfg.integrator == "ode" and getattr(model.vnet, "core_on", False)):
+        raise ValueError("--source-penalty needs the graph tendency core (ODE integrator with tendency_core)")
     grid_hw, grid_lat = g.extras["grid_hw"], g.extras["grid_lat"]
     use_pde = lam_pde > 0 and use_guide and model.guide.closure_out is not None
     w_m = torch.ones(g.n_mesh[0])
@@ -674,6 +727,8 @@ def stage_b(run: Run, use_guide: bool):
         + (f", rollout schedule {sched}" if sched else "") + (f", EMA decay {ema_decay}" if ema_model is not None else "")
         + (f", guide fine-tuning lr {guide_lr} ({n_params(model.guide)} params)" if guide_lr > 0 else "")
         + (f", spectral energy loss weight {lam_spec}" if lam_spec > 0 else "")
+        + (f", source budget penalty {lam_src} (squared V-Net source share of the core's sub-step change)"
+           if lam_src > 0 else "")
         + (f", neural operator {model.vnet.cfg.neural_op} ({n_params(model.vnet.cont_op)} params)"
            if model.vnet.cont_op is not None else ""))
     if model.vnet.cfg.integrator == "ode":  # stage S8
@@ -687,6 +742,7 @@ def stage_b(run: Run, use_guide: bool):
                + (", Laplace block" + (" (edge-preserving, TV flow)" if vc.core_tv else "") if vc.core_laplace else "")
                + (", edge conductance kappa(u_i, u_j, p_ij)" if vc.core_edge else "")
                + (f", learned dual geometry (power diagram, shift <= {vc.core_geom_shift:g} d)" if vc.core_geometry else "")
+               + (f", physics-first: beta starts at {vc.core_beta_init:g}" if vc.core_beta_init else "")
                + ")" if vc.tendency_core else ""))
     # restart safety: a finished Stage B is skipped, an interrupted one resumes from its last validation checkpoint
     start_step = 0
@@ -736,6 +792,7 @@ def stage_b(run: Run, use_guide: bool):
         f, d = model(xs[0], cs[0], g, prev=x_prev, nudge=run.increment(model, run.train, idx, xs[0]),
                      col=run.col(run.train, idx))
         x_prev, nud = next_prev(model, xs[0]), model.carried_nudge()
+        l_src = model.source_cost if lam_src > 0 else torch.zeros(())  # stage21a
         l_f = field_mse(scaled(f), scaled(xs[1]), w, run.loss_w)  # == delta MSE of the one-step target
         l_int = torch.zeros(())
         if run.inter_times:  # stage15b: intermediate times of the first lead, same delta units as L_f
@@ -757,9 +814,15 @@ def stage_b(run: Run, use_guide: bool):
             l_roll = l_roll + field_mse(scaled(f), scaled(xs[k]), w, run.loss_w)
             if lam_spec > 0:
                 l_spec = l_spec + spectral_energy_loss(f, xs[k], *grid_hw, grid_lat)
+            if lam_src > 0:
+                l_src = l_src + model.source_cost
+        if lam_src > 0:
+            l_src = l_src / k_now
         loss = l_f + a.phys_weight * l_phys + lam * l_roll + lam_pde * l_pde + lam_spec * l_spec + run.inter_weight * l_int
         if pinn_b is not None:
             loss = loss + pinn_wb * l_pinn
+        if lam_src > 0:
+            loss = loss + lam_src * l_src
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(params, 1.0)
@@ -769,7 +832,8 @@ def stage_b(run: Run, use_guide: bool):
         if step % 25 == 0:
             run.jlog(name, {"step": step, "l_f": float(l_f), "l_phys": float(l_phys), "l_roll": float(l_roll),
                             "l_pde": float(l_pde), "l_spec": float(l_spec), "k": k_now, "t": time.time() - t0,
-                            **({"l_int": float(l_int)} if run.inter_times else {})})
+                            **({"l_int": float(l_int)} if run.inter_times else {}),
+                            **({"l_src": float(l_src)} if lam_src > 0 else {})})
         if step % a.val_every == 0 or step == a.steps - 1:
             model.eval()
             vm = ema_model if ema_model is not None else model  # validated / saved weights
@@ -820,6 +884,7 @@ def stage_b(run: Run, use_guide: bool):
                 + (f" L_pde {float(l_pde):.4f}" if use_pde else "")
                 + (f" L_int {float(l_int):.4f}" if run.inter_times else "")
                 + (f" L_pinn {float(l_pinn):.4f}" if pinn_b is not None else "")
+                + (f" L_src {float(l_src):.4f}" if lam_src > 0 else "")
                 + f" | val MSE {v_mse:.4f} 2-step {v_mse2:.4f} (persistence {pers:.4f})"
                 + (" 6/12/18 h " + "/".join(f"{x:.4f}" for x in v_int) if run.inter_times else "")
                 + (" gain " + "/".join(f"{float(x):.2f}" for x in torch.cat([vm.vnet.drift_gain_s, vm.vnet.drift_gain_v]))
@@ -828,6 +893,8 @@ def stage_b(run: Run, use_guide: bool):
                    + f" rms T {vm.last_core['transport']:.3f} F {vm.last_core['flux']:.3f} S {vm.last_core['source']:.3f}"
                    + (f" D {vm.last_core['diffusion']:.4f} K {sum(vm.last_core['K']) / len(vm.last_core['K']):.0f}"
                       if "diffusion" in vm.last_core else "")
+                   + (f" share P {vm.last_core['phys_share']:.2f} S {vm.last_core['source_share']:.2f}"
+                      if "phys_share" in vm.last_core else "")
                    + (f" tv gain {sum(vm.last_core['tv_gain']) / len(vm.last_core['tv_gain']):.2f}"
                       f" keep {sum(vm.last_core['tv_keep']) / len(vm.last_core['tv_keep']):.2f}"
                       if "tv_gain" in vm.last_core else "")
@@ -985,6 +1052,7 @@ def stage_eval(run: Run):
     truth = {k: {} for k in range(1, K + 1)}
     preds = {name: {k: {} for k in range(1, K + 1)} for name in list(models) + ["persistence", "climatology"]}
     valid_times = {k: [] for k in range(1, K + 1)}
+    share = {k: [] for k in range(1, K + 1)}  # stage21a: physics share of the guided core along the lead
     t0 = time.time()
 
     def add(store, k, f):
@@ -1013,6 +1081,8 @@ def stage_eval(run: Run):
                     prevs[name], states[name] = next_prev(mdl, states[name]), new
                     nudges[name] = getattr(mdl, "carried_nudge", lambda: None)()
                     add(preds[name], k, states[name])
+                    if name == "lie_guided" and "phys_share" in (getattr(mdl, "last_core", None) or {}):
+                        share[k].append(mdl.last_core["phys_share"])
     t_det = time.time() - t0
     log(f"deterministic rollouts done in {t_det / 60:.1f} min")
 
@@ -1030,6 +1100,10 @@ def stage_eval(run: Run):
             # stage18e diagnostic: gradient sharpness = mean |neighbour difference| of the forecast / of the truth
             # (RMSE rewards smoothing; a value < 1 is a smoother field than the truth)
             results["sharpness"][k][name] = {v: grad_mean(arr[v]) / grad_mean(tr_k[v]) for v in arr}
+    if any(share.values()):  # stage21a: rms(transport + flux + diffusion) / rms(sub-step change) of the guided core
+        results["physics_share"] = {k: float(np.mean(v)) for k, v in share.items() if v}
+        log("physics share of the core (last sub-step of each lead): "
+            + " ".join(f"{results['lead_hours'][k]} h {s:.3f}" for k, s in results["physics_share"].items()))
 
     # ensemble at the first lead: diffusion vs. deterministic + independent Gaussian noise of the residual scale
     # (--n-ens-cases 0 skips it, e.g. for the external benchmark years; there is nothing to score then)
@@ -1150,6 +1224,11 @@ def write_markdown(run: Run, r: dict, tag: str = ""):
             lines += ["", "| 변수 | 앙상블평균−결정론 RMS (diffusion) | 〃 (Gaussian) |", "|---|---|---|"]
             for v in run.eval_vars:
                 lines.append(f"| {v} | {b['diffusion'][v]:.4g} | {b['gaussian'][v]:.4g} |")
+    if "physics_share" in r:  # stage21a diagnostic
+        ps = r["physics_share"]
+        lines += ["", "## 물리 항 비중 (core의 수송 + flux + 확산 rms / 전체 sub-step 변화 rms, lie_guided; 1 = 전부 물리 항)", "",
+                  "| " + " | ".join(f"{r['lead_hours'][k]} h" for k in ps) + " |", "|" + "---|" * len(ps),
+                  "| " + " | ".join(f"{v:.3f}" for v in ps.values()) + " |"]
     if "sharpness" in r:  # stage18e diagnostic
         sh = r["sharpness"]
         leads = list(r["lead_hours"].keys())
@@ -1201,6 +1280,11 @@ def main():
     ap.add_argument("--tend-head", type=int, default=1, choices=[0, 1],
                     help="guide: Stage-A one-step (6 h) tendency head (stored in config.json)")
     ap.add_argument("--tend-weight", type=float, default=1.0)
+    ap.add_argument("--guide-path-steps", type=int, default=0,
+                    help="stage21b: Stage A rolls the guide's own dynamics (transport by its flow + its source) this "
+                         "many 6 h steps from the input and matches the observed states (guide as a dynamical core; "
+                         "needs the flow and tendency heads; 0 = off)")
+    ap.add_argument("--guide-path-weight", type=float, default=1.0)
     ap.add_argument("--graph-embed", type=int, default=0,
                     help="stage19b GPINN: terrain-weighted grid-Laplacian eigenvectors added to the guide input")
     ap.add_argument("--pinn-weight", type=float, default=0.0,
@@ -1290,6 +1374,12 @@ def main():
                          "(areas, face lengths and conservation follow; needs --tendency-core 1)")
     ap.add_argument("--core-tokens", type=int, default=1, choices=[0, 1],
                     help="stage18: give the guide's core terms to PIGT as a fourth token source C")
+    ap.add_argument("--core-beta-init", type=float, default=0.0,
+                    help="stage21a physics-first core: initial transport share beta (1 = the guide's whole flow carries "
+                         "the state from the first step; stored in config.json)")
+    ap.add_argument("--source-penalty", type=float, default=0.0,
+                    help="stage21a: Stage B weight of the source budget, the squared share of the V-Net source in the "
+                         "core's sub-step change (mean over sub-steps and rollout leads; needs the graph tendency core)")
     ap.add_argument("--ode-drift", default="tend", choices=["tend", "transport"],
                     help="stage17c: guide drift of the ODE = tendency head (tend) or Lie transport guide (transport)")
     ap.add_argument("--guide-heads-only", type=int, default=0, choices=[0, 1],

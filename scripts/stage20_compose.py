@@ -45,12 +45,14 @@ RUNS = {
     "stage18e": "runs/era5_64x32_s18e_tv",
     "stage18f": "runs/era5_64x32_s18f_edge",
     "stage18g": "runs/era5_64x32_s18g_geom",
+    "stage21a": "runs/era5_64x32_s21a_physfirst",
+    "stage21b": "runs/era5_64x32_s21b_guidecore",
     "stage19a": "runs/era5_64x32_s19a_gpinn",
     "stage19b": "runs/era5_64x32_s19b_gpinn",
     "stage19c": "runs/era5_64x32_s19c_gpinn",
 }
 # Stage B options a stage used beyond its config.json (the guide-head fine-tuning is detected from guide_finetuned.pt)
-EXTRA_B = {"stage19c": "--pinn-weight-b 0.02"}
+EXTRA_B = {"stage19c": "--pinn-weight-b 0.02", "stage21a": "--source-penalty 0.1", "stage21b": "--source-penalty 0.1"}
 # files of the chosen run reused as they are (the guide's Stage A and its preprocessing outputs)
 GUIDE_FILES = ("guide.pt", "a_done.json", "log_a.jsonl", "pinn_scales.json", "graph_embed.npy")
 
