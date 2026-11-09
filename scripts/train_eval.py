@@ -118,6 +118,9 @@ class Run:
             # stage18d / stage18e keys (Laplace block in the graph tendency core; its edge-preserving form)
             self.cfg.update(core_laplace=int(getattr(args, "core_laplace", 0) or 0),
                             core_tv=int(getattr(args, "core_tv", 0) or 0))
+            # stage18f / stage18g keys (dual-space edge conductance theta_p, learned dual geometry theta_g)
+            self.cfg.update(core_edge=int(getattr(args, "core_edge", 0) or 0),
+                            core_geometry=int(getattr(args, "core_geometry", 0) or 0))
             # stage17 keys (dynamic guide: sub-step forcing, learnable guide-drift gain)
             self.cfg.update(ode_path_forcing=int(getattr(args, "ode_path_forcing", 0) or 0),
                             ode_drift_gain=int(getattr(args, "ode_drift_gain", 0) or 0),
@@ -185,7 +188,9 @@ class Run:
                                 core_tokens=bool(c.get("core_tokens", True) if c.get("core_tokens") is not None else True),
                                 prev_path=bool(c.get("prev_path", False)),
                                 core_laplace=bool(c.get("core_laplace", False)),
-                                core_tv=bool(c.get("core_tv", False)))
+                                core_tv=bool(c.get("core_tv", False)),
+                                core_edge=bool(c.get("core_edge", False)),
+                                core_geometry=bool(c.get("core_geometry", False)))
         if self.vnet_kwargs["prev_path"] and not (self.vnet_kwargs["prev_state"] and self.vnet_kwargs["integrator"] == "ode"):
             raise ValueError("prev_path needs the previous-state input (prev_state) and the ODE integrator")
         if self.vnet_kwargs["ode_drift_gain"] and not self.vnet_kwargs["ode_physics"]:
@@ -680,6 +685,8 @@ def stage_b(run: Run, use_guide: bool):
             + (", graph tendency core (beta-scaled guide transport + conservative face flux + source"
                + (", core tokens C in PIGT" if vc.core_tokens else "")
                + (", Laplace block" + (" (edge-preserving, TV flow)" if vc.core_tv else "") if vc.core_laplace else "")
+               + (", edge conductance kappa(u_i, u_j, p_ij)" if vc.core_edge else "")
+               + (f", learned dual geometry (power diagram, shift <= {vc.core_geom_shift:g} d)" if vc.core_geometry else "")
                + ")" if vc.tendency_core else ""))
     # restart safety: a finished Stage B is skipped, an interrupted one resumes from its last validation checkpoint
     start_step = 0
@@ -824,6 +831,11 @@ def stage_b(run: Run, use_guide: bool):
                    + (f" tv gain {sum(vm.last_core['tv_gain']) / len(vm.last_core['tv_gain']):.2f}"
                       f" keep {sum(vm.last_core['tv_keep']) / len(vm.last_core['tv_keep']):.2f}"
                       if "tv_gain" in vm.last_core else "")
+                   + (f" edge x {sum(vm.last_core['edge_mult']) / len(vm.last_core['edge_mult']):.2f}"
+                      f" sd {vm.last_core['edge_sd']:.2f}" if "edge_mult" in vm.last_core else "")
+                   + (f" geom |d| {vm.last_core['geom_shift']:.3f}/{vm.last_core['geom_shift_max']:.2f}"
+                      f" A {vm.last_core['geom_area'][0]:.2f}-{vm.last_core['geom_area'][1]:.2f}"
+                      if "geom_shift" in vm.last_core else "")
                    if getattr(vm, "last_core", None) else "")
                 + f" | {(time.time() - t0) / (step + 1):.2f} s/step")
             state = {"step": step + 1, "vnet": model.vnet.state_dict(), "opt": opt.state_dict(), "best": best,
@@ -1270,6 +1282,12 @@ def main():
     ap.add_argument("--core-tv", type=int, default=0, choices=[0, 1],
                     help="stage18e: edge-preserving (total-variation flow) form of the Laplace block, eps per variable "
                          "from the training states (tv_eps.json) x a learned factor (needs --core-laplace 1)")
+    ap.add_argument("--core-edge", type=int, default=0, choices=[0, 1],
+                    help="stage18f: edge conductance kappa(u_i, u_j, p_ij) on the Laplace block's faces from the two "
+                         "cells' embeddings and physical edge features (needs --core-laplace 1)")
+    ap.add_argument("--core-geometry", type=int, default=0, choices=[0, 1],
+                    help="stage18g: learned dual geometry, a power diagram of the grid points with static cell weights "
+                         "(areas, face lengths and conservation follow; needs --tendency-core 1)")
     ap.add_argument("--core-tokens", type=int, default=1, choices=[0, 1],
                     help="stage18: give the guide's core terms to PIGT as a fourth token source C")
     ap.add_argument("--ode-drift", default="tend", choices=["tend", "transport"],

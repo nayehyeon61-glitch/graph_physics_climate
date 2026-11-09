@@ -2,7 +2,8 @@
 # Stage stage19a/b/c (2026-11-07 21:25 KST): GPINN guide (감자 2026-11-07 20:20 KST, arXiv 2306.09792: "gpinn은 원본
 # 가이드, dynamic guide는 예측구조의 보조로"; 21:18 KST MTMLab/GNN-PINN as a reference: staged training, the physics
 # penalty only where the relation holds).  Base = the stage18 family member the chains adopted
-# (18e > 18d > 18c > 18b > 18; stage18e inserted 2026-11-09, 감자's choice of the edge-preserving diffusion).
+# (18g > 18f > 18e > 18d > 18c > 18b > 18; 18e inserted 2026-11-09 (edge-preserving diffusion), 18f/18g 2026-11-09
+# 14:14 KST (dual-space edge conductance / learned geometry, 감자's choices)).
 #   stage19a: the guide's Stage A of stage17c (heads from stage9b's guide, trunk frozen, same perturbations, 1000 steps)
 #             + soft PINN residuals of the relations that hold for ERA5 (geostrophic 500/850 hPa, thermal wind,
 #             balanced 6 h change, hypsometric change, 500 hPa vorticity; scripts/pinn_equation_check.py) on the
@@ -22,11 +23,12 @@ S18B=runs/era5_64x32_s18b_prevpath
 S18C=runs/era5_64x32_s18c_guidepath
 S18D=runs/era5_64x32_s18d_laplace
 S18E=runs/era5_64x32_s18e_tv
+S18G=runs/era5_64x32_s18g_geom
 LOG=runs/era5_64x32_s19_gpinn/chain_s19.log
-echo "[$(date -u +%H:%M:%S)] stage19 waits for CHAIN_S18E_DONE" >> $LOG
-until grep -q "CHAIN_S18E_DONE" $S18E/chain_s18e.log 2>/dev/null; do sleep 120; done
-# stage18e recorded the adopted member of 18 / 18b / 18c / 18d / 18e (and its Stage B guide flags)
-BASE=$(cat $S18E/base.txt); BFLAGS=$(cat $S18E/bflags.txt)
+echo "[$(date -u +%H:%M:%S)] stage19 waits for CHAIN_S18G_DONE" >> $LOG
+until grep -q "CHAIN_S18G_DONE" $S18G/chain_s18g.log 2>/dev/null; do sleep 120; done
+# stage18g recorded the adopted member of 18 / 18b / 18c / 18d / 18e / 18f / 18g (and its Stage B guide flags)
+BASE=$(cat $S18G/base.txt); BFLAGS=$(cat $S18G/bflags.txt)
 echo "[$(date -u +%H:%M:%S)] stage19 start on $BASE ($BFLAGS)" >> $LOG
 FT="--threads 4 --batch 4 --lr 3e-4 --steps 1000 --val-every 250 --rollout-steps 2 --rollout-start 0 --rollout-weight 1.0"
 EV="--threads 4 --stage eval --eval-stride 16 --max-lead-steps 5"

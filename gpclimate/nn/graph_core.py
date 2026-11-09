@@ -95,6 +95,13 @@ class GridFaceGraph(nn.Module):
         self.register_buffer("area", area.float(), persistent=False)
         self.register_buffer("normal", normal.to(torch.complex64), persistent=False)
         self.mean_length = float(length.mean())
+        # stage18f / stage18g: per-cell centre spacings (zonal dx, meridional extent dy), face latitude cosine and type
+        self.n_east = len(e_src)
+        self.register_buffer("dx", e_dist.float(), persistent=False)
+        self.register_buffer("dy", e_len.float(), persistent=False)
+        face_cos = torch.cat([lat.cos()[:, None].expand(H, W).reshape(-1), mid.cos()[:, None].expand(H - 1, W).reshape(-1)])
+        self.register_buffer("face_cos", face_cos.float(), persistent=False)
+        self.register_buffer("face_type", torch.cat([torch.ones(len(e_src)), torch.zeros(len(n_src))]), persistent=False)
 
     @property
     def n_cells(self) -> int:
@@ -146,6 +153,80 @@ class GridFaceGraph(nn.Module):
     def face_normals(self, gauge: torch.Tensor) -> torch.Tensor:
         """Face normals in the node frames of the src cells [F] (complex): canonical normal times exp(-i gauge)."""
         return self.normal * torch.exp(-1j * gauge[self.src].to(torch.float32))
+
+    def deformed(self, a: torch.Tensor, max_shift: float = 0.25) -> "GridFaceGraph":
+        """stage18g (theta_g): the power diagram of the grid points with the cell weights ``a`` [N] (dimensionless),
+        keeping the Delaunay connectivity.  The bisector of i and j moves from the midpoint towards the lighter cell
+        by  delta_f = max_shift tanh(a_i - a_j) d_f  along the face normal (power distance |x - x_i|^2 - w_i, shift
+        (w_i - w_j) / 2 d_ij, here bounded); the cell areas (zonal and meridional stretch, first order in the shifts,
+        total area kept), the face lengths (mean stretch of the two cells), the covering weights l / d (centres fixed)
+        and the face masses are recomputed, so every operator of the returned graph conserves the integral with
+        respect to the new areas.  ``a = 0`` gives the grid itself."""
+        N, ne = self.n_cells, self.n_east
+        shift = max_shift * torch.tanh(a.index_select(0, self.src) - a.index_select(0, self.dst))  # delta_f / d_f
+        delta = shift * self.length / self.weight  # metres, towards dst (the src cell grows)
+        sx = (scatter(delta[:ne], self.src[:ne], 0, dim_size=N, reduce="sum")
+              - scatter(delta[:ne], self.dst[:ne], 0, dim_size=N, reduce="sum")) / self.dx
+        sy = (scatter(delta[ne:], self.src[ne:], 0, dim_size=N, reduce="sum")
+              - scatter(delta[ne:], self.dst[ne:], 0, dim_size=N, reduce="sum")) / self.dy
+        area = self.area * (1 + sx) * (1 + sy)
+        area = area * (self.area.sum() / area.sum())
+        s_e = 0.5 * (sy.index_select(0, self.src[:ne]) + sy.index_select(0, self.dst[:ne]))  # east faces: meridional
+        s_n = 0.5 * (sx.index_select(0, self.src[ne:]) + sx.index_select(0, self.dst[ne:]))  # north faces: zonal
+        length = self.length * (1 + torch.cat([s_e, s_n]))
+        g = GridFaceGraph.__new__(GridFaceGraph)
+        nn.Module.__init__(g)
+        g.H, g.W, g.n_east, g.mean_length = self.H, self.W, ne, self.mean_length
+        for name in ("src", "dst", "normal", "dx", "dy", "face_cos", "face_type"):
+            setattr(g, name, getattr(self, name))
+        g.area, g.length = area, length
+        g.weight = length / (self.length / self.weight)
+        g.face_mass = torch.minimum(area.index_select(0, self.src), area.index_select(0, self.dst))
+        g.deformation = {"shift": shift, "sx": sx, "sy": sy, "area_ratio": area / self.area}
+        return g
+
+
+class EdgeConductance(nn.Module):
+    """stage18f (theta_p): symmetric (kappa_ij = kappa_ji), gauge-invariant log-multiplier of the face diffusivity
+    from the two cells' embeddings and physical edge features p_f, zero at initialisation (multiplier 1).  The
+    dual-space physics of the user's boxed law  du_i/dt = (1/|V_i|) sum_j (|F_ij| / d_ij) kappa_theta(u_i, u_j, p_ij)
+    (u_j - u_i):  the geometry |F_ij| / d_ij / |V_i| is the face graph's, kappa_theta is this head times the cell
+    diffusivity of the Laplace block."""
+    N_FIXED = 2  # face latitude cosine, face type
+
+    def __init__(self, cs: int, cv: int, n_out: int, n_static: int, n_flow: int, hidden: int = 64):
+        super().__init__()
+        self.n_static, self.n_flow, self.n_out = n_static, n_flow, n_out
+        self.n_phys = n_static + 2 * n_flow + n_out + self.N_FIXED
+        self.n_in = 2 * (cs + 2 * cv) + self.n_phys
+        self.psi = nn.Sequential(nn.Linear(self.n_in, hidden), nn.SiLU(), nn.Linear(hidden, n_out))
+        nn.init.zeros_(self.psi[-1].weight)
+        nn.init.zeros_(self.psi[-1].bias)
+
+    def phys_features(self, faces: GridFaceGraph, q: torch.Tensor, flow: torch.Tensor, static: torch.Tensor,
+                      gauge: torch.Tensor) -> torch.Tensor:
+        """p_f [B, F, n_phys]: |difference| of the static fields [B, N, n_static] (terrain, land-sea), the flow
+        [B, N, n_flow] (complex, m/s, node frames) across and along the face (|mean of the two cells' projections| per
+        level group, in 10 m/s), |q_j - q_i| of the diffused channels [B, N, n_out], the face latitude cosine and the
+        face type (1 east, 0 north).  Every entry is invariant under i <-> j."""
+        src, dst = faces.src, faces.dst
+        rot = torch.exp(-1j * gauge.to(torch.float32))
+        proj = 0.5 * (flow.index_select(1, src) * (faces.normal * rot[src]).conj()[None, :, None]
+                      + flow.index_select(1, dst) * (faces.normal * rot[dst]).conj()[None, :, None]) / 10.0
+        B, F = proj.shape[:2]
+        fixed = torch.stack([faces.face_cos, faces.face_type], -1)[None].expand(B, F, self.N_FIXED)
+        return torch.cat([(static.index_select(1, dst) - static.index_select(1, src)).abs(), proj.real.abs(),
+                          proj.imag.abs(), (q.index_select(1, dst) - q.index_select(1, src)).abs(), fixed], -1)
+
+    def forward(self, emb: Field, faces: GridFaceGraph, gauge: torch.Tensor, phys: torch.Tensor) -> torch.Tensor:
+        """log kappa multiplier [B, F, n_out] in [-4, 4]; invariant under (i <-> j, n -> -n)."""
+        rot = torch.exp(-1j * gauge.to(torch.float32))
+        fi = FaceFluxHead._side(emb, faces.src, faces.normal * rot[faces.src])
+        fj = FaceFluxHead._side(emb, faces.dst, faces.normal * rot[faces.dst])
+        cs = emb.s.shape[-1]
+        same, diff = fi + fj, fi - fj  # scalars: sum and |difference|; vector projections flip with n: |.| of both
+        feats = torch.cat([same[..., :cs], diff[..., :cs].abs(), same[..., cs:].abs(), diff[..., cs:].abs(), phys], -1)
+        return self.psi(feats).clamp(-4.0, 4.0)
 
 
 class FaceFluxHead(nn.Module):

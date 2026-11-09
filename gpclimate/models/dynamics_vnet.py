@@ -119,6 +119,17 @@ class VNetConfig:
     # times a learned factor exp(tv_log_gain) (init 1).  Conservation and the stability cap are unchanged (factor <= 1).
     # Needs core_laplace.
     core_tv: bool = False
+    # stage18f dual-space edge physics (theta_p; 감자 2026-11-09): the face diffusivity of the Laplace block is
+    # multiplied by exp(phi_theta(sym(h_i, h_j), p_f)), kappa_ij = kappa_ji >= 0, from the two cells' embeddings and
+    # physical edge features p_f (|terrain / land-sea difference|, the guide flow across and along the face,
+    # |q_j - q_i|, latitude, orientation); zero-initialised -> 1.  Needs core_laplace.
+    core_edge: bool = False
+    # stage18g dual-space geometry (theta_g): a power diagram of the grid points with learned static cell weights
+    # (from terrain, land-sea mask and latitude; zero-initialised -> the grid) moves the faces by up to
+    # core_geom_shift of the centre distance; areas, face lengths and the discrete conservation of every core
+    # operator (flux divergence, Laplace block) follow.  Needs tendency_core.
+    core_geometry: bool = False
+    core_geom_shift: float = 0.25
     # stage18b: the previous-state input follows the path — sub-step k of an ODE lead gets the state one lead before
     # *its own* time, X_{t + k 6 h - lead} (observed past states in the first lead, the previous lead's path later),
     # instead of X_{t - lead} for all sub-steps.  ``prev`` is then a list of ode_steps states.
@@ -208,6 +219,22 @@ class DynamicsVNet(nn.Module):
             if self.core_on:
                 self.register_buffer("tv_eps0", torch.ones(spec.n_s))
                 self.tv_log_gain = nn.Parameter(torch.zeros(spec.n_s))
+        self.edge_head = self.geom_head = None
+        if cfg.core_edge:  # stage18f: edge conductance head (theta_p), multiplier 1 at the start
+            if not cfg.core_laplace:
+                raise ValueError("core_edge (stage18f) multiplies the Laplace block's face diffusivity: set core_laplace")
+            if self.core_on:
+                from gpclimate.models.lie_physical_gnn import FLOW_WINDS
+                from gpclimate.nn.graph_core import EdgeConductance
+                self.edge_head = EdgeConductance(cs, cv, spec.n_s, len(spec.static_scalars), len(FLOW_WINDS), hd)
+        if cfg.core_geometry:  # stage18g: static power-diagram weights (theta_g), the grid itself at the start
+            if not cfg.tendency_core:
+                raise ValueError("core_geometry (stage18g) deforms the face graph of the graph tendency core: set "
+                                 "tendency_core")
+            if self.core_on:
+                self.geom_head = nn.Sequential(nn.Linear(len(spec.static_scalars) + 2, 16), nn.SiLU(), nn.Linear(16, 1))
+                nn.init.zeros_(self.geom_head[-1].weight)
+                nn.init.zeros_(self.geom_head[-1].bias)
         self.nudge_block = None
         if cfg.nudge:
             from gpclimate.nn.nudging import InitialNudging
@@ -254,6 +281,14 @@ class DynamicsVNet(nn.Module):
         if self.tv_log_gain is None:
             return None
         return self.tv_eps0 * torch.exp(self.tv_log_gain)
+
+    def core_geometry_weights(self, cond: Field, lat_deg: torch.Tensor, W: int) -> torch.Tensor:
+        """stage18g: static power-diagram cell weights a [N] from the normalised static fields of ``cond`` (the first
+        channels, identical over the batch) and the cell latitude (sin, cos)."""
+        n = len(self.spec.static_scalars)
+        lat = torch.deg2rad(lat_deg.to(cond.s.dtype)).repeat_interleave(W)
+        feats = torch.cat([cond.s[0, :, :n], torch.sin(lat)[:, None], torch.cos(lat)[:, None]], -1)
+        return self.geom_head(feats).squeeze(-1)
 
     def core_flux(self, emb: Field, faces, gauge: torch.Tensor) -> torch.Tensor:
         """stage18: -div_G J_theta of the scalar channels [B, N, n_s] in units of the face graph's mean edge length
@@ -541,14 +576,25 @@ class LieGuidedForecaster(nn.Module):
         xb = self.guide.transport(None, x, g, steps, flow=flow, beta=beta)
         faces = self.faces(g)
         gauge = g.extras["grid_gauge"].to(x.s.device)
+        geom = None
+        if self.vnet.geom_head is not None:  # stage18g: learned dual geometry (static power-diagram weights)
+            a = self.vnet.core_geometry_weights(cond, g.extras["grid_lat"].to(x.s.device), g.extras["grid_hw"][1])
+            faces = faces.deformed(a, cfg.core_geom_shift)
+            geom = faces.deformation
         C = self.vnet.core_flux(emb, faces, gauge) * self.delta_scale_s / cfg.ode_steps
         h = 1.0 / cfg.ode_steps
         S_s, S_v = d.s * self.delta_scale_s * h, d.v * self.delta_scale_v * h
-        D, K, eps = None, None, None
+        D, K, eps, phi = None, None, None, None
         if self.vnet.laplace_head is not None:  # stage18d: Laplace block, diffusion of the transported scalars
             K = self.vnet.core_diffusivity(emb)
+            Kf = faces.face_mean(K)
+            if self.vnet.edge_head is not None:  # stage18f: edge conductance from the cells and the edge physics
+                n_st = len(self.vnet.spec.static_scalars)
+                phys = self.vnet.edge_head.phys_features(faces, xb.s, flow, cond.s[..., :n_st], gauge)
+                phi = self.vnet.edge_head(emb, faces, gauge, phys)
+                Kf = Kf * torch.exp(phi)
             eps = self.vnet.core_tv_eps()  # stage18e: edge-preserving factor on the face diffusivity
-            D = faces.diffusion(xb.s, faces.face_mean(K), 6 * 3600.0 * steps, edge_eps=eps)
+            D = faces.diffusion(xb.s, Kf, 6 * 3600.0 * steps, edge_eps=eps)
         with torch.no_grad():  # share of each core term (rms over the batch, normalised units) for the logs
             rms = lambda t: float(t.abs().pow(2).mean().sqrt())  # noqa: E731
             self.last_core = {"beta": [float(b) for b in beta.mean((0, 1))],
@@ -563,6 +609,13 @@ class LieGuidedForecaster(nn.Module):
                 self.last_core.update(tv_eps=[float(e) for e in eps],
                                       tv_gain=[float(v) for v in torch.exp(self.vnet.tv_log_gain)],
                                       tv_keep=[float(v) for v in faces.edge_factor(dq, eps).mean((0, 1))])
+            if phi is not None:  # stage18f: mean multiplier per variable and the spread of its logarithm
+                self.last_core.update(edge_mult=[float(v) for v in torch.exp(phi).mean((0, 1))],
+                                      edge_sd=float(phi.std()))
+            if geom is not None:  # stage18g: face shifts (fraction of the centre distance) and the area range
+                self.last_core.update(geom_shift=float(geom["shift"].abs().mean()),
+                                      geom_shift_max=float(geom["shift"].abs().max()),
+                                      geom_area=[float(geom["area_ratio"].min()), float(geom["area_ratio"].max())])
         ds = xb.s - x.s + C + S_s + (D if D is not None else 0.0)
         return Field(ds, xb.v - x.v + S_v)
 
