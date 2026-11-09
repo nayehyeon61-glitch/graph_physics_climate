@@ -1,0 +1,7 @@
+[11:09:28] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[11:10:28] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[11:10:28] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[11:10:28] run runs/era5_64x32_s18b_prevpath: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[11:10:28] stage B[vnet_noguide]: vnet params 660629, steps 1000, batch 4, rollout steps 2 from step 0 (weight 1.0)
+[11:10:28] stage B[vnet_noguide]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift off, sub-step solar forcing, graph tendency core (beta-scaled guide transport + conservative face flux + source, core tokens C in PIGT)
+[11:10:29] stage B[vnet_noguide]: V-Net initialised from runs/era5_64x32_s9b_merged/vnet_noguide.pt
