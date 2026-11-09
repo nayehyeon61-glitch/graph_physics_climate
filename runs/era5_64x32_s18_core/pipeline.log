@@ -9,3 +9,131 @@
 [02:33:43] B[vnet]   250  L_f 0.1472 L_roll 0.2940 L_phys 0.00015 L_int 0.1118 | val MSE 0.0460 2-step 0.0931 (persistence 0.3295) 6/12/18 h 0.0213/0.0315/0.0401 core beta 0.12/0.10/0.08 rms T 0.023 F 0.009 S 0.152 | 34.76 s/step
 [05:01:10] B[vnet]   500  L_f 0.1336 L_roll 0.2646 L_phys 0.00003 L_int 0.0977 | val MSE 0.0437 2-step 0.0905 (persistence 0.3295) 6/12/18 h 0.0199/0.0294/0.0376 core beta 0.11/0.09/0.08 rms T 0.022 F 0.009 S 0.162 | 35.07 s/step
 [07:32:30] B[vnet]   750  L_f 0.1262 L_roll 0.2417 L_phys 0.00006 L_int 0.0942 | val MSE 0.0420 2-step 0.0849 (persistence 0.3295) 6/12/18 h 0.0192/0.0284/0.0362 core beta 0.11/0.09/0.08 rms T 0.021 F 0.009 S 0.170 | 35.49 s/step
+[09:56:40] B[vnet]   999  L_f 0.1238 L_roll 0.2278 L_phys 0.00005 L_int 0.0923 | val MSE 0.0416 2-step 0.0840 (persistence 0.3295) 6/12/18 h 0.0191/0.0281/0.0359 core beta 0.11/0.09/0.08 rms T 0.021 F 0.010 S 0.173 | 35.30 s/step
+[09:56:40] stage B[vnet] done in 588.4 min, best val MSE 0.1256
+[09:56:44] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[09:58:09] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[09:58:09] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[09:58:09] run runs/era5_64x32_s18_core: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[09:58:11] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'physics_only', 'no_guide']
+[10:19:04] deterministic rollouts done in 20.9 min
+[10:19:07] physics share of the core (last sub-step of each lead): 24 h 0.131 48 h 0.134 72 h 0.157 96 h 0.173 120 h 0.179
+[10:19:07] eval written to runs/era5_64x32_s18_core/eval.json
+[10:19:12] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[10:20:11] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[10:20:11] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+{
+ "run": "runs/era5_64x32_s18_core",
+ "p_dependence_mse": {
+  "true_P": 0.04249492473900318,
+  "zero_P": 0.08287304763992627,
+  "shuffled_P": 0.08348905170957248,
+  "persistence": 0.349194457133611
+ },
+ "p_dependence_relative": {
+  "true_P": 1.0,
+  "zero_P": 1.9501869493573376,
+  "shuffled_P": 1.96468289383611,
+  "persistence": 8.21732146317015
+ },
+ "linear_probe_r2_24h_scalar_tendency": {
+  "channels": [
+   "z500",
+   "t850",
+   "q700",
+   "t2m",
+   "msl"
+  ],
+  "state_only": [
+   0.06653839349746704,
+   0.13508695363998413,
+   0.0911257266998291,
+   0.05969017744064331,
+   0.07599544525146484
+  ],
+  "guide_only": [
+   0.38847649097442627,
+   0.4108617901802063,
+   0.2908627390861511,
+   0.24366497993469238,
+   0.34789735078811646
+  ],
+  "state_plus_guide": [
+   0.40748000144958496,
+   0.44545978307724,
+   0.29592597484588623,
+   0.25483405590057373,
+   0.355243444442749
+  ],
+  "physics_ops_only": [
+   0.27005261182785034,
+   0.32458430528640747,
+   0.24744313955307007,
+   0.21593844890594482,
+   0.33570122718811035
+  ],
+  "state_plus_physics_ops": [
+   0.2782202363014221,
+   0.34189629554748535,
+   0.2526128888130188,
+   0.2219122052192688,
+   0.34223324060440063
+  ]
+ },
+ "linear_probe_r2_mean": {
+  "state_only": 0.08568733930587769,
+  "guide_only": 0.33635267019271853,
+  "state_plus_guide": 0.3517886519432068,
+  "physics_ops_only": 0.27874394655227663,
+  "state_plus_physics_ops": 0.28737497329711914
+ },
+ "pigt_attention_mass": {
+  "sources": [
+   "H",
+   "P",
+   "O",
+   "C"
+  ],
+  "P0": [
+   [
+    0.1560235321521759,
+    0.2612881362438202,
+    0.5715885162353516,
+    0.011099491268396378
+   ]
+  ],
+  "P1": [
+   [
+    0.21206437051296234,
+    0.3053938150405884,
+    0.47279971837997437,
+    0.009740717709064484
+   ]
+  ],
+  "P2": [
+   [
+    0.32365190982818604,
+    0.2542991042137146,
+    0.4129524827003479,
+    0.009096543304622173
+   ]
+  ],
+  "P1u": [
+   [
+    0.46376699209213257,
+    0.2493741810321808,
+    0.27992546558380127,
+    0.006933963391929865
+   ]
+  ],
+  "P0u": [
+   [
+    0.3289158046245575,
+    0.311199814081192,
+    0.3483469486236572,
+    0.011538922786712646
+   ]
+  ]
+ }
+}
+PIPELINE_DONE
