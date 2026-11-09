@@ -37,6 +37,6 @@ Stage A 10분, Stage B 1000 step 519분(31 s/step), 평가와 진단, 2020/2022 
 - **stage17c 기각**(stage17a 대비 5/5 개선이지만 평균 +0.16 % < 0.5 %). 통합 모델은 stage9b, ODE 계열의 기준은 stage17a입니다.
 - stage20 구성 규칙(stage17a 대비 기준 통과 run 중 최고, 없으면 stage17a)에서 stage17c는 후보가 아닙니다.
 - 논문용으로 쓸 수 있는 관찰: 수송 guide만으로 24 h persistence 대비 +33 %, guide 이득 +5.6 %(delta 대조군 +4.3 %).
-- 다음: stage18(graph tendency core, 수송 β·flux J·source S) — 18:30 KST쯤 결과.
+- 다음: stage18(graph tendency core, 수송 β·flux J·source S) — 결과는 오늘 저녁(20–21시 KST)쯤.
 
 상세 표: `reports/compare_stage17c_tables.md`
