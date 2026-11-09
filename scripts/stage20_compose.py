@@ -50,6 +50,7 @@ RUNS = {
     "stage19a": "runs/era5_64x32_s19a_gpinn",
     "stage19b": "runs/era5_64x32_s19b_gpinn",
     "stage19c": "runs/era5_64x32_s19c_gpinn",
+    "stage22": "runs/era5_64x32_s22_trisk",
 }
 # Stage B options a stage used beyond its config.json (the guide-head fine-tuning is detected from guide_finetuned.pt)
 EXTRA_B = {"stage19c": "--pinn-weight-b 0.02", "stage21a": "--source-penalty 0.1", "stage21b": "--source-penalty 0.1"}
@@ -80,6 +81,10 @@ def compose(root: Path, ctl: str = CTL, runs=None, min_mean_gain: float = 0.5, b
         bflags.append("--guide-lr 3e-5 --guide-heads-only 1")
     if stage in EXTRA_B:
         bflags.append(EXTRA_B[stage])
+    if (d / "extra_b.txt").exists():  # stage22: Stage B options inherited from the parent it was built on
+        extra = (d / "extra_b.txt").read_text().strip()
+        if extra:
+            bflags.append(extra)
     out.update(chosen=stage, src=runs[stage], bflags=" ".join(bflags),
                files=[f for f in GUIDE_FILES if (d / f).exists()],
                components={k: cfg.get(k) for k in ("integrator", "ode_steps", "ode_path_forcing", "inter_times",

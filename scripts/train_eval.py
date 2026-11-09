@@ -115,6 +115,8 @@ class Run:
             self.cfg.update(prev_path=int(getattr(args, "prev_path", 0) or 0))
             # stage19b key (GPINN graph embedding of the guide)
             self.cfg.update(graph_embed=int(getattr(args, "graph_embed", 0) or 0))
+            # stage22 key (TRiSK / MPAS C-grid quantities as guide inputs)
+            self.cfg.update(trisk_ops=int(getattr(args, "trisk_ops", 0) or 0))
             # stage18d / stage18e keys (Laplace block in the graph tendency core; its edge-preserving form)
             self.cfg.update(core_laplace=int(getattr(args, "core_laplace", 0) or 0),
                             core_tv=int(getattr(args, "core_tv", 0) or 0))
@@ -171,7 +173,8 @@ class Run:
                                      curvature_ops=bool(c.get("curvature_ops", False)),
                                      simplicial=int(c.get("simplicial", 0)),
                                      flow_head=bool(c.get("flow_head", False)),
-                                     graph_embed=int(c.get("graph_embed", 0) or 0))
+                                     graph_embed=int(c.get("graph_embed", 0) or 0),
+                                     trisk_ops=bool(c.get("trisk_ops", False)))
         self.vnet_kwargs = dict(cs=c["cs"], cv=c["cv"], depth=tuple(c["depth"]), heads=c["heads"], ds=c["ds"],
                                 dv=c["dv"], n_basis=c["n_basis"], hidden=c["hidden"],
                                 fusion=c.get("fusion", "gated"), pigt_layers=int(c.get("pigt_layers", 2)),
@@ -308,6 +311,8 @@ class Run:
             m.guide.phys_ops.v_scale.copy_(self.norm.v_scale)  # m/s per normalised unit (vorticity / 2 Omega)
         if m.guide is not None and getattr(m.guide, "curv_ops", None) is not None:
             m.guide.curv_ops.v_scale.copy_(self.norm.v_scale)
+        if m.guide is not None and getattr(m.guide, "trisk_ops", None) is not None:  # stage22: physical units
+            m.guide.trisk_ops.set_scales(self.norm.s_mean, self.norm.s_std, self.norm.v_scale)
         if getattr(m.vnet, "phys_ops", None) is not None:
             m.vnet.phys_ops.v_scale.copy_(self.norm.v_scale)
         if m.guide is not None and getattr(m.guide, "flow_out", None) is not None:  # stage17c flow in m/s
@@ -390,7 +395,7 @@ class Run:
 # guide read-out heads (grid adapter, reconstruction, aux, tendency/source, flow): Stage A --guide-heads-only (stage17c)
 # and Stage B --guide-lr with --guide-heads-only (stage18c) train only these, so the features P stay unchanged
 # (+ the stage19b graph-embedding input adapter, the only way the embedding reaches a frozen trunk)
-GUIDE_HEADS = ("head_dec.", "rec_out.", "aux_out.", "tend_out.", "flow_out.", "gemb_in.")
+GUIDE_HEADS = ("head_dec.", "rec_out.", "aux_out.", "tend_out.", "flow_out.", "gemb_in.", "trisk_norm.", "trisk_embed.")
 
 
 def make_pinn(run, weight: float, terms: str):
@@ -515,7 +520,9 @@ def stage_a(run: Run):
         log(f"stage A: forecast-state perturbation from {a.perturb_model} with p={a.perturb_prob}")
     w_m = torch.ones(g.n_mesh[0])  # icosahedral nodes are nearly uniform in area
     log(f"stage A: guide params {n_params(guide)}, steps {a.steps}, batch {a.batch}"
-        + (f", closure head with resolved terms {guide.cfg.resolved_terms}" if guide.closure_out is not None else ""))
+        + (f", closure head with resolved terms {guide.cfg.resolved_terms}" if guide.closure_out is not None else "")
+        + (f", TRiSK C-grid inputs {guide.trisk_ops.out_dims} (stage22)" if getattr(guide, "trisk_ops", None) is not None
+           else ""))
     n_fc = 0
     for step in range(a.steps):
         for pg in opt.param_groups:
@@ -902,6 +909,8 @@ def stage_b(run: Run, use_guide: bool):
                       f" sd {vm.last_core['edge_sd']:.2f}" if "edge_mult" in vm.last_core else "")
                    + (f" geom |d| {vm.last_core['geom_shift']:.3f}/{vm.last_core['geom_shift_max']:.2f}"
                       f" A {vm.last_core['geom_area'][0]:.2f}-{vm.last_core['geom_area'][1]:.2f}"
+                      + (f" |c| {vm.last_core['geom_centroid']:.3f}/{vm.last_core['geom_centroid_max']:.2f}"
+                         if "geom_centroid" in vm.last_core else "")
                       if "geom_shift" in vm.last_core else "")
                    if getattr(vm, "last_core", None) else "")
                 + f" | {(time.time() - t0) / (step + 1):.2f} s/step")
@@ -1287,6 +1296,11 @@ def main():
     ap.add_argument("--guide-path-weight", type=float, default=1.0)
     ap.add_argument("--graph-embed", type=int, default=0,
                     help="stage19b GPINN: terrain-weighted grid-Laplacian eigenvectors added to the guide input")
+    ap.add_argument("--trisk-ops", type=int, default=0, choices=[0, 1],
+                    help="stage22 (MPAS / TRiSK reference): C-grid quantities of the flow on the guide's finest mesh "
+                         "(edge normal velocity, vertex PV, PV flux, kinetic energy, Bernoulli gradient, vector-"
+                         "invariant tendency, edge-flux advection) as guide inputs through a zero-initialised adapter "
+                         "(stored in config.json)")
     ap.add_argument("--pinn-weight", type=float, default=0.0,
                     help="stage19 GPINN: weight of the physics residual losses on the guide's outputs (Stage A)")
     ap.add_argument("--pinn-weight-b", type=float, default=0.0,

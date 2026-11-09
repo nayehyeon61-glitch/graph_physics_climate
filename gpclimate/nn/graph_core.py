@@ -182,7 +182,15 @@ class GridFaceGraph(nn.Module):
         g.area, g.length = area, length
         g.weight = length / (self.length / self.weight)
         g.face_mass = torch.minimum(area.index_select(0, self.src), area.index_select(0, self.dst))
-        g.deformation = {"shift": shift, "sx": sx, "sy": sy, "area_ratio": area / self.area}
+        # MPAS / SCVT diagnostic (stage22 reference): a centroidal Voronoi cell has its generator at the mass centroid;
+        # here the generators stay and the faces move, so the centroid moves by half the sum of the two opposite face
+        # shifts (east faces: src = i is its east face, dst = i its west face, both shifted eastwards by delta)
+        cxs = 0.5 * (scatter(delta[:ne], self.src[:ne], 0, dim_size=N, reduce="sum")
+                     + scatter(delta[:ne], self.dst[:ne], 0, dim_size=N, reduce="sum")) / self.dx
+        cys = 0.5 * (scatter(delta[ne:], self.src[ne:], 0, dim_size=N, reduce="sum")
+                     + scatter(delta[ne:], self.dst[ne:], 0, dim_size=N, reduce="sum")) / self.dy
+        g.deformation = {"shift": shift, "sx": sx, "sy": sy, "area_ratio": area / self.area,
+                         "centroid": torch.sqrt(cxs ** 2 + cys ** 2)}  # centroid offset / cell size
         return g
 
 

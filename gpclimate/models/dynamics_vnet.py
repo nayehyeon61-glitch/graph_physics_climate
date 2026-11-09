@@ -624,7 +624,9 @@ class LieGuidedForecaster(nn.Module):
             if geom is not None:  # stage18g: face shifts (fraction of the centre distance) and the area range
                 self.last_core.update(geom_shift=float(geom["shift"].abs().mean()),
                                       geom_shift_max=float(geom["shift"].abs().max()),
-                                      geom_area=[float(geom["area_ratio"].min()), float(geom["area_ratio"].max())])
+                                      geom_area=[float(geom["area_ratio"].min()), float(geom["area_ratio"].max())],
+                                      geom_centroid=float(geom["centroid"].mean()),  # SCVT property (MPAS): 0 = centroidal
+                                      geom_centroid_max=float(geom["centroid"].max()))
         ds = xb.s - x.s + C + S_s + (D if D is not None else 0.0)
         dv = xb.v - x.v + S_v
         # stage21a: source budget = squared share of the V-Net source in the sub-step change (scale-free), and the

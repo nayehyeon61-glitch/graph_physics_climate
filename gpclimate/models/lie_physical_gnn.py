@@ -38,6 +38,7 @@ from gpclimate.nn.primitive2d import DEFAULT_TERMS, ReducedPrimitiveTendencies
 from gpclimate.nn.semi_lagrangian import SphereSemiLagrangian
 from gpclimate.nn.simplicial import SimplicialBlock
 from gpclimate.nn.so2 import EqFFN, EqLinear, EqNorm, Field
+from gpclimate.nn.trisk_ops import TriskOperators
 
 LEVEL_KEYS = ("P0", "P1", "P2", "P1u", "P0u")
 
@@ -71,6 +72,11 @@ class GuideConfig:
     # stage19b (GPINN graph embedding): number of eigenvectors of the terrain / coastline weighted grid Laplacian
     # (gpclimate/geometry/graph_embedding.py) added to the guide's input embedding (zero-initialised); 0 = off
     graph_embed: int = 0
+    # stage22 (MPAS / TRiSK reference, 감자 2026-11-09 16:00 KST): C-grid quantities of the flow on the finest mesh --
+    # edge normal components, vertex (triangle) potential vorticity, PV flux (nonlinear Coriolis), kinetic energy and
+    # Bernoulli gradient, vector-invariant tendency, edge-flux advective tendencies (gpclimate/nn/trisk_ops.py) -- as
+    # extra mesh-0 inputs through a zero-initialised adapter (the features P are unchanged at the start)
+    trisk_ops: bool = False
 
 
 # stage17c level groups: the wind that carries each state channel
@@ -135,6 +141,17 @@ class LiePhysicalGNN(nn.Module):
             qs, qv = self.curv_ops.out_dims
             self.curv_norm = EqNorm(qs, qv)
             self.curv_embed = EqLinear(qs, qv, cs, cv)
+        self.trisk_ops: Optional[TriskOperators] = None
+        if cfg.trisk_ops:  # stage22: zero-initialised, so a trained guide keeps its features until the adapter learns
+            self.trisk_ops = TriskOperators(spec)
+            ts, tv = self.trisk_ops.out_dims
+            self.trisk_norm = EqNorm(ts, tv)
+            self.trisk_embed = EqLinear(ts, tv, cs, cv)
+            with torch.no_grad():
+                self.trisk_embed.lin_s.weight.zero_()
+                self.trisk_embed.lin_s.bias.zero_()
+                self.trisk_embed.w_re.zero_()
+                self.trisk_embed.w_im.zero_()
         # Stage-A heads (graph-to-grid adapter + linear read-outs)
         self.head_dec = GaugeTransfer(cs, cv, cs, cv, nb, hd)
         self.simp_in = SimplicialBlock(cs, cv) if cfg.simplicial >= 1 else None
@@ -201,6 +218,13 @@ class LiePhysicalGNN(nn.Module):
         raw = transport_interpolate(Field(state.s[..., :0], state.v), g.grid2mesh)
         return self.curv_ops(raw.v, g.mesh_sinlat[0], g.mesh_edges[0], g.extras["complexes"][0])
 
+    def trisk_terms(self, state: Field, g: GraphView) -> Field:
+        """Raw TRiSK / C-grid quantities on mesh 0 (stage22), for the encoder and diagnostics; the state is sampled
+        at the mesh nodes with the bilinear transport interpolant (smooth enough for the differential operators)."""
+        assert self.trisk_ops is not None
+        raw = transport_interpolate(state, g.extras.get("grid2mesh_lin", g.grid2mesh))
+        return self.trisk_ops(raw.s, raw.v, g.mesh_sinlat[0], g.extras["complexes"][0])
+
     def forward(self, state: Field, cond: Field, sigma: torch.Tensor, g: GraphView) -> Dict[str, Field]:
         B, G = state.s.shape[:2]
         cond = broadcast_batch(cond, B)
@@ -218,6 +242,9 @@ class LiePhysicalGNN(nn.Module):
         if self.curv_ops is not None:
             cur = self.curv_embed(self.curv_norm(self.curvature_terms(state, g)))
             m0 = Field(m0.s + cur.s, m0.v + cur.v)
+        if self.trisk_ops is not None:  # stage22: MPAS / TRiSK C-grid quantities
+            tr = self.trisk_embed(self.trisk_norm(self.trisk_terms(state, g)))
+            m0 = Field(m0.s + tr.s, m0.v + tr.v)
         if self.simp_in is not None:  # stage11b
             m0 = self.simp_in(m0, g.extras["complexes"][0], g.mesh_sinlat[0])
         P0 = self.enc0(m0, g.mesh_edges[0])

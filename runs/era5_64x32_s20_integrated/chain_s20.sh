@@ -19,8 +19,9 @@ CTL17=runs/era5_64x32_s17_ctl
 RUN=runs/era5_64x32_s20_integrated
 CTL=runs/era5_64x32_s20_ctl
 LOG=$RUN/chain_s20.log
-echo "[$(date -u +%H:%M:%S)] stage20 waits for CHAIN_S19_DONE" >> $LOG
-until grep -q "CHAIN_S19_DONE" runs/era5_64x32_s19_gpinn/chain_s19.log 2>/dev/null; do sleep 300; done
+# stage22 (TRiSK guide inputs, 2026-11-09 16:07 KST) runs after stage19 and before stage20
+echo "[$(date -u +%H:%M:%S)] stage20 waits for CHAIN_S22_DONE" >> $LOG
+until grep -q "CHAIN_S22_DONE" runs/era5_64x32_s22_trisk/chain_s22.log 2>/dev/null; do sleep 300; done
 . $RUN/budget.env
 eval "$(python scripts/stage20_compose.py --out $RUN)"
 echo "[$(date -u +%H:%M:%S)] stage20 start: chosen ${CHOSEN:-none} (${SRC:-}), $STEPS steps lr $LR init $INIT, B flags '$BFLAGS'" >> $LOG

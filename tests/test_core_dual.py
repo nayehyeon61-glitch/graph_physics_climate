@@ -41,6 +41,11 @@ def test_deformed_geometry_is_the_grid_at_zero_and_a_consistent_power_diagram_ot
     b[i] = 3.0
     g2 = fg.deformed(b, 0.25)
     assert float(g2.area[i]) > 1.5 * float(fg.area[i]) and float(g2.area[i + 1]) < float(fg.area[i + 1])
+    # MPAS / SCVT diagnostic: the heavy cell grows symmetrically (its generator stays the centroid), its neighbours'
+    # centroids move away from it; the undeformed grid is centroidal
+    assert float(g0.deformation["centroid"].abs().max()) == 0.0
+    assert float(g2.deformation["centroid"][i]) < 1e-6 < float(g2.deformation["centroid"][i + 1])
+    assert float(g1.deformation["centroid"].max()) <= 0.25 * 2 ** 0.5 + 1e-6  # each axis moves at most max_shift
     q = torch.randn(2, N, 3)
     K, dt = torch.full((2, F, 3), 1e9), 6 * 3600.0
     A1 = g1.area[None, :, None]
