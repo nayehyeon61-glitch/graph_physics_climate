@@ -15,3 +15,4 @@
 [01:24:35] stage B[vnet]: vnet params 981732, steps 1000, batch 4, rollout steps 2 from step 0 (weight 1.0), guide fine-tuning lr 3e-05 (276764 params)
 [01:24:35] stage B[vnet]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift off, sub-step solar forcing, graph tendency core (beta-scaled guide transport + conservative face flux + source, core tokens C in PIGT)
 [01:24:35] stage B[vnet]: resumed from step 1 (best 0.2693, 1547 s elapsed before)
+[03:26:05] B[vnet]   250  L_f 0.1469 L_roll 0.2933 L_phys 0.00016 L_int 0.1115 | val MSE 0.0459 2-step 0.0929 (persistence 0.3295) 6/12/18 h 0.0212/0.0315/0.0400 core beta 0.11/0.10/0.08 rms T 0.024 F 0.009 S 0.152 share P 0.15 S 0.91 | 35.21 s/step
