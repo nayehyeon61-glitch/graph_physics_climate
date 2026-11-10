@@ -10,18 +10,18 @@
 #   stage21b: the guide is trained as a dynamical core of its own: Stage A (heads only, from the base's guide) rolls the
 #             guide's own dynamics x_{j+1} = SL_V(x_j) + S(x_j) tend_scale 4 x 6 h and matches the observed states
 #             (--guide-path-steps 4), then the same Stage B as stage21a with the new guide.
-# Base = the stage18 family member the chains adopted (18g's base.txt).  stage21 does not change the chain base for
+# Base = the stage18 family member the chains adopted (18h's base.txt; 18h added 2026-11-10 after 18g, card 14:59 KST).  stage21 does not change the chain base for
 # stage19/20 (base.txt / bflags.txt are passed through); stage20_compose considers both runs like the others.
 # Design: docs/design/Stage21_Physics_First_Core_KO.md
 cd "$(dirname "$0")/../.."
 S9B=runs/era5_64x32_s9b_merged
 S17A=runs/era5_64x32_s17a_dyn
-S18G=runs/era5_64x32_s18g_geom
+S18H=runs/era5_64x32_s18h_energy
 DIR=runs/era5_64x32_s21_physfirst
 LOG=$DIR/chain_s21.log
-echo "[$(date -u +%H:%M:%S)] stage21 waits for CHAIN_S18G_DONE" >> $LOG
-until grep -q "CHAIN_S18G_DONE" $S18G/chain_s18g.log 2>/dev/null; do sleep 120; done
-BASE=$(cat $S18G/base.txt); BFLAGS=$(cat $S18G/bflags.txt)
+echo "[$(date -u +%H:%M:%S)] stage21 waits for CHAIN_S18H_DONE" >> $LOG
+until grep -q "CHAIN_S18H_DONE" $S18H/chain_s18h.log 2>/dev/null; do sleep 120; done
+BASE=$(cat $S18H/base.txt); BFLAGS=$(cat $S18H/bflags.txt)
 echo "$BASE" > $DIR/base.txt; echo "$BFLAGS" > $DIR/bflags.txt
 echo "[$(date -u +%H:%M:%S)] stage21 start on $BASE ($BFLAGS)" >> $LOG
 FT="--threads 4 --batch 4 --lr 3e-4 --steps 1000 --val-every 250 --rollout-steps 2 --rollout-start 0 --rollout-weight 1.0"

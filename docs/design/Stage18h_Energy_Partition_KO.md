@@ -40,5 +40,5 @@
 ## 6. 실행과 판정
 
 - 구현: `gpclimate/nn/graph_core.py`(`deformed` 표본별·`fixed_areas`), `gpclimate/models/dynamics_vnet.py`(`core_energy_geom`, `ENERGY_COMPONENTS`, `core_energy`, `core_energy_weights`), `scripts/train_eval.py`(`--core-energy-geom`, 로그 `energy a … corr …`). 테스트 `tests/test_core_energy.py`.
-- 체인: `runs/era5_64x32_s18h_energy/chain_s18h.sh` — CHAIN_S18G_DONE 대기, parent = 18g 채택 시 18g, 아니면 18g의 parent; config = parent + `core_energy_geom`; 같은 쌍 미세조정(V-Net stage9b에서 1000 step); 판정 parent 대비(+ base 대비); 마커 CHAIN_S18H_DONE. stage21 체인은 결정 카드에서 A가 선택되면 CHAIN_S18H_DONE을 기다리도록 바꿉니다.
+- 체인: `runs/era5_64x32_s18h_energy/chain_s18h.sh` — CHAIN_S18G_DONE 대기, parent = 18g 채택 시 18g, 아니면 18g의 parent; config = parent + `core_energy_geom`; 같은 쌍 미세조정(V-Net stage9b에서 1000 step); 판정 parent 대비(+ base 대비); 마커 CHAIN_S18H_DONE. stage21 체인은 CHAIN_S18H_DONE을 기다리도록 바꿨습니다(감자 결정 카드 A, 2026-11-10 14:59 KST). stage20 조합 후보에도 stage18h를 넣었습니다.
 - 보고: 학습된 α_c, 성분별 면적–에너지 상관(`energy_area_corr`), 면 이동·면적 비 범위, RMSE 판정(2019/2020/2022), ClimODE 대비 → `reports/compare_stage18h.md`.

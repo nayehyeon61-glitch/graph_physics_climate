@@ -45,6 +45,7 @@ RUNS = {
     "stage18e": "runs/era5_64x32_s18e_tv",
     "stage18f": "runs/era5_64x32_s18f_edge",
     "stage18g": "runs/era5_64x32_s18g_geom",
+    "stage18h": "runs/era5_64x32_s18h_energy",
     "stage21a": "runs/era5_64x32_s21a_physfirst",
     "stage21b": "runs/era5_64x32_s21b_guidecore",
     "stage19a": "runs/era5_64x32_s19a_gpinn",
