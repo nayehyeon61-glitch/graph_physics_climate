@@ -1,4 +1,4 @@
-# stage18b 결과: 이전 경로 입력 (2026-11-10 09:30 KST)
+# stage18b 결과: 이전 경로 입력 (2026-11-10 09:25 KST)
 
 **결론: 기각(세 연도 모두 기준 미달, stage18과 차이 ±0.1 % 이내).** stage18b는 stage18(graph tendency core) 위에서 **"이전 상태" 입력을 sub-step마다 다시 잡는** run입니다(`--prev-path`). stage18까지는 네 6 h sub-step이 모두 같은 X_{t−24 h}를 "이전 상태"로 받았고, stage18b에서는 sub-step k가 자기 시각의 한 lead 전 상태 X_{t+6k h−24 h}를 받습니다(첫 lead는 관측 과거, 그 뒤는 앞 lead에서 모델이 만든 경로). guide는 stage18 것 그대로이고(평가의 `physics_only`가 stage18과 동일), 입력이 바뀌므로 guide 없는 짝도 stage9b 짝에서 1000 step 다시 미세조정했습니다. 부호 규약은 + = 개선입니다.
 
