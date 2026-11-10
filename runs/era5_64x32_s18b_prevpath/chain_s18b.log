@@ -1,3 +1,8 @@
 [12:13:14] stage18b waits for CHAIN_S18_DONE
 [11:09:25] stage18b start
 [23:36:13] stage18b pipeline exit 0
+[23:58:09] stage18b eval_2020 exit 0
+[00:21:15] stage18b eval_2022 exit 0
+{"adopt": false, "improved_leads": 1, "mean_gain_pct": -0.07, "gain_pct": {"1": 0.03, "2": -0.2, "3": -0.02, "4": -0.07, "5": -0.08}, "candidate": "runs/era5_64x32_s18b_prevpath/eval.json", "baseline": "runs/era5_64x32_s18_core/eval.json"}
+stage18b REJECTED (vs stage18)
+[00:21:16] stage18b done CHAIN_S18B_DONE
