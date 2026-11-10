@@ -13,6 +13,7 @@ Forward order (design doc section 4.3; GNN -> fusion -> next GNN, no circular de
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -26,7 +27,14 @@ from gpclimate.nn.attention import PhysicsFusion
 from gpclimate.nn.gauge_conv import GaugeStack, GaugeTransfer, Merge, transport_interpolate
 from gpclimate.nn.physics_ops import PhysicsOperators
 from gpclimate.nn.pigt import PhysicsIntegration
+from gpclimate.nn.primitive2d import SCALARS as ENERGY_SCALARS
+from gpclimate.nn.primitive2d import VECTORS as ENERGY_VECTORS
 from gpclimate.nn.so2 import EqLinear, Field
+
+# stage18h: energy components of the energy-based partition (order of VNetConfig.core_energy_geom's alpha) and the
+# column mass weights of the 850 hPa / 500 hPa / 10 m winds (gpclimate.nn.primitive2d.ReducedPrimitiveTendencies)
+ENERGY_COMPONENTS = ("ke850", "ke500", "ke10", "ape850", "latent700", "ke_rate")
+ENERGY_LEVEL_WEIGHTS = (0.30, 0.65, 0.05)
 
 
 @dataclass
@@ -130,6 +138,19 @@ class VNetConfig:
     # operator (flux divergence, Laplace block) follow.  Needs tendency_core.
     core_geometry: bool = False
     core_geom_shift: float = 0.25
+    # stage18h energy-based partition (감자 2026-11-10 14:40 KST): the power-diagram weights are re-drawn every sub-step
+    # from the energy of the current state, a_i = -sum_c alpha_c log(e_c,i / <e_c> + eps) (+ the stage18g static
+    # weights when core_geometry is on), with the components ENERGY_COMPONENTS: kinetic energy |u|^2 at 850 / 500 hPa
+    # and 10 m, an available-potential-energy proxy (t850 - its zonal mean)^2, the latent-energy proxy q700 (physical
+    # units), and the kinetic-energy rate of the guide's core terms sum_l w_l |u_l . du_l| (column mass weights of
+    # gpclimate.nn.primitive2d).  <.> is the area mean of each sample, the monitor is not differentiated (r-adaptive
+    # mesh practice), alpha_c = core_energy_gain * raw_c with raw zero-initialised (the parent's geometry at the
+    # start), alpha > 0 = smaller cells where that energy is high.  The partition changes in time, so the operators
+    # keep the grid areas (GridFaceGraph.deformed(..., fixed_areas=True)): only the face lengths and l / d move.
+    # Needs tendency_core.
+    core_energy_geom: bool = False
+    core_energy_gain: float = 4.0
+    core_energy_eps: float = 0.1
     # stage21a physics-first core (감자 2026-11-09 15:07 KST): beta starts at core_beta_init (1 = the guide's whole flow
     # carries the state from the first step) and Stage B adds a source budget, the squared share of the V-Net source in
     # the sub-step change (``--source-penalty``), so the learned part is pushed into the structured terms (transport
@@ -241,6 +262,19 @@ class DynamicsVNet(nn.Module):
                 self.geom_head = nn.Sequential(nn.Linear(len(spec.static_scalars) + 2, 16), nn.SiLU(), nn.Linear(16, 1))
                 nn.init.zeros_(self.geom_head[-1].weight)
                 nn.init.zeros_(self.geom_head[-1].bias)
+        self.energy_raw = None
+        if cfg.core_energy_geom:  # stage18h: energy-based partition, alpha = gain * raw (0 at the start)
+            if not cfg.tendency_core:
+                raise ValueError("core_energy_geom (stage18h) partitions the face graph of the graph tendency core: set "
+                                 "tendency_core")
+            if tuple(spec.scalars) != ENERGY_SCALARS or tuple(spec.vectors) != ENERGY_VECTORS:
+                raise ValueError("core_energy_geom (stage18h) is written for the 11-variable layout")
+            if self.core_on:
+                self.energy_raw = nn.Parameter(torch.zeros(len(ENERGY_COMPONENTS)))
+                # physical units of q700 for the latent-energy component (copied from the Normalizer by the trainer)
+                self.register_buffer("energy_s_mean", torch.zeros(spec.n_s))
+                self.register_buffer("energy_s_std", torch.ones(spec.n_s))
+                self.register_buffer("energy_v_scale", torch.ones(spec.n_v))
         self.nudge_block = None
         if cfg.nudge:
             from gpclimate.nn.nudging import InitialNudging
@@ -287,6 +321,43 @@ class DynamicsVNet(nn.Module):
         if self.tv_log_gain is None:
             return None
         return self.tv_eps0 * torch.exp(self.tv_log_gain)
+
+    def set_energy_scales(self, s_mean: torch.Tensor, s_std: torch.Tensor, v_scale: torch.Tensor) -> None:
+        """stage18h: normalisation of the state (physical q700 and winds for the energy components)."""
+        if self.energy_raw is not None:
+            self.energy_s_mean.copy_(s_mean)
+            self.energy_s_std.copy_(s_std)
+            self.energy_v_scale.copy_(v_scale)
+
+    def energy_alpha(self) -> torch.Tensor:
+        """stage18h: exponents alpha_c [len(ENERGY_COMPONENTS)] of the energy monitor."""
+        return self.cfg.core_energy_gain * self.energy_raw
+
+    def core_energy(self, x: Field, dv: torch.Tensor, H: int, W: int) -> torch.Tensor:
+        """stage18h: energy components e [B, N, len(ENERGY_COMPONENTS)] >= 0 of the state ``x`` (normalised) and the
+        wind change ``dv`` [B, N, n_v] (normalised) of the guide's core terms over the sub-step (no gradient)."""
+        with torch.no_grad():
+            u = x.v * self.energy_v_scale  # m/s, node frames (|u|^2 and u . du are gauge invariant)
+            du = dv * self.energy_v_scale
+            ke = u.abs().pow(2)  # 2 x kinetic energy per unit mass at 850 / 500 hPa and 10 m
+            i_t, i_q = self.spec.scalars.index("t850"), self.spec.scalars.index("q700")
+            t = x.s[..., i_t] * self.energy_s_std[i_t]
+            B = t.shape[0]
+            tz = t.reshape(B, H, W).mean(-1, keepdim=True).expand(B, H, W).reshape(B, H * W)
+            ape = (t - tz).pow(2)  # available-potential-energy proxy (deviation from the zonal mean)
+            q = (x.s[..., i_q] * self.energy_s_std[i_q] + self.energy_s_mean[i_q]).clamp_min(0.0)  # latent proxy
+            w = torch.tensor(ENERGY_LEVEL_WEIGHTS, dtype=ke.dtype, device=ke.device)
+            rate = ((u.conj() * du).real.abs() * w).sum(-1)  # kinetic-energy rate of the core terms
+            return torch.cat([ke, ape[..., None], q[..., None], rate[..., None]], -1)
+
+    def core_energy_weights(self, e: torch.Tensor, area: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """stage18h: power-diagram weights a [B, N] = -sum_c alpha_c L_c and the log ratios L [B, N, C],
+        L_c = log(e_c / <e_c> + eps) - log(1 + eps) with <.> the area mean of each sample (0 for a uniform field)."""
+        eps = self.cfg.core_energy_eps
+        wa = (area / area.sum())[None, :, None]
+        mean = (e * wa).sum(1, keepdim=True)
+        L = torch.log(e / (mean + 1e-12) + eps) - math.log(1.0 + eps)
+        return -(L * self.energy_alpha()).sum(-1), L
 
     def core_geometry_weights(self, cond: Field, lat_deg: torch.Tensor, W: int) -> torch.Tensor:
         """stage18g: static power-diagram cell weights a [N] from the normalised static fields of ``cond`` (the first
@@ -585,10 +656,16 @@ class LieGuidedForecaster(nn.Module):
         xb = self.guide.transport(None, x, g, steps, flow=flow, beta=beta)
         faces = self.faces(g)
         gauge = g.extras["grid_gauge"].to(x.s.device)
-        geom = None
+        geom, a, L = None, None, None
         if self.vnet.geom_head is not None:  # stage18g: learned dual geometry (static power-diagram weights)
             a = self.vnet.core_geometry_weights(cond, g.extras["grid_lat"].to(x.s.device), g.extras["grid_hw"][1])
-            faces = faces.deformed(a, cfg.core_geom_shift)
+        if self.vnet.energy_raw is not None:  # stage18h: energy-based partition of this sub-step's state
+            H, W = g.extras["grid_hw"]
+            e = self.vnet.core_energy(x, tr.v + src.v, H, W)
+            a_e, L = self.vnet.core_energy_weights(e, faces.area)
+            a = a_e if a is None else a[None] + a_e
+        if a is not None:
+            faces = faces.deformed(a, cfg.core_geom_shift, fixed_areas=self.vnet.energy_raw is not None)
             geom = faces.deformation
         C = self.vnet.core_flux(emb, faces, gauge) * self.delta_scale_s / cfg.ode_steps
         h = 1.0 / cfg.ode_steps
@@ -627,6 +704,15 @@ class LieGuidedForecaster(nn.Module):
                                       geom_area=[float(geom["area_ratio"].min()), float(geom["area_ratio"].max())],
                                       geom_centroid=float(geom["centroid"].mean()),  # SCVT property (MPAS): 0 = centroidal
                                       geom_centroid_max=float(geom["centroid"].max()))
+            if L is not None:  # stage18h: exponents per energy component, and how the cell areas follow each energy
+                lr = torch.log(geom["area_ratio"]).expand(L.shape[:2]).flatten()
+                corr = []
+                for c in range(L.shape[-1]):
+                    lc = L[..., c].flatten()
+                    den = float(lr.std() * lc.std())
+                    corr.append(float(((lr - lr.mean()) * (lc - lc.mean())).mean()) / den if den > 0 else 0.0)
+                self.last_core.update(energy_alpha=[float(v) for v in self.vnet.energy_alpha()],
+                                      energy_area_corr=corr)
         ds = xb.s - x.s + C + S_s + (D if D is not None else 0.0)
         dv = xb.v - x.v + S_v
         # stage21a: source budget = squared share of the V-Net source in the sub-step change (scale-free), and the

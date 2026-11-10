@@ -123,6 +123,8 @@ class Run:
             # stage18f / stage18g keys (dual-space edge conductance theta_p, learned dual geometry theta_g)
             self.cfg.update(core_edge=int(getattr(args, "core_edge", 0) or 0),
                             core_geometry=int(getattr(args, "core_geometry", 0) or 0))
+            # stage18h key (energy-based partition of the core's face graph)
+            self.cfg.update(core_energy_geom=int(getattr(args, "core_energy_geom", 0) or 0))
             # stage21a key (physics-first core: initial transport share beta)
             self.cfg.update(core_beta_init=float(getattr(args, "core_beta_init", 0.0) or 0.0))
             # stage17 keys (dynamic guide: sub-step forcing, learnable guide-drift gain)
@@ -196,6 +198,7 @@ class Run:
                                 core_tv=bool(c.get("core_tv", False)),
                                 core_edge=bool(c.get("core_edge", False)),
                                 core_geometry=bool(c.get("core_geometry", False)),
+                                core_energy_geom=bool(c.get("core_energy_geom", False)),
                                 core_beta_init=float(c.get("core_beta_init", 0.0) or 0.0))
         if self.vnet_kwargs["prev_path"] and not (self.vnet_kwargs["prev_state"] and self.vnet_kwargs["integrator"] == "ode"):
             raise ValueError("prev_path needs the previous-state input (prev_state) and the ODE integrator")
@@ -322,6 +325,8 @@ class Run:
         if m.guide is not None and m.guide.resolved is not None:
             m.guide.resolved.set_scales(self.norm.s_mean, self.norm.s_std, self.norm.v_scale, self.norm.tend_s,
                                         self.norm.tend_v)
+        if getattr(m.vnet, "energy_raw", None) is not None:  # stage18h: physical units of the energy components
+            m.vnet.set_energy_scales(self.norm.s_mean, self.norm.s_std, self.norm.v_scale)
         if getattr(m.vnet, "tv_log_gain", None) is not None:  # stage18e: edge scale from the training states
             m.vnet.tv_eps0.copy_(self.tv_eps())
         return m
@@ -749,6 +754,8 @@ def stage_b(run: Run, use_guide: bool):
                + (", Laplace block" + (" (edge-preserving, TV flow)" if vc.core_tv else "") if vc.core_laplace else "")
                + (", edge conductance kappa(u_i, u_j, p_ij)" if vc.core_edge else "")
                + (f", learned dual geometry (power diagram, shift <= {vc.core_geom_shift:g} d)" if vc.core_geometry else "")
+               + (", energy-based partition (power diagram re-drawn every sub-step from the state's energy)"
+                  if vc.core_energy_geom else "")
                + (f", physics-first: beta starts at {vc.core_beta_init:g}" if vc.core_beta_init else "")
                + ")" if vc.tendency_core else ""))
     # restart safety: a finished Stage B is skipped, an interrupted one resumes from its last validation checkpoint
@@ -912,6 +919,9 @@ def stage_b(run: Run, use_guide: bool):
                       + (f" |c| {vm.last_core['geom_centroid']:.3f}/{vm.last_core['geom_centroid_max']:.2f}"
                          if "geom_centroid" in vm.last_core else "")
                       if "geom_shift" in vm.last_core else "")
+                   + (" energy a " + "/".join(f"{v:.2f}" for v in vm.last_core["energy_alpha"])
+                      + " corr " + "/".join(f"{v:+.2f}" for v in vm.last_core["energy_area_corr"])
+                      if "energy_alpha" in vm.last_core else "")
                    if getattr(vm, "last_core", None) else "")
                 + f" | {(time.time() - t0) / (step + 1):.2f} s/step")
             state = {"step": step + 1, "vnet": model.vnet.state_dict(), "opt": opt.state_dict(), "best": best,
@@ -1386,6 +1396,10 @@ def main():
     ap.add_argument("--core-geometry", type=int, default=0, choices=[0, 1],
                     help="stage18g: learned dual geometry, a power diagram of the grid points with static cell weights "
                          "(areas, face lengths and conservation follow; needs --tendency-core 1)")
+    ap.add_argument("--core-energy-geom", type=int, default=0, choices=[0, 1],
+                    help="stage18h: energy-based partition, power-diagram weights re-drawn every sub-step from the "
+                         "energy of the state (kinetic, APE proxy, latent proxy, core KE rate) with learned exponents; "
+                         "grid areas kept for exact conservation (needs --tendency-core 1)")
     ap.add_argument("--core-tokens", type=int, default=1, choices=[0, 1],
                     help="stage18: give the guide's core terms to PIGT as a fourth token source C")
     ap.add_argument("--core-beta-init", type=float, default=0.0,

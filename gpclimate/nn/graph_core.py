@@ -37,6 +37,12 @@ penalty  sum_f sqrt((q_j - q_i)^2 + eps^2)  is a diffusion with the face diffusi
 linear diffusion where |dq| << eps and a bounded flux  K eps sign(dq)  across a jump.  ``diffusion(..., edge_eps)``
 multiplies the learned K by this factor (``edge_factor`` <= 1, so the stability cap and the conservation are unchanged);
 eps is a per-variable scale (the median neighbour difference of the training states, times a learned factor).
+
+stage18h energy-based partition (감자 2026-11-10): the power diagram of stage18g (``deformed``) with weights from the
+energy of the current state instead of static fields, a_i = -sum_c alpha_c log(e_c,i / mean e_c + eps): with alpha > 0
+the cells shrink where the energy is high (MPAS SCVT density function / r-adaptive equidistribution, here with the
+generators fixed).  The partition is re-drawn every sub-step and differs per sample (``a`` [B, N]), so it is used with
+``fixed_areas`` (cell changes accumulated in the grid cells: exact conservation of the grid integral).
 """
 
 from __future__ import annotations
@@ -107,23 +113,28 @@ class GridFaceGraph(nn.Module):
     def n_cells(self) -> int:
         return self.H * self.W
 
+    @staticmethod
+    def _bc(t: torch.Tensor) -> torch.Tensor:
+        """A geometry tensor [N] / [F] (shared) or [B, N] / [B, F] (per sample, stage18h) -> broadcastable to [B, ., C]."""
+        return t[None, :, None] if t.dim() == 1 else t[:, :, None]
+
     def divergence(self, J: torch.Tensor) -> torch.Tensor:
         """Face flux ``J`` [B, F, C] (per unit length, from src to dst) -> cell divergence [B, N, C]."""
-        fl = J * self.length[None, :, None]
+        fl = J * self._bc(self.length)
         out = scatter(fl, self.src, 1, dim_size=self.n_cells, reduce="sum")
         out = out - scatter(fl, self.dst, 1, dim_size=self.n_cells, reduce="sum")
-        return out / self.area[None, :, None]
+        return out / self._bc(self.area)
 
     def _exchange(self, F: torch.Tensor) -> torch.Tensor:
         """Face exchange ``F`` [B, F, C] (amount moved from dst into src) -> cell change [B, N, C] (area-conserving)."""
         out = scatter(F, self.src, 1, dim_size=self.n_cells, reduce="sum")
         out = out - scatter(F, self.dst, 1, dim_size=self.n_cells, reduce="sum")
-        return out / self.area[None, :, None]
+        return out / self._bc(self.area)
 
     def laplacian(self, q: torch.Tensor) -> torch.Tensor:
         """stage18d: finite-volume Laplace-Beltrami of ``q`` [B, N, C] (1/m^2):  (1/A_i) sum_f (l_f/d_f)(q_j - q_i)."""
         dq = q.index_select(1, self.dst) - q.index_select(1, self.src)
-        return self._exchange(self.weight[None, :, None] * dq)
+        return self._exchange(self._bc(self.weight) * dq)
 
     def diffusion(self, q: torch.Tensor, K: torch.Tensor, dt: float, nu_max: float = 0.12,
                   edge_eps: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -136,9 +147,9 @@ class GridFaceGraph(nn.Module):
         dq = q.index_select(1, self.dst) - q.index_select(1, self.src)
         if edge_eps is not None:
             K = K * self.edge_factor(dq, edge_eps)
-        x = K * (self.weight * dt / self.face_mass)[None, :, None]
+        x = K * self._bc(self.weight * dt / self.face_mass)
         nu = nu_max * torch.tanh(x / nu_max)
-        return self._exchange(nu * self.face_mass[None, :, None] * dq)
+        return self._exchange(nu * self._bc(self.face_mass) * dq)
 
     @staticmethod
     def edge_factor(dq: torch.Tensor, eps: torch.Tensor) -> torch.Tensor:
@@ -154,41 +165,54 @@ class GridFaceGraph(nn.Module):
         """Face normals in the node frames of the src cells [F] (complex): canonical normal times exp(-i gauge)."""
         return self.normal * torch.exp(-1j * gauge[self.src].to(torch.float32))
 
-    def deformed(self, a: torch.Tensor, max_shift: float = 0.25) -> "GridFaceGraph":
+    def deformed(self, a: torch.Tensor, max_shift: float = 0.25, fixed_areas: bool = False) -> "GridFaceGraph":
         """stage18g (theta_g): the power diagram of the grid points with the cell weights ``a`` [N] (dimensionless),
         keeping the Delaunay connectivity.  The bisector of i and j moves from the midpoint towards the lighter cell
         by  delta_f = max_shift tanh(a_i - a_j) d_f  along the face normal (power distance |x - x_i|^2 - w_i, shift
         (w_i - w_j) / 2 d_ij, here bounded); the cell areas (zonal and meridional stretch, first order in the shifts,
         total area kept), the face lengths (mean stretch of the two cells), the covering weights l / d (centres fixed)
         and the face masses are recomputed, so every operator of the returned graph conserves the integral with
-        respect to the new areas.  ``a = 0`` gives the grid itself."""
+        respect to the new areas.  ``a = 0`` gives the grid itself.
+
+        stage18h: ``a`` may be [B, N] (a partition per sample, re-drawn every sub-step from the energy of the state).
+        A partition that changes in time cannot conserve the integral over its own, changing areas from one sub-step to
+        the next, so with ``fixed_areas`` the cell changes are accumulated in the fixed grid cells (the change of the
+        new cell's content is handed back to the generator's grid cell, ALE style) and the face masses of the stability
+        cap stay those of the grid: only the face lengths and the covering weights l / d of the new partition act, and
+        sum_i A_i dq_i = 0 exactly for the grid areas A.  The new areas are kept in ``deformation`` for diagnostics."""
         N, ne = self.n_cells, self.n_east
-        shift = max_shift * torch.tanh(a.index_select(0, self.src) - a.index_select(0, self.dst))  # delta_f / d_f
+        d = a.dim() - 1  # cell / face axis
+        shift = max_shift * torch.tanh(a.index_select(d, self.src) - a.index_select(d, self.dst))  # delta_f / d_f
         delta = shift * self.length / self.weight  # metres, towards dst (the src cell grows)
-        sx = (scatter(delta[:ne], self.src[:ne], 0, dim_size=N, reduce="sum")
-              - scatter(delta[:ne], self.dst[:ne], 0, dim_size=N, reduce="sum")) / self.dx
-        sy = (scatter(delta[ne:], self.src[ne:], 0, dim_size=N, reduce="sum")
-              - scatter(delta[ne:], self.dst[ne:], 0, dim_size=N, reduce="sum")) / self.dy
+        de, dn = delta[..., :ne], delta[..., ne:]
+        sx = (scatter(de, self.src[:ne], d, dim_size=N, reduce="sum")
+              - scatter(de, self.dst[:ne], d, dim_size=N, reduce="sum")) / self.dx
+        sy = (scatter(dn, self.src[ne:], d, dim_size=N, reduce="sum")
+              - scatter(dn, self.dst[ne:], d, dim_size=N, reduce="sum")) / self.dy
         area = self.area * (1 + sx) * (1 + sy)
-        area = area * (self.area.sum() / area.sum())
-        s_e = 0.5 * (sy.index_select(0, self.src[:ne]) + sy.index_select(0, self.dst[:ne]))  # east faces: meridional
-        s_n = 0.5 * (sx.index_select(0, self.src[ne:]) + sx.index_select(0, self.dst[ne:]))  # north faces: zonal
-        length = self.length * (1 + torch.cat([s_e, s_n]))
+        area = area * (self.area.sum() / area.sum(-1, keepdim=True))
+        s_e = 0.5 * (sy.index_select(d, self.src[:ne]) + sy.index_select(d, self.dst[:ne]))  # east faces: meridional
+        s_n = 0.5 * (sx.index_select(d, self.src[ne:]) + sx.index_select(d, self.dst[ne:]))  # north faces: zonal
+        length = self.length * (1 + torch.cat([s_e, s_n], -1))
         g = GridFaceGraph.__new__(GridFaceGraph)
         nn.Module.__init__(g)
         g.H, g.W, g.n_east, g.mean_length = self.H, self.W, ne, self.mean_length
         for name in ("src", "dst", "normal", "dx", "dy", "face_cos", "face_type"):
             setattr(g, name, getattr(self, name))
-        g.area, g.length = area, length
+        g.length = length
         g.weight = length / (self.length / self.weight)
-        g.face_mass = torch.minimum(area.index_select(0, self.src), area.index_select(0, self.dst))
+        if fixed_areas:
+            g.area, g.face_mass = self.area, self.face_mass
+        else:
+            g.area = area
+            g.face_mass = torch.minimum(area.index_select(d, self.src), area.index_select(d, self.dst))
         # MPAS / SCVT diagnostic (stage22 reference): a centroidal Voronoi cell has its generator at the mass centroid;
         # here the generators stay and the faces move, so the centroid moves by half the sum of the two opposite face
         # shifts (east faces: src = i is its east face, dst = i its west face, both shifted eastwards by delta)
-        cxs = 0.5 * (scatter(delta[:ne], self.src[:ne], 0, dim_size=N, reduce="sum")
-                     + scatter(delta[:ne], self.dst[:ne], 0, dim_size=N, reduce="sum")) / self.dx
-        cys = 0.5 * (scatter(delta[ne:], self.src[ne:], 0, dim_size=N, reduce="sum")
-                     + scatter(delta[ne:], self.dst[ne:], 0, dim_size=N, reduce="sum")) / self.dy
+        cxs = 0.5 * (scatter(de, self.src[:ne], d, dim_size=N, reduce="sum")
+                     + scatter(de, self.dst[:ne], d, dim_size=N, reduce="sum")) / self.dx
+        cys = 0.5 * (scatter(dn, self.src[ne:], d, dim_size=N, reduce="sum")
+                     + scatter(dn, self.dst[ne:], d, dim_size=N, reduce="sum")) / self.dy
         g.deformation = {"shift": shift, "sx": sx, "sy": sy, "area_ratio": area / self.area,
                          "centroid": torch.sqrt(cxs ** 2 + cys ** 2)}  # centroid offset / cell size
         return g
