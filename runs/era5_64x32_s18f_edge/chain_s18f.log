@@ -3,3 +3,4 @@
 [03:45:02] stage18f waits for CHAIN_S18E_DONE
 [02:03:03] stage18f waits for CHAIN_S18E_DONE
 [06:39:35] stage18f waits for CHAIN_S18E_DONE
+[10:03:36] stage18f start: runs/era5_64x32_s18d_laplace config + core_edge, base runs/era5_64x32_s18_core ()
