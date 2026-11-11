@@ -17,3 +17,10 @@
 [02:06:22] stage B[vnet]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift off, sub-step solar forcing, graph tendency core (beta-scaled guide transport + conservative face flux + source, core tokens C in PIGT, Laplace block (edge-preserving, TV flow))
 [02:06:23] stage B[vnet]: resumed from step 501 (best 0.1342, 14253 s elapsed before)
 [04:23:42] B[vnet]   750  L_f 0.1262 L_roll 0.2414 L_phys 0.00006 L_int 0.0941 | val MSE 0.0420 2-step 0.0849 (persistence 0.3295) 6/12/18 h 0.0192/0.0284/0.0362 core beta 0.10/0.09/0.08 rms T 0.021 F 0.010 S 0.170 D 0.0032 K 173831 share P 0.12 S 0.93 tv gain 1.05 keep 0.69 | 29.95 s/step
+[06:40:47] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[06:42:34] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[06:42:34] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[06:42:34] run runs/era5_64x32_s18e_tv: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[06:42:35] stage B[vnet]: vnet params 982062, steps 1000, batch 4, rollout steps 2 from step 0 (weight 1.0)
+[06:42:35] stage B[vnet]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift off, sub-step solar forcing, graph tendency core (beta-scaled guide transport + conservative face flux + source, core tokens C in PIGT, Laplace block (edge-preserving, TV flow))
+[06:42:35] stage B[vnet]: resumed from step 751 (best 0.1269, 22492 s elapsed before)

@@ -4,3 +4,5 @@
 [21:13:07] stage18e start: stage18d config + core_tv, base runs/era5_64x32_s18_core ()
 [02:03:03] stage18e waits for CHAIN_S18D_DONE
 [02:03:03] stage18e start: stage18d config + core_tv, base runs/era5_64x32_s18_core ()
+[06:39:35] stage18e waits for CHAIN_S18D_DONE
+[06:39:36] stage18e start: stage18d config + core_tv, base runs/era5_64x32_s18_core ()
