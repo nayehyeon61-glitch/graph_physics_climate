@@ -1,0 +1,8 @@
+[23:36:16] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[23:37:17] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[23:37:17] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[23:37:17] run runs/era5_64x32_s18b_prevpath: pairs train 14608 calib 1456 test 1460; graph [2562, 642, 162]
+[23:37:18] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'physics_only', 'no_guide']
+[23:58:05] deterministic rollouts done in 20.8 min
+[23:58:08] physics share of the core (last sub-step of each lead): 24 h 0.127 48 h 0.129 72 h 0.147 96 h 0.158 120 h 0.153
+[23:58:08] eval written to runs/era5_64x32_s18b_prevpath/eval_2020.json

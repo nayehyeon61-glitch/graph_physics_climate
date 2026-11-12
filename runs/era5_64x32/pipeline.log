@@ -1,0 +1,43 @@
+[12:16:04] run runs/era5_64x32: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[12:16:05] stage A: guide params 273651, steps 1000, batch 4
+[12:16:07] A     0  L_rec 2.1776 L_aux 0.4703 | val rec 2.1548 aux 0.4658 | 1.58 s/step
+[12:18:18] A   200  L_rec 0.0522 L_aux 0.1899 | val rec 0.0210 aux 0.1832 | 0.66 s/step
+[12:20:35] A   400  L_rec 0.0316 L_aux 0.1590 | val rec 0.0157 aux 0.1438 | 0.67 s/step
+[12:22:44] A   600  L_rec 0.0254 L_aux 0.1400 | val rec 0.0138 aux 0.1307 | 0.66 s/step
+[12:24:53] A   800  L_rec 0.0272 L_aux 0.1378 | val rec 0.0131 aux 0.1233 | 0.66 s/step
+[12:26:53] A   999  L_rec 0.0272 L_aux 0.1336 | val rec 0.0130 aux 0.1216 | 0.65 s/step
+[12:26:53] stage A done in 10.8 min, best val score 0.0738
+[12:27:14] run runs/era5_64x32: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[12:27:14] stage B[vnet]: vnet params 554665, steps 1500, batch 4
+[12:27:23] B[vnet]     0  L_f 0.9072 L_phys 0.00002 | val MSE 0.3252 (persistence 0.3257) | 8.82 s/step
+[12:33:52] B[vnet]   250  L_f 0.4047 L_phys 0.00010 | val MSE 0.1440 (persistence 0.3257) | 1.58 s/step
+[12:40:37] B[vnet]   500  L_f 0.3098 L_phys 0.00021 | val MSE 0.1042 (persistence 0.3257) | 1.60 s/step
+[12:46:50] B[vnet]   750  L_f 0.2945 L_phys 0.00005 | val MSE 0.0912 (persistence 0.3257) | 1.57 s/step
+[12:53:21] B[vnet]  1000  L_f 0.2190 L_phys 0.00010 | val MSE 0.0838 (persistence 0.3257) | 1.57 s/step
+[13:00:05] B[vnet]  1250  L_f 0.2369 L_phys 0.00011 | val MSE 0.0803 (persistence 0.3257) | 1.58 s/step
+[13:06:43] B[vnet]  1499  L_f 0.2419 L_phys 0.00003 | val MSE 0.0793 (persistence 0.3257) | 1.58 s/step
+[13:06:43] stage B[vnet] done in 39.5 min, best val MSE 0.0793
+[13:07:05] run runs/era5_64x32: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[13:07:06] stage B[vnet_noguide]: vnet params 447505, steps 1500, batch 4
+[13:07:11] B[vnet_noguide]     0  L_f 0.9072 L_phys 0.00002 | val MSE 0.3252 (persistence 0.3257) | 5.84 s/step
+[13:10:52] B[vnet_noguide]   250  L_f 0.3936 L_phys 0.00053 | val MSE 0.1402 (persistence 0.3257) | 0.90 s/step
+[13:14:20] B[vnet_noguide]   500  L_f 0.3135 L_phys 0.00112 | val MSE 0.1068 (persistence 0.3257) | 0.87 s/step
+[13:17:50] B[vnet_noguide]   750  L_f 0.3014 L_phys 0.00014 | val MSE 0.0933 (persistence 0.3257) | 0.86 s/step
+[13:21:27] B[vnet_noguide]  1000  L_f 0.2189 L_phys 0.00011 | val MSE 0.0861 (persistence 0.3257) | 0.86 s/step
+[13:25:15] B[vnet_noguide]  1250  L_f 0.2465 L_phys 0.00007 | val MSE 0.0827 (persistence 0.3257) | 0.87 s/step
+[13:29:08] B[vnet_noguide]  1499  L_f 0.2442 L_phys 0.00002 | val MSE 0.0813 (persistence 0.3257) | 0.88 s/step
+[13:29:08] stage B[vnet_noguide] done in 22.0 min, best val MSE 0.0813
+[13:29:32] run runs/era5_64x32: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[13:29:59] stage C: denoiser params 118045, residual scale s [0.08260494470596313, 0.1049591600894928, 0.25143206119537354, 0.0683710053563118, 0.22874441742897034]
+[13:30:01] C     0  L_eps(avg25) 1.2806 | 1.78 s/step
+[13:34:38] C   200  L_eps(avg25) 0.4139 | 1.39 s/step
+[13:39:21] C   400  L_eps(avg25) 0.3614 | 1.40 s/step
+[13:44:11] C   600  L_eps(avg25) 0.3951 | 1.42 s/step
+[13:48:50] C   799  L_eps(avg25) 0.4187 | 1.41 s/step
+[13:48:50] stage C done in 18.8 min
+[13:49:13] run runs/era5_64x32: pairs train 2920 calib 1456 test 1456; graph [2562, 642, 162]
+[13:49:14] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[13:52:25] deterministic rollouts done in 3.2 min
+[13:56:42] ensemble eval done in 4.3 min
+[13:56:42] eval written to runs/era5_64x32/eval.json
+PIPELINE_DONE

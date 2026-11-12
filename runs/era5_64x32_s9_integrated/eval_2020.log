@@ -1,0 +1,5 @@
+[12:07:33] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:08:13] run runs/era5_64x32_s9_integrated: pairs train 14608 calib 1456 test 1460; graph [2562, 642, 162]
+[12:08:14] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[12:12:47] deterministic rollouts done in 4.5 min
+[12:12:49] eval written to runs/era5_64x32_s9_integrated/eval_2020.json

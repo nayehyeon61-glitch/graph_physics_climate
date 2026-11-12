@@ -1,0 +1,16 @@
+[22:16:23] stage14b chain finished -> stage7c (Stage B 9000 steps on 10 y)
+[12:49:53] 2022 benchmark finished -> stage7c (Stage B 9000 steps on 10 y)
+[17:02:49] container restart (~14:55 UTC) -> relaunch, Stage B resumes from step 4501
+[17:02:49] 2022 benchmark finished -> stage7c (Stage B 9000 steps on 10 y)
+[22:04:24] stage7c pipeline exit 0
+[22:04:27] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[22:05:26] run runs/era5_64x32_s7c_steps6x: pairs train 14608 calib 1456 test 1460; graph [2562, 642, 162]
+[22:05:27] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[22:06:58] deterministic rollouts done in 1.5 min
+[22:06:59] eval written to runs/era5_64x32_s7c_steps6x/eval_2020.json
+[22:07:03] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[22:08:03] run runs/era5_64x32_s7c_steps6x: pairs train 14608 calib 1456 test 1452; graph [2562, 642, 162]
+[22:08:04] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[22:09:33] deterministic rollouts done in 1.5 min
+[22:09:34] eval written to runs/era5_64x32_s7c_steps6x/eval_2022.json
+[22:09:35] stage7c benchmark years done CHAIN_S7C_DONE

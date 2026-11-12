@@ -1,0 +1,4 @@
+[05:59:45] stage18h waits for CHAIN_S18G_DONE
+[02:03:03] stage18h waits for CHAIN_S18G_DONE
+[06:39:35] stage18h waits for CHAIN_S18G_DONE
+[05:11:41] stage18h start: runs/era5_64x32_s18d_laplace config + core_energy_geom, base runs/era5_64x32_s18_core ()

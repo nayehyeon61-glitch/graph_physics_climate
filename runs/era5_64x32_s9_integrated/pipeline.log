@@ -1,0 +1,183 @@
+[04:28:51] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[04:30:55] run runs/era5_64x32_s9_integrated: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[04:30:56] stage B[vnet_noguide]: vnet params 660021, steps 4500, batch 4, rollout steps 2 from step 1500 (weight 1.0)
+[04:31:05] B[vnet_noguide]     0  L_f 0.9224 L_roll 0.0000 L_phys 0.00003 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) | 9.63 s/step
+[04:33:51] B[vnet_noguide]   250  L_f 0.3863 L_roll 0.0000 L_phys 0.00202 | val MSE 0.1274 2-step 0.2404 (persistence 0.3295) | 0.70 s/step
+[04:36:37] B[vnet_noguide]   500  L_f 0.3009 L_roll 0.0000 L_phys 0.00015 | val MSE 0.0990 2-step 0.1992 (persistence 0.3295) | 0.68 s/step
+[04:39:21] B[vnet_noguide]   750  L_f 0.2491 L_roll 0.0000 L_phys 0.00013 | val MSE 0.0834 2-step 0.1706 (persistence 0.3295) | 0.67 s/step
+[04:42:10] B[vnet_noguide]  1000  L_f 0.2157 L_roll 0.0000 L_phys 0.00008 | val MSE 0.0734 2-step 0.1547 (persistence 0.3295) | 0.67 s/step
+[04:44:58] B[vnet_noguide]  1250  L_f 0.1886 L_roll 0.0000 L_phys 0.00046 | val MSE 0.0700 2-step 0.1474 (persistence 0.3295) | 0.67 s/step
+[04:47:37] B[vnet_noguide]  1500  L_f 0.1845 L_roll 0.4087 L_phys 0.00008 | val MSE 0.0698 2-step 0.1615 (persistence 0.3295) | 0.67 s/step
+[04:52:42] B[vnet_noguide]  1750  L_f 0.2062 L_roll 0.4489 L_phys 0.00022 | val MSE 0.0693 2-step 0.1406 (persistence 0.3295) | 0.75 s/step
+[04:57:56] B[vnet_noguide]  2000  L_f 0.1830 L_roll 0.3951 L_phys 0.00043 | val MSE 0.0657 2-step 0.1351 (persistence 0.3295) | 0.81 s/step
+[05:03:02] B[vnet_noguide]  2250  L_f 0.1946 L_roll 0.3916 L_phys 0.00034 | val MSE 0.0632 2-step 0.1280 (persistence 0.3295) | 0.86 s/step
+[05:08:09] B[vnet_noguide]  2500  L_f 0.1598 L_roll 0.3198 L_phys 0.00018 | val MSE 0.0619 2-step 0.1261 (persistence 0.3295) | 0.89 s/step
+[05:13:12] B[vnet_noguide]  2750  L_f 0.1665 L_roll 0.3332 L_phys 0.00008 | val MSE 0.0599 2-step 0.1209 (persistence 0.3295) | 0.92 s/step
+[05:18:21] B[vnet_noguide]  3000  L_f 0.1553 L_roll 0.3069 L_phys 0.00004 | val MSE 0.0582 2-step 0.1154 (persistence 0.3295) | 0.95 s/step
+[05:23:32] B[vnet_noguide]  3250  L_f 0.1594 L_roll 0.3259 L_phys 0.00005 | val MSE 0.0580 2-step 0.1154 (persistence 0.3295) | 0.97 s/step
+[05:28:42] B[vnet_noguide]  3500  L_f 0.1567 L_roll 0.3132 L_phys 0.00005 | val MSE 0.0565 2-step 0.1121 (persistence 0.3295) | 0.99 s/step
+[05:33:53] B[vnet_noguide]  3750  L_f 0.1576 L_roll 0.3236 L_phys 0.00009 | val MSE 0.0558 2-step 0.1099 (persistence 0.3295) | 1.01 s/step
+[05:39:11] B[vnet_noguide]  4000  L_f 0.1627 L_roll 0.3190 L_phys 0.00006 | val MSE 0.0556 2-step 0.1094 (persistence 0.3295) | 1.02 s/step
+[05:44:15] B[vnet_noguide]  4250  L_f 0.1574 L_roll 0.3085 L_phys 0.00004 | val MSE 0.0552 2-step 0.1085 (persistence 0.3295) | 1.03 s/step
+[05:49:26] B[vnet_noguide]  4499  L_f 0.1504 L_roll 0.2872 L_phys 0.00004 | val MSE 0.0550 2-step 0.1080 (persistence 0.3295) | 1.05 s/step
+[05:49:26] stage B[vnet_noguide] done in 78.5 min, best val MSE 0.1630
+[05:49:30] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[05:50:05] run runs/era5_64x32_s9_integrated: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[05:50:06] stage A: forecast-state perturbation from runs/era5_64x32_s9_integrated/vnet_noguide.pt with p=0.3
+[05:50:06] stage A: guide params 276716, steps 1000, batch 4
+[05:50:10] A     0  L_rec 1.9150 L_aux 0.4867 L_tend 1.4210 L_clos 0.0000 | val rec 1.9459 aux 0.5002 tend 1.4830 clos 0.0000 (resolved only 0.0000) | 4.27 s/step
+[05:51:48] A   200  L_rec 0.0617 L_aux 0.2044 L_tend 0.6093 L_clos 0.0000 | val rec 0.0399 aux 0.1829 tend 0.5860 clos 0.0000 (resolved only 0.0000) | 0.51 s/step
+[05:53:22] A   400  L_rec 0.0406 L_aux 0.1730 L_tend 0.4680 L_clos 0.0000 | val rec 0.0279 aux 0.1617 tend 0.4402 clos 0.0000 (resolved only 0.0000) | 0.49 s/step
+[05:54:58] A   600  L_rec 0.0840 L_aux 0.2294 L_tend 0.5625 L_clos 0.0000 | val rec 0.0238 aux 0.1532 tend 0.3897 clos 0.0000 (resolved only 0.0000) | 0.49 s/step
+[05:56:33] A   800  L_rec 0.0346 L_aux 0.1654 L_tend 0.3917 L_clos 0.0000 | val rec 0.0226 aux 0.1498 tend 0.3708 clos 0.0000 (resolved only 0.0000) | 0.48 s/step
+[05:58:09] A   999  L_rec 0.0342 L_aux 0.1562 L_tend 0.3782 L_clos 0.0000 | val rec 0.0223 aux 0.1490 tend 0.3669 clos 0.0000 (resolved only 0.0000) | 0.48 s/step
+[05:58:09] stage A done in 8.1 min, best val score 0.4637, forecast-perturbed batches 298
+[05:58:13] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[05:58:48] run runs/era5_64x32_s9_integrated: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[05:58:49] stage B[vnet]: vnet params 961926, steps 4500, batch 4, rollout steps 2 from step 1500 (weight 1.0)
+[05:59:29] B[vnet]     0  L_f 0.9224 L_roll 0.0000 L_phys 0.00003 | val MSE 0.3289 2-step 0.4989 (persistence 0.3295) | 40.31 s/step
+[06:08:24] B[vnet]   250  L_f 0.3775 L_roll 0.0000 L_phys 0.00067 | val MSE 0.1253 2-step 0.2392 (persistence 0.3295) | 2.29 s/step
+[06:17:52] B[vnet]   500  L_f 0.2955 L_roll 0.0000 L_phys 0.00036 | val MSE 0.0926 2-step 0.1842 (persistence 0.3295) | 2.28 s/step
+[06:27:19] B[vnet]   750  L_f 0.2340 L_roll 0.0000 L_phys 0.00025 | val MSE 0.0792 2-step 0.1644 (persistence 0.3295) | 2.28 s/step
+[06:37:02] B[vnet]  1000  L_f 0.2096 L_roll 0.0000 L_phys 0.00008 | val MSE 0.0695 2-step 0.1461 (persistence 0.3295) | 2.29 s/step
+[06:46:29] B[vnet]  1250  L_f 0.1818 L_roll 0.0000 L_phys 0.00033 | val MSE 0.0660 2-step 0.1385 (persistence 0.3295) | 2.29 s/step
+[06:55:48] B[vnet]  1500  L_f 0.1729 L_roll 0.3831 L_phys 0.00033 | val MSE 0.0682 2-step 0.1604 (persistence 0.3295) | 2.28 s/step
+[07:15:21] B[vnet]  1750  L_f 0.1923 L_roll 0.4122 L_phys 0.00006 | val MSE 0.0647 2-step 0.1310 (persistence 0.3295) | 2.62 s/step
+[07:36:33] B[vnet]  2000  L_f 0.1729 L_roll 0.3683 L_phys 0.00016 | val MSE 0.0620 2-step 0.1265 (persistence 0.3295) | 2.93 s/step
+[07:54:57] B[vnet]  2250  L_f 0.1791 L_roll 0.3586 L_phys 0.00023 | val MSE 0.0586 2-step 0.1169 (persistence 0.3295) | 3.10 s/step
+[08:14:23] B[vnet]  2500  L_f 0.1496 L_roll 0.2887 L_phys 0.00025 | val MSE 0.0575 2-step 0.1162 (persistence 0.3295) | 3.25 s/step
+[08:35:03] B[vnet]  2750  L_f 0.1588 L_roll 0.3065 L_phys 0.00005 | val MSE 0.0563 2-step 0.1139 (persistence 0.3295) | 3.41 s/step
+[08:55:15] B[vnet]  3000  L_f 0.1454 L_roll 0.2928 L_phys 0.00007 | val MSE 0.0542 2-step 0.1079 (persistence 0.3295) | 3.53 s/step
+[09:15:33] B[vnet]  3250  L_f 0.1488 L_roll 0.2920 L_phys 0.00008 | val MSE 0.0537 2-step 0.1060 (persistence 0.3295) | 3.63 s/step
+[09:35:34] B[vnet]  3500  L_f 0.1469 L_roll 0.2783 L_phys 0.00010 | val MSE 0.0526 2-step 0.1051 (persistence 0.3295) | 3.71 s/step
+[09:56:25] B[vnet]  3750  L_f 0.1456 L_roll 0.3032 L_phys 0.00007 | val MSE 0.0521 2-step 0.1025 (persistence 0.3295) | 3.80 s/step
+[10:17:02] B[vnet]  4000  L_f 0.1509 L_roll 0.2900 L_phys 0.00011 | val MSE 0.0518 2-step 0.1018 (persistence 0.3295) | 3.87 s/step
+[10:37:28] B[vnet]  4250  L_f 0.1487 L_roll 0.2941 L_phys 0.00003 | val MSE 0.0515 2-step 0.1010 (persistence 0.3295) | 3.93 s/step
+[10:57:35] B[vnet]  4499  L_f 0.1413 L_roll 0.2677 L_phys 0.00004 | val MSE 0.0513 2-step 0.1010 (persistence 0.3295) | 3.98 s/step
+[10:57:35] stage B[vnet] done in 298.8 min, best val MSE 0.1523
+[10:57:39] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[10:58:17] run runs/era5_64x32_s9_integrated: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[10:59:02] stage C: denoiser params 118045, residual scale s [0.05903835967183113, 0.08433571457862854, 0.22111453115940094, 0.0545494481921196, 0.16526290774345398]
+[10:59:02] stage C: feasibility projection (q700 >= 0, mass, water=True), feas weight 1.0, mean constraint weight 1.0 every 5 steps (2 members x 4 sampling steps)
+[10:59:06] C     0  L_eps(avg25) 1.8402 L_feas 0.0393 L_mean +13.7977 | 3.97 s/step
+[11:06:08] C   200  L_eps(avg25) 0.5545 L_feas 0.0036 L_mean +1.3254 | 2.12 s/step
+[11:13:14] C   400  L_eps(avg25) 0.3825 L_feas 0.0059 L_mean +0.1430 | 2.12 s/step
+[11:19:59] C   600  L_eps(avg25) 0.3952 L_feas 0.0023 L_mean +0.1573 | 2.09 s/step
+[11:26:37] C   799  L_eps(avg25) 0.4387 L_feas 0.0017 L_mean +0.0824 | 2.07 s/step
+[11:26:37] stage C done in 27.6 min
+[11:26:42] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[11:27:19] run runs/era5_64x32_s9_integrated: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[11:27:20] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[11:30:41] deterministic rollouts done in 3.4 min
+[11:33:08] ensemble eval done in 2.4 min
+[11:33:08] eval written to runs/era5_64x32_s9_integrated/eval.json
+[11:33:12] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+{
+ "run": "runs/era5_64x32_s9_integrated",
+ "p_dependence_mse": {
+  "true_P": 0.05252302127579848,
+  "zero_P": 0.0678884523610274,
+  "shuffled_P": 0.06900024289886157,
+  "persistence": 0.349194457133611
+ },
+ "p_dependence_relative": {
+  "true_P": 1.0,
+  "zero_P": 1.2925465959877864,
+  "shuffled_P": 1.31371427657486,
+  "persistence": 6.648407662993915
+ },
+ "linear_probe_r2_24h_scalar_tendency": {
+  "channels": [
+   "z500",
+   "t850",
+   "q700",
+   "t2m",
+   "msl"
+  ],
+  "state_only": [
+   0.06653839349746704,
+   0.13508695363998413,
+   0.0911257266998291,
+   0.05969017744064331,
+   0.07599544525146484
+  ],
+  "guide_only": [
+   0.38847649097442627,
+   0.4108617901802063,
+   0.2908627390861511,
+   0.24366497993469238,
+   0.34789735078811646
+  ],
+  "state_plus_guide": [
+   0.40748000144958496,
+   0.44545978307724,
+   0.29592597484588623,
+   0.25483405590057373,
+   0.355243444442749
+  ],
+  "physics_ops_only": [
+   0.27005261182785034,
+   0.32458430528640747,
+   0.24744313955307007,
+   0.21593844890594482,
+   0.33570122718811035
+  ],
+  "state_plus_physics_ops": [
+   0.2782202363014221,
+   0.34189629554748535,
+   0.2526128888130188,
+   0.2219122052192688,
+   0.34223324060440063
+  ]
+ },
+ "linear_probe_r2_mean": {
+  "state_only": 0.08568733930587769,
+  "guide_only": 0.33635267019271853,
+  "state_plus_guide": 0.3517886519432068,
+  "physics_ops_only": 0.27874394655227663,
+  "state_plus_physics_ops": 0.28737497329711914
+ },
+ "pigt_attention_mass": {
+  "sources": [
+   "H",
+   "P",
+   "O"
+  ],
+  "P0": [
+   [
+    0.19985869526863098,
+    0.35252997279167175,
+    0.44761258363723755
+   ]
+  ],
+  "P1": [
+   [
+    0.21226389706134796,
+    0.26482751965522766,
+    0.5229088664054871
+   ]
+  ],
+  "P2": [
+   [
+    0.41745927929878235,
+    0.2189047485589981,
+    0.36363616585731506
+   ]
+  ],
+  "P1u": [
+   [
+    0.4438723623752594,
+    0.28831642866134644,
+    0.2678110897541046
+   ]
+  ],
+  "P0u": [
+   [
+    0.42083540558815,
+    0.2728377878665924,
+    0.3063283860683441
+   ]
+  ]
+ }
+}
+PIPELINE_DONE

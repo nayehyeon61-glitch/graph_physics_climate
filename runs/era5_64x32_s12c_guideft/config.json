@@ -1,0 +1,30 @@
+{
+  "data": "/home/claude/graph_physics_climate/data/era5_wb2_64x32_2016_2019.npz",
+  "mesh": [
+    4,
+    3,
+    2
+  ],
+  "lead": 4,
+  "cs": 48,
+  "cv": 12,
+  "depth": [
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "heads": 4,
+  "ds": 8,
+  "dv": 4,
+  "hidden": 64,
+  "n_basis": 8,
+  "guide_cs": 32,
+  "guide_cv": 8,
+  "diff_cs": 32,
+  "diff_cv": 8,
+  "diff_depth": 2,
+  "physics_ops": 1,
+  "tend_head": 1
+}

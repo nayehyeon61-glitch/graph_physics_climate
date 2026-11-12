@@ -1,0 +1,15 @@
+[submodule "third_party/LieConv"]
+	path = third_party/LieConv
+	url = https://github.com/nayehyeon61-glitch/LieConv
+[submodule "third_party/lie-transformer"]
+	path = third_party/lie-transformer
+	url = https://github.com/nayehyeon61-glitch/lie-transformer
+[submodule "third_party/physicsnemo"]
+	path = third_party/physicsnemo
+	url = https://github.com/nayehyeon61-glitch/physicsnemo
+[submodule "third_party/graphtransformer"]
+	path = third_party/graphtransformer
+	url = https://github.com/nayehyeon61-glitch/graphtransformer
+[submodule "third_party/weatherbench2"]
+	path = third_party/weatherbench2
+	url = https://github.com/nayehyeon61-glitch/weatherbench2

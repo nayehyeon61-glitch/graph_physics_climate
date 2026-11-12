@@ -1,0 +1,11 @@
+[12:43:59] stage18d waits for CHAIN_S18C_DONE
+[01:21:32] stage18d waits for CHAIN_S18C_DONE
+[03:45:02] stage18d waits for CHAIN_S18C_DONE
+[11:29:04] stage18d start on runs/era5_64x32_s18_core ()
+[20:33:11] stage18d pipeline exit 0
+[20:51:43] stage18d eval_2020 exit 0
+[21:11:17] stage18d eval_2022 exit 0
+vs base runs/era5_64x32_s18_core:
+{"adopt": false, "improved_leads": 5, "mean_gain_pct": 0.08, "gain_pct": {"1": 0.11, "2": 0.04, "3": 0.04, "4": 0.07, "5": 0.13}, "candidate": "runs/era5_64x32_s18d_laplace/eval.json", "baseline": "runs/era5_64x32_s18_core/eval.json"}
+stage18d REJECTED
+[21:11:17] stage18d done CHAIN_S18D_DONE

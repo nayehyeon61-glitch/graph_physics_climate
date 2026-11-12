@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+data/*.npz
+reports/*.pt
+*.egg-info/
+data/*.pt
+data/*.log
+runs/*/shard_*.npz
+runs/*/*_train_state.pt

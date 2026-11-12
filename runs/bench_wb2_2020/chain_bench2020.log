@@ -1,0 +1,125 @@
+[11:34:52] stage9 chain finished -> 2020 benchmark evaluation
+[11:34:56] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[11:35:45] run runs/era5_64x32_s9_integrated: pairs train 14608 calib 1456 test 1460; graph [2562, 642, 162]
+[11:35:47] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[11:39:18] deterministic rollouts done in 3.5 min
+Traceback (most recent call last):
+  File "/home/claude/graph_physics_climate/scripts/train_eval.py", line 964, in <module>
+    main()
+    ~~~~^^
+  File "/home/claude/graph_physics_climate/scripts/train_eval.py", line 959, in main
+    {"a": stage_a, "b": lambda r: stage_b(r, True), "b_noguide": lambda r: stage_b(r, False), "c": stage_c,
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     "eval": stage_eval}[args.stage](run)
+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/home/claude/graph_physics_climate/scripts/train_eval.py", line 763, in stage_eval
+    "seconds": time.time() - t1, "deterministic_rmse": wb2_scores(stack(det), trs, test.lat, test.lon, times)["rmse"]}
+                                                       ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/graph_physics_climate/gpclimate/training/metrics.py", line 31, in wb2_scores
+    rmse = metrics.RMSESqrtBeforeTimeAvg().compute(fc, tr)
+  File "/home/claude/weatherbench2/weatherbench2/metrics.py", line 136, in compute
+    ).mean(
+      ~~~~^
+        avg_dim,
+        ^^^^^^^^
+        skipna=skipna,
+        ^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/site-packages/xarray/core/_aggregations.py", line 1855, in mean
+    out = self.reduce(
+        duck_array_ops.mean,
+    ...<4 lines>...
+        **kwargs,
+    )
+  File "/usr/local/lib/python3.13/site-packages/xarray/core/dataset.py", line 6945, in reduce
+    dims = parse_dims_as_set(dim, set(self._dims.keys()))
+  File "/usr/local/lib/python3.13/site-packages/xarray/core/utils.py", line 1066, in parse_dims_as_set
+    _check_dims(dim, all_dims)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/xarray/core/utils.py", line 1149, in _check_dims
+    raise ValueError(
+        f"Dimension(s) {wrong_dims_str} do not exist. Expected one or more of {all_dims}"
+    )
+ValueError: Dimension(s) 'time' do not exist. Expected one or more of set()
+[11:39:22] runs/era5_64x32_s9_integrated eval_2020 exit 0
+[11:39:25] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[11:40:03] run runs/era5_64x32_s7b_steps3x: pairs train 14608 calib 1456 test 1460; graph [2562, 642, 162]
+[11:40:06] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[11:42:04] deterministic rollouts done in 2.0 min
+[11:42:06] eval written to runs/era5_64x32_s7b_steps3x/eval_2020.json
+[11:42:07] runs/era5_64x32_s7b_steps3x eval_2020 exit 0
+[11:42:10] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[11:43:02] run runs/era5_64x32_s12b_width64: pairs train 2920 calib 1456 test 1460; graph [2562, 642, 162]
+[11:43:05] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[11:45:13] deterministic rollouts done in 2.1 min
+[11:45:15] eval written to runs/era5_64x32_s12b_width64/eval_2020.json
+[11:45:16] runs/era5_64x32_s12b_width64 eval_2020 exit 0
+[11:45:19] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[11:45:33] run runs/era5_64x32_s14a_prev: pairs train 2920 calib 1456 test 1460; graph [2562, 642, 162]
+[11:45:36] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[11:47:28] deterministic rollouts done in 1.9 min
+[11:47:30] eval written to runs/era5_64x32_s14a_prev/eval_2020.json
+[11:47:31] runs/era5_64x32_s14a_prev eval_2020 exit 0
+[11:47:34] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[11:47:48] run runs/era5_64x32_physops_roll: pairs train 2920 calib 1456 test 1460; graph [2562, 642, 162]
+[11:47:49] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[11:49:39] deterministic rollouts done in 1.8 min
+[11:49:41] eval written to runs/era5_64x32_physops_roll/eval_2020.json
+[11:49:42] runs/era5_64x32_physops_roll eval_2020 exit 0
+ClimODE {'class': 'Climate_encoder_free_uncertain', 'solver': 'euler', 'params': 2752099, 'eval_mode': False, 'ckpt_url': 'https://raw.githubusercontent.com/Aalto-QuML/ClimODE/e729d23e8799ce0e075699e76d60227d848d8d0c/checkpoints/ClimODE_global.pt', 'climode_dir': '/home/claude/nayehyeon61-glitch/physical_guide_flowmatching/third_party/climode'}; shard 0/1: 88 init times, leads [24, 48, 72, 96, 120] h
+ic 2/88 (24s, vel-fit loss 1.22e-04)
+ic 4/88 (44s, vel-fit loss 1.20e-04)
+ic 6/88 (63s, vel-fit loss 1.24e-04)
+ic 8/88 (89s, vel-fit loss 1.23e-04)
+ic 10/88 (112s, vel-fit loss 1.19e-04)
+ic 12/88 (132s, vel-fit loss 1.21e-04)
+ic 14/88 (153s, vel-fit loss 1.20e-04)
+ic 16/88 (174s, vel-fit loss 1.14e-04)
+ic 18/88 (196s, vel-fit loss 1.17e-04)
+ic 20/88 (216s, vel-fit loss 1.24e-04)
+ic 22/88 (235s, vel-fit loss 1.19e-04)
+ic 24/88 (256s, vel-fit loss 1.25e-04)
+ic 26/88 (275s, vel-fit loss 1.17e-04)
+ic 28/88 (294s, vel-fit loss 1.20e-04)
+ic 30/88 (314s, vel-fit loss 1.28e-04)
+ic 32/88 (333s, vel-fit loss 1.40e-04)
+ic 34/88 (352s, vel-fit loss 1.27e-04)
+ic 36/88 (371s, vel-fit loss 1.22e-04)
+ic 38/88 (388s, vel-fit loss 1.26e-04)
+ic 40/88 (406s, vel-fit loss 1.29e-04)
+ic 42/88 (424s, vel-fit loss 1.33e-04)
+ic 44/88 (441s, vel-fit loss 1.31e-04)
+ic 46/88 (460s, vel-fit loss 1.31e-04)
+ic 48/88 (478s, vel-fit loss 1.45e-04)
+ic 50/88 (496s, vel-fit loss 1.33e-04)
+ic 52/88 (514s, vel-fit loss 1.37e-04)
+ic 54/88 (532s, vel-fit loss 1.30e-04)
+ic 56/88 (550s, vel-fit loss 1.43e-04)
+ic 58/88 (568s, vel-fit loss 1.30e-04)
+ic 60/88 (585s, vel-fit loss 1.29e-04)
+ic 62/88 (603s, vel-fit loss 1.36e-04)
+ic 64/88 (622s, vel-fit loss 1.32e-04)
+ic 66/88 (639s, vel-fit loss 1.32e-04)
+ic 68/88 (658s, vel-fit loss 1.22e-04)
+ic 70/88 (678s, vel-fit loss 1.24e-04)
+ic 72/88 (696s, vel-fit loss 1.30e-04)
+ic 74/88 (714s, vel-fit loss 1.14e-04)
+ic 76/88 (733s, vel-fit loss 1.21e-04)
+ic 78/88 (751s, vel-fit loss 1.28e-04)
+ic 80/88 (770s, vel-fit loss 1.18e-04)
+ic 82/88 (788s, vel-fit loss 1.21e-04)
+ic 84/88 (808s, vel-fit loss 1.21e-04)
+ic 86/88 (826s, vel-fit loss 1.33e-04)
+ic 88/88 (844s, vel-fit loss 1.15e-04)
+shard 0/1 written: runs/climode_2020_trainmode/shard_0of1.npz
+# ClimODE (published checkpoint) on the 2019 test protocol: 88 init times
+
+| lead | z500 ClimODE / persistence | t850 ClimODE / persistence | t2m ClimODE / persistence | u10 ClimODE / persistence | v10 ClimODE / persistence |
+|---|---|---|---|---|---|
+| 24 h | 222.1 / 573.9 | 1.343 / 2.706 | 1.808 / 1.706 | 1.627 / 3.306 | 1.685 / 4.066 |
+| 48 h | 382.8 / 810.3 | 2.009 / 3.631 | 3.475 / 2.301 | 2.214 / 4.067 | 2.34 / 4.762 |
+| 72 h | 530.8 / 924 | 2.587 / 4.007 | 3.366 / 2.566 | 2.765 / 4.354 | 3.032 / 4.934 |
+| 96 h | 667.7 / 985.7 | 3.128 / 4.189 | 3.83 / 2.73 | 3.238 / 4.531 | 3.622 / 5.015 |
+| 120 h | 789.1 / 1021 | 3.648 / 4.283 | 4.291 / 2.853 | 3.646 / 4.585 | 4.153 / 5.027 |
+[12:03:59] ClimODE 2020 exit 0 CHAIN_BENCH2020_DONE

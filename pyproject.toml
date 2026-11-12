@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpclimate"
+version = "0.1.0"
+description = "Lie-guided (SO(2) gauge-equivariant) Dynamics V-Net GNN with conditional graph diffusion for climate/weather prediction"
+requires-python = ">=3.10"
+dependencies = [
+  "torch>=2.2",
+  "numpy",
+  "scipy",
+  "einops",  # imported by the lie-transformer fork
+  # equivariant / graph libraries, installed from the project's forks (pinned)
+  "e3nn @ git+https://github.com/nayehyeon61-glitch/e3nn@2aa7f58440a06b15352a2cbce01fa4c26f824969",
+  "torch_geometric @ git+https://github.com/nayehyeon61-glitch/pytorch_geometric@ea2c5f62d54c8b414dd3ea7139814a7c1ef83182",
+]
+
+[project.optional-dependencies]
+data = ["xarray", "zarr", "gcsfs", "pandas"]
+test = ["pytest"]
+# stage13 continuous neural-operator layer (SphericalConv needs torch-harmonics)
+neural_op = ["neuraloperator>=2.0", "torch-harmonics"]
+
+[tool.setuptools.packages.find]
+include = ["gpclimate*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::SyntaxWarning", "ignore::FutureWarning"]

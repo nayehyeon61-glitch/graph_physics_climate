@@ -1,0 +1,15 @@
+[05:27:36] stage18g waits for CHAIN_S18F_DONE
+[01:21:32] stage18g waits for CHAIN_S18F_DONE
+[03:45:02] stage18g waits for CHAIN_S18F_DONE
+[02:03:03] stage18g waits for CHAIN_S18F_DONE
+[06:39:35] stage18g waits for CHAIN_S18F_DONE
+[19:55:39] stage18g start: runs/era5_64x32_s18d_laplace config + core_geometry, base runs/era5_64x32_s18_core ()
+[04:31:02] stage18g pipeline exit 0
+[04:50:20] stage18g eval_2020 exit 0
+[05:10:25] stage18g eval_2022 exit 0
+vs parent runs/era5_64x32_s18d_laplace:
+{"adopt": false, "improved_leads": 3, "mean_gain_pct": 0.0, "gain_pct": {"1": 0.0, "2": 0.0, "3": 0.0, "4": -0.0, "5": -0.0}, "candidate": "runs/era5_64x32_s18g_geom/eval.json", "baseline": "runs/era5_64x32_s18d_laplace/eval.json"}
+vs base runs/era5_64x32_s18_core:
+{"adopt": false, "improved_leads": 5, "mean_gain_pct": 0.08, "gain_pct": {"1": 0.11, "2": 0.04, "3": 0.04, "4": 0.07, "5": 0.13}, "candidate": "runs/era5_64x32_s18g_geom/eval.json", "baseline": "runs/era5_64x32_s18_core/eval.json"}
+stage18g REJECTED
+[05:10:25] stage18g done CHAIN_S18G_DONE

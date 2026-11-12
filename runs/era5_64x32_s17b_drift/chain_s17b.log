@@ -1,0 +1,2 @@
+[10:46:12] stage17b waits for CHAIN_S17A_DONE
+[11:38:42] stage17b cancelled (감자 2026-11-07 20:38 KST: '17b 취소, 17c 뒤 core'); stage17c now follows stage17a

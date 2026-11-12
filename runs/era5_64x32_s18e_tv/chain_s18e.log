@@ -1,0 +1,17 @@
+[02:46:49] stage18e waits for CHAIN_S18D_DONE
+[01:21:32] stage18e waits for CHAIN_S18D_DONE
+[03:45:02] stage18e waits for CHAIN_S18D_DONE
+[21:13:07] stage18e start: stage18d config + core_tv, base runs/era5_64x32_s18_core ()
+[02:03:03] stage18e waits for CHAIN_S18D_DONE
+[02:03:03] stage18e start: stage18d config + core_tv, base runs/era5_64x32_s18_core ()
+[06:39:35] stage18e waits for CHAIN_S18D_DONE
+[06:39:36] stage18e start: stage18d config + core_tv, base runs/era5_64x32_s18_core ()
+[09:20:47] stage18e pipeline exit 0
+[09:42:08] stage18e eval_2020 exit 0
+[10:02:55] stage18e eval_2022 exit 0
+vs stage18d runs/era5_64x32_s18d_laplace:
+{"adopt": false, "improved_leads": 2, "mean_gain_pct": -0.01, "gain_pct": {"1": -0.04, "2": -0.01, "3": 0.01, "4": 0.01, "5": -0.01}, "candidate": "runs/era5_64x32_s18e_tv/eval.json", "baseline": "runs/era5_64x32_s18d_laplace/eval.json"}
+vs base runs/era5_64x32_s18_core:
+{"adopt": false, "improved_leads": 5, "mean_gain_pct": 0.07, "gain_pct": {"1": 0.06, "2": 0.03, "3": 0.05, "4": 0.08, "5": 0.12}, "candidate": "runs/era5_64x32_s18e_tv/eval.json", "baseline": "runs/era5_64x32_s18_core/eval.json"}
+stage18e REJECTED
+[10:02:56] stage18e done CHAIN_S18E_DONE

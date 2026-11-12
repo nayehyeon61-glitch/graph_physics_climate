@@ -1,0 +1,139 @@
+[19:55:41] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[19:56:20] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[19:56:20] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[19:56:20] run runs/era5_64x32_s18g_geom: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[19:56:21] stage B[vnet]: vnet params 982154, steps 1000, batch 4, rollout steps 2 from step 0 (weight 1.0)
+[19:56:21] stage B[vnet]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift off, sub-step solar forcing, graph tendency core (beta-scaled guide transport + conservative face flux + source, core tokens C in PIGT, Laplace block, learned dual geometry (power diagram, shift <= 0.25 d))
+[19:56:21] stage B[vnet]: V-Net initialised from runs/era5_64x32_s9b_merged/vnet.pt (new: ['fusion.0.layers.0.norm_c.gain_v', 'fusion.0.layers.0.norm_c.ln.weight', 'fusion.0.layers.0.norm_c.ln.bias', 'fusion.0.layers.0.attn_h.type_bias_x', 'fusion.0.layers.0.attn_h.k_x.0.w_re', 'fusion.0.layers.0.attn_h.k_x.0.w_im', 'fusion.0.layers.0.attn_h.k_x.0.lin_s.weight', 'fusion.0.layers.0.attn_h.v_x.0.w_re', 'fusion.0.layers.0.attn_h.v_x.0.w_im', 'fusion.0.layers.0.attn_h.v_x.0.lin_s.weight', 'fusion.0.layers.0.attn_h.v_x.0.lin_s.bias', 'fusion.1.layers.0.norm_c.gain_v', 'fusion.1.layers.0.norm_c.ln.weight', 'fusion.1.layers.0.norm_c.ln.bias', 'fusion.1.layers.0.attn_h.type_bias_x', 'fusion.1.layers.0.attn_h.k_x.0.w_re', 'fusion.1.layers.0.attn_h.k_x.0.w_im', 'fusion.1.layers.0.attn_h.k_x.0.lin_s.weight', 'fusion.1.layers.0.attn_h.v_x.0.w_re', 'fusion.1.layers.0.attn_h.v_x.0.w_im', 'fusion.1.layers.0.attn_h.v_x.0.lin_s.weight', 'fusion.1.layers.0.attn_h.v_x.0.lin_s.bias', 'fusion.2.layers.0.norm_c.gain_v', 'fusion.2.layers.0.norm_c.ln.weight', 'fusion.2.layers.0.norm_c.ln.bias', 'fusion.2.layers.0.attn_h.type_bias_x', 'fusion.2.layers.0.attn_h.k_x.0.w_re', 'fusion.2.layers.0.attn_h.k_x.0.w_im', 'fusion.2.layers.0.attn_h.k_x.0.lin_s.weight', 'fusion.2.layers.0.attn_h.v_x.0.w_re', 'fusion.2.layers.0.attn_h.v_x.0.w_im', 'fusion.2.layers.0.attn_h.v_x.0.lin_s.weight', 'fusion.2.layers.0.attn_h.v_x.0.lin_s.bias', 'fusion.3.layers.0.norm_c.gain_v', 'fusion.3.layers.0.norm_c.ln.weight', 'fusion.3.layers.0.norm_c.ln.bias', 'fusion.3.layers.0.attn_h.type_bias_x', 'fusion.3.layers.0.attn_h.k_x.0.w_re', 'fusion.3.layers.0.attn_h.k_x.0.w_im', 'fusion.3.layers.0.attn_h.k_x.0.lin_s.weight', 'fusion.3.layers.0.attn_h.v_x.0.w_re', 'fusion.3.layers.0.attn_h.v_x.0.w_im', 'fusion.3.layers.0.attn_h.v_x.0.lin_s.weight', 'fusion.3.layers.0.attn_h.v_x.0.lin_s.bias', 'fusion.4.layers.0.norm_c.gain_v', 'fusion.4.layers.0.norm_c.ln.weight', 'fusion.4.layers.0.norm_c.ln.bias', 'fusion.4.layers.0.attn_h.type_bias_x', 'fusion.4.layers.0.attn_h.k_x.0.w_re', 'fusion.4.layers.0.attn_h.k_x.0.w_im', 'fusion.4.layers.0.attn_h.k_x.0.lin_s.weight', 'fusion.4.layers.0.attn_h.v_x.0.w_re', 'fusion.4.layers.0.attn_h.v_x.0.w_im', 'fusion.4.layers.0.attn_h.v_x.0.lin_s.weight', 'fusion.4.layers.0.attn_h.v_x.0.lin_s.bias', 'core_embed.w_re', 'core_embed.w_im', 'core_embed.lin_s.weight', 'core_embed.lin_s.bias', 'beta_head.lin_s.weight', 'beta_head.lin_s.bias', 'flux_head.psi.0.weight', 'flux_head.psi.0.bias', 'flux_head.psi.2.weight', 'flux_head.psi.2.bias', 'laplace_head.lin_s.weight', 'laplace_head.lin_s.bias', 'geom_head.0.weight', 'geom_head.0.bias', 'geom_head.2.weight', 'geom_head.2.bias'])
+[20:00:10] B[vnet]     0  L_f 0.2846 L_roll 0.4861 L_phys 0.00004 L_int 0.3584 | val MSE 0.1009 2-step 0.1684 (persistence 0.3295) 6/12/18 h 0.0510/0.0901/0.0984 core beta 0.00/-0.00/0.00 rms T 0.000 F 0.000 S 0.059 D 0.0001 K 672 share P 0.00 S 1.00 geom |d| 0.000/0.00 A 1.00-1.00 |c| 0.000/0.00 | 228.94 s/step
+[22:05:04] B[vnet]   250  L_f 0.1472 L_roll 0.2938 L_phys 0.00014 L_int 0.1117 | val MSE 0.0459 2-step 0.0929 (persistence 0.3295) 6/12/18 h 0.0213/0.0315/0.0401 core beta 0.12/0.10/0.08 rms T 0.023 F 0.009 S 0.153 D 0.0022 K 29262 share P 0.15 S 0.91 geom |d| 0.004/0.05 A 0.91-1.12 |c| 0.005/0.04 | 30.77 s/step
+[00:06:36] B[vnet]   500  L_f 0.1334 L_roll 0.2642 L_phys 0.00003 L_int 0.0976 | val MSE 0.0437 2-step 0.0904 (persistence 0.3295) 6/12/18 h 0.0199/0.0294/0.0376 core beta 0.11/0.09/0.08 rms T 0.021 F 0.009 S 0.161 D 0.0031 K 59578 share P 0.13 S 0.92 geom |d| 0.010/0.13 A 0.77-1.35 |c| 0.013/0.10 | 29.97 s/step
+[02:06:15] B[vnet]   750  L_f 0.1262 L_roll 0.2412 L_phys 0.00006 L_int 0.0941 | val MSE 0.0420 2-step 0.0849 (persistence 0.3295) 6/12/18 h 0.0192/0.0284/0.0362 core beta 0.11/0.09/0.08 rms T 0.021 F 0.010 S 0.170 D 0.0038 K 75950 share P 0.12 S 0.93 geom |d| 0.010/0.15 A 0.76-1.39 |c| 0.014/0.11 | 29.55 s/step
+[04:07:30] B[vnet]   999  L_f 0.1236 L_roll 0.2274 L_phys 0.00005 L_int 0.0921 | val MSE 0.0415 2-step 0.0840 (persistence 0.3295) 6/12/18 h 0.0191/0.0281/0.0359 core beta 0.11/0.09/0.08 rms T 0.021 F 0.010 S 0.173 D 0.0041 K 80618 share P 0.12 S 0.93 geom |d| 0.010/0.15 A 0.76-1.38 |c| 0.014/0.11 | 29.47 s/step
+[04:07:30] stage B[vnet] done in 491.2 min, best val MSE 0.1256
+[04:07:41] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[04:08:21] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[04:08:21] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[04:08:21] run runs/era5_64x32_s18g_geom: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[04:08:23] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'physics_only', 'no_guide']
+[04:26:39] deterministic rollouts done in 18.3 min
+[04:26:42] physics share of the core (last sub-step of each lead): 24 h 0.130 48 h 0.129 72 h 0.143 96 h 0.151 120 h 0.159
+[04:26:42] eval written to runs/era5_64x32_s18g_geom/eval.json
+[04:26:45] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[04:27:22] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[04:27:22] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+{
+ "run": "runs/era5_64x32_s18g_geom",
+ "p_dependence_mse": {
+  "true_P": 0.04247033099333445,
+  "zero_P": 0.08287926266590755,
+  "shuffled_P": 0.08339549973607063,
+  "persistence": 0.349194457133611
+ },
+ "p_dependence_relative": {
+  "true_P": 1.0,
+  "zero_P": 1.9514626028913011,
+  "shuffled_P": 1.9636178429868896,
+  "persistence": 8.222079954790456
+ },
+ "linear_probe_r2_24h_scalar_tendency": {
+  "channels": [
+   "z500",
+   "t850",
+   "q700",
+   "t2m",
+   "msl"
+  ],
+  "state_only": [
+   0.06653839349746704,
+   0.13508695363998413,
+   0.0911257266998291,
+   0.05969017744064331,
+   0.07599544525146484
+  ],
+  "guide_only": [
+   0.38847649097442627,
+   0.4108617901802063,
+   0.2908627390861511,
+   0.24366497993469238,
+   0.34789735078811646
+  ],
+  "state_plus_guide": [
+   0.40748000144958496,
+   0.44545978307724,
+   0.29592597484588623,
+   0.25483405590057373,
+   0.355243444442749
+  ],
+  "physics_ops_only": [
+   0.27005261182785034,
+   0.32458430528640747,
+   0.24744313955307007,
+   0.21593844890594482,
+   0.33570122718811035
+  ],
+  "state_plus_physics_ops": [
+   0.2782202363014221,
+   0.34189629554748535,
+   0.2526128888130188,
+   0.2219122052192688,
+   0.34223324060440063
+  ]
+ },
+ "linear_probe_r2_mean": {
+  "state_only": 0.08568733930587769,
+  "guide_only": 0.33635267019271853,
+  "state_plus_guide": 0.3517886519432068,
+  "physics_ops_only": 0.27874394655227663,
+  "state_plus_physics_ops": 0.28737497329711914
+ },
+ "pigt_attention_mass": {
+  "sources": [
+   "H",
+   "P",
+   "O",
+   "C"
+  ],
+  "P0": [
+   [
+    0.15563178062438965,
+    0.2614673376083374,
+    0.5717980265617371,
+    0.011102239601314068
+   ]
+  ],
+  "P1": [
+   [
+    0.21197360754013062,
+    0.3054216206073761,
+    0.47286665439605713,
+    0.00973906647413969
+   ]
+  ],
+  "P2": [
+   [
+    0.3236350417137146,
+    0.25412577390670776,
+    0.41314080357551575,
+    0.00909850001335144
+   ]
+  ],
+  "P1u": [
+   [
+    0.4636577367782593,
+    0.24945306777954102,
+    0.27995604276657104,
+    0.006932870484888554
+   ]
+  ],
+  "P0u": [
+   [
+    0.3276920020580292,
+    0.311705619096756,
+    0.3490488529205322,
+    0.011554151773452759
+   ]
+  ]
+ }
+}
+PIPELINE_DONE

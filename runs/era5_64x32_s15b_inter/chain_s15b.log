@@ -1,0 +1,10 @@
+[18:24:14] stage15b intermediate-time loss start
+[00:10:35] container restart detected (~00:09 UTC), relaunching chain (Stage B resumes from step 3750 checkpoint)
+[00:10:35] stage15b intermediate-time loss start
+[04:36:12] container restart detected (~04:35 UTC), relaunching chain (Stage B resumes from step 7000 checkpoint)
+[04:36:12] stage15b intermediate-time loss start
+[07:56:24] stage15b pipeline exit 0
+[08:01:12] stage15b eval_2020 exit 0
+[08:05:49] stage15b eval_2022 exit 0
+{"adopt": false, "improved_leads": 0, "mean_gain_pct": -0.26, "gain_pct": {"1": -0.15, "2": -0.32, "3": -0.09, "4": -0.28, "5": -0.46}, "candidate": "runs/era5_64x32_s15b_inter/eval.json", "baseline": "runs/era5_64x32_s9b_merged/eval.json"}
+[08:05:49] stage15b done CHAIN_S15B_DONE

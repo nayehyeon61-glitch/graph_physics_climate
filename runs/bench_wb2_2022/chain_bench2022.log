@@ -1,0 +1,85 @@
+[12:04:52] 2020 benchmark finished -> 2022 benchmark evaluation
+[12:04:55] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:05:41] run runs/era5_64x32_s9_integrated: pairs train 14608 calib 1456 test 1452; graph [2562, 642, 162]
+[12:05:43] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[12:14:31] runs/era5_64x32_s9_integrated eval_2022 exit 0
+[12:14:34] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:15:13] run runs/era5_64x32_s7b_steps3x: pairs train 14608 calib 1456 test 1452; graph [2562, 642, 162]
+[12:15:14] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[12:21:30] deterministic rollouts done in 6.3 min
+[12:21:32] eval written to runs/era5_64x32_s7b_steps3x/eval_2022.json
+[12:21:33] runs/era5_64x32_s7b_steps3x eval_2022 exit 0
+[12:21:36] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:21:50] run runs/era5_64x32_s12b_width64: pairs train 2920 calib 1456 test 1452; graph [2562, 642, 162]
+[12:21:51] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[12:23:47] deterministic rollouts done in 1.9 min
+[12:23:49] eval written to runs/era5_64x32_s12b_width64/eval_2022.json
+[12:23:50] runs/era5_64x32_s12b_width64 eval_2022 exit 0
+[12:23:54] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:24:07] run runs/era5_64x32_s14a_prev: pairs train 2920 calib 1456 test 1452; graph [2562, 642, 162]
+[12:24:08] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[12:26:00] deterministic rollouts done in 1.9 min
+[12:26:02] eval written to runs/era5_64x32_s14a_prev/eval_2022.json
+[12:26:03] runs/era5_64x32_s14a_prev eval_2022 exit 0
+[12:26:07] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[12:26:20] run runs/era5_64x32_physops_roll: pairs train 2920 calib 1456 test 1452; graph [2562, 642, 162]
+[12:26:22] eval: 88 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'no_guide']
+[12:28:19] deterministic rollouts done in 2.0 min
+[12:28:21] eval written to runs/era5_64x32_physops_roll/eval_2022.json
+[12:28:22] runs/era5_64x32_physops_roll eval_2022 exit 0
+ClimODE {'class': 'Climate_encoder_free_uncertain', 'solver': 'euler', 'params': 2752099, 'eval_mode': False, 'ckpt_url': 'https://raw.githubusercontent.com/Aalto-QuML/ClimODE/e729d23e8799ce0e075699e76d60227d848d8d0c/checkpoints/ClimODE_global.pt', 'climode_dir': '/home/claude/nayehyeon61-glitch/physical_guide_flowmatching/third_party/climode'}; shard 0/1: 88 init times, leads [24, 48, 72, 96, 120] h
+ic 2/88 (22s, vel-fit loss 1.18e-04)
+ic 4/88 (50s, vel-fit loss 1.17e-04)
+ic 6/88 (106s, vel-fit loss 1.20e-04)
+ic 8/88 (176s, vel-fit loss 1.31e-04)
+ic 10/88 (240s, vel-fit loss 1.19e-04)
+ic 12/88 (263s, vel-fit loss 1.20e-04)
+ic 14/88 (287s, vel-fit loss 1.22e-04)
+ic 16/88 (307s, vel-fit loss 1.17e-04)
+ic 18/88 (329s, vel-fit loss 1.23e-04)
+ic 20/88 (350s, vel-fit loss 1.16e-04)
+ic 22/88 (373s, vel-fit loss 1.21e-04)
+ic 24/88 (394s, vel-fit loss 1.39e-04)
+ic 26/88 (416s, vel-fit loss 1.29e-04)
+ic 28/88 (438s, vel-fit loss 1.20e-04)
+ic 30/88 (462s, vel-fit loss 1.26e-04)
+ic 32/88 (484s, vel-fit loss 1.26e-04)
+ic 34/88 (507s, vel-fit loss 1.26e-04)
+ic 36/88 (529s, vel-fit loss 1.24e-04)
+ic 38/88 (694s, vel-fit loss 1.36e-04)
+ic 40/88 (773s, vel-fit loss 1.35e-04)
+ic 42/88 (793s, vel-fit loss 1.37e-04)
+ic 44/88 (841s, vel-fit loss 1.25e-04)
+ic 46/88 (862s, vel-fit loss 1.28e-04)
+ic 48/88 (883s, vel-fit loss 1.38e-04)
+ic 50/88 (903s, vel-fit loss 1.39e-04)
+ic 52/88 (923s, vel-fit loss 1.27e-04)
+ic 54/88 (943s, vel-fit loss 1.36e-04)
+ic 56/88 (962s, vel-fit loss 1.41e-04)
+ic 58/88 (983s, vel-fit loss 1.36e-04)
+ic 60/88 (1002s, vel-fit loss 1.27e-04)
+ic 62/88 (1023s, vel-fit loss 1.35e-04)
+ic 64/88 (1043s, vel-fit loss 1.31e-04)
+ic 66/88 (1062s, vel-fit loss 1.28e-04)
+ic 68/88 (1082s, vel-fit loss 1.24e-04)
+ic 70/88 (1103s, vel-fit loss 1.28e-04)
+ic 72/88 (1122s, vel-fit loss 1.25e-04)
+ic 74/88 (1141s, vel-fit loss 1.18e-04)
+ic 76/88 (1160s, vel-fit loss 1.21e-04)
+ic 78/88 (1179s, vel-fit loss 1.28e-04)
+ic 80/88 (1197s, vel-fit loss 1.15e-04)
+ic 82/88 (1217s, vel-fit loss 1.14e-04)
+ic 84/88 (1238s, vel-fit loss 1.16e-04)
+ic 86/88 (1258s, vel-fit loss 1.19e-04)
+ic 88/88 (1278s, vel-fit loss 1.24e-04)
+shard 0/1 written: runs/climode_2022_trainmode/shard_0of1.npz
+# ClimODE (published checkpoint) on the 2019 test protocol: 88 init times
+
+| lead | z500 ClimODE / persistence | t850 ClimODE / persistence | t2m ClimODE / persistence | u10 ClimODE / persistence | v10 ClimODE / persistence |
+|---|---|---|---|---|---|
+| 24 h | 213.6 / 573 | 1.32 / 2.668 | 1.807 / 1.693 | 1.585 / 3.248 | 1.64 / 4.05 |
+| 48 h | 364.9 / 813.1 | 1.98 / 3.569 | 3.477 / 2.295 | 2.175 / 4.059 | 2.278 / 4.772 |
+| 72 h | 506.2 / 927.5 | 2.517 / 3.934 | 3.344 / 2.568 | 2.73 / 4.333 | 2.96 / 4.917 |
+| 96 h | 646 / 987.2 | 3.068 / 4.116 | 3.802 / 2.753 | 3.238 / 4.503 | 3.587 / 4.99 |
+| 120 h | 767.3 / 1022 | 3.616 / 4.223 | 4.246 / 2.859 | 3.62 / 4.561 | 4.089 / 5.013 |
+[12:49:46] ClimODE 2022 exit 0 CHAIN_BENCH2022_DONE
