@@ -9,3 +9,11 @@
 [17:32:41] B[vnet]   250  L_f 0.1549 L_roll 0.3026 L_phys 0.00010 L_int 0.1137 L_src 0.5714 | val MSE 0.0482 2-step 0.0970 (persistence 0.3295) 6/12/18 h 0.0214/0.0323/0.0416 core beta 0.53/0.48/0.46 rms T 0.060 F 0.016 S 0.128 share P 0.38 S 0.78 | 32.56 s/step
 [19:38:36] B[vnet]   500  L_f 0.1437 L_roll 0.2786 L_phys 0.00013 L_int 0.1007 L_src 0.4469 | val MSE 0.0455 2-step 0.0934 (persistence 0.3295) 6/12/18 h 0.0200/0.0300/0.0388 core beta 0.37/0.36/0.34 rms T 0.157 F 0.103 S 0.135 share P 0.71 S 0.56 | 31.39 s/step
 [21:43:02] B[vnet]   750  L_f 0.1334 L_roll 0.2528 L_phys 0.00005 L_int 0.0961 L_src 0.4528 | val MSE 0.0439 2-step 0.0877 (persistence 0.3295) 6/12/18 h 0.0193/0.0290/0.0374 core beta 0.34/0.34/0.32 rms T 0.177 F 0.124 S 0.143 share P 0.72 S 0.55 | 30.88 s/step
+runs/era5_64x32_s21_physfirst/chain_s21.sh: line 31:  2093 Killed                  python -W ignore scripts/train_eval.py --run $RUN $FT --stage b --init-vnet $S9B/vnet.pt $BFLAGS $SRC
+[22:17:29] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[22:18:22] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[22:18:22] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[22:18:22] run runs/era5_64x32_s21a_physfirst: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[22:18:23] stage B[vnet]: vnet params 981732, steps 1000, batch 4, rollout steps 2 from step 0 (weight 1.0), source budget penalty 0.1 (squared V-Net source share of the core's sub-step change)
+[22:18:23] stage B[vnet]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift off, sub-step solar forcing, graph tendency core (beta-scaled guide transport + conservative face flux + source, core tokens C in PIGT, physics-first: beta starts at 1)
+[22:18:23] stage B[vnet]: resumed from step 751 (best 0.1315, 23193 s elapsed before)
