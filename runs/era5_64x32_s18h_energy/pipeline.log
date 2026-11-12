@@ -12,3 +12,11 @@
 [14:07:58] B[vnet]   999  L_f 0.1236 L_roll 0.2274 L_phys 0.00005 L_int 0.0921 | val MSE 0.0415 2-step 0.0840 (persistence 0.3295) 6/12/18 h 0.0191/0.0281/0.0358 core beta 0.11/0.09/0.08 rms T 0.021 F 0.010 S 0.173 D 0.0042 K 80260 share P 0.12 S 0.93 geom |d| 0.033/0.20 A 0.54-1.39 |c| 0.041/0.14 energy a -0.05/-0.18/0.02/0.02/-0.12/-0.07 corr +0.36/+0.52/+0.20/-0.04/+0.12/+0.50 | 32.14 s/step
 [14:07:58] stage B[vnet] done in 535.6 min, best val MSE 0.1255
 [14:08:06] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[14:08:48] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[14:08:48] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[14:08:48] run runs/era5_64x32_s18h_energy: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[14:08:49] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'physics_only', 'no_guide']
+[14:29:05] deterministic rollouts done in 20.3 min
+[14:29:10] physics share of the core (last sub-step of each lead): 24 h 0.131 48 h 0.129 72 h 0.142 96 h 0.149 120 h 0.156
+[14:29:10] eval written to runs/era5_64x32_s18h_energy/eval.json
+[14:29:14] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
