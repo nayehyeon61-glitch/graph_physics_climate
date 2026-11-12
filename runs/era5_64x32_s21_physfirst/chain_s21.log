@@ -4,3 +4,5 @@
 [05:59:45] stage21 waits for CHAIN_S18H_DONE
 [02:03:03] stage21 waits for CHAIN_S18H_DONE
 [06:39:35] stage21 waits for CHAIN_S18H_DONE
+[15:15:43] stage21 start on runs/era5_64x32_s18_core ()
+[15:15:44] stage21a start: runs/era5_64x32_s18_core config + core_beta_init 1, Stage B --source-penalty 0.1
