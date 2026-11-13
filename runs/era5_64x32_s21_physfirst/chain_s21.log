@@ -38,3 +38,5 @@ stage21a vs base runs/era5_64x32_s18_core:
 {"adopt": false, "improved_leads": 0, "mean_gain_pct": -1.05, "gain_pct": {"1": -2.03, "2": -1.49, "3": -1.07, "4": -0.55, "5": -0.09}, "candidate": "runs/era5_64x32_s21a_physfirst/eval.json", "baseline": "runs/era5_64x32_s18_core/eval.json"}
 stage21a REJECTED
 [01:43:49] stage21b start: Stage A guide dynamical core (4 x 6 h path) from runs/era5_64x32_s18_core/guide.pt
+[02:22:55] stage21b stage A exit 0
+[02:22:54] A   999  L_rec 0.0361 L_aux 0.1548 L_tend 0.3576 L_clos 0.0000 L_path 0.9433 | val rec 0.0237 aux 0.1456 tend 0.3373 clos 0.0000 (resolved only 0.0000) transport only 0.6960 persistence 0.9569 path 0.9351 | 2.29 s/step
