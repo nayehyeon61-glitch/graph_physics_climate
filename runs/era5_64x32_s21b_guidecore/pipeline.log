@@ -1,1 +1,11 @@
 [01:43:52] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[01:44:44] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[01:44:44] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[01:44:44] run runs/era5_64x32_s21b_guidecore: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[01:44:44] stage A: guide initialised from runs/era5_64x32_s18_core/guide.pt
+[01:44:44] stage A: Lie transport guide — tendency = semi-Lagrangian transport by the guide flow + source head
+[01:44:44] stage A: guide dynamical-core objective -- its own dynamics rolled 4 x 6 h from the input and matched to the observed states (weight 1.0, error in 6 h tendency units)
+[01:44:44] stage A: trunk frozen, training the heads only (25000 trainable of 276764)
+[01:44:45] stage A: forecast-state perturbation from runs/era5_64x32_s17a_dyn/vnet_noguide.pt with p=0.3
+[01:44:45] stage A: guide params 276764, steps 1000, batch 4
+[01:44:56] A     0  L_rec 0.0757 L_aux 0.2034 L_tend 0.4742 L_clos 0.0000 L_path 1.6749 | val rec 0.0232 aux 0.1451 tend 0.3490 clos 0.0000 (resolved only 0.0000) transport only 0.6825 persistence 0.9569 path 1.0635 | 11.58 s/step
