@@ -17,3 +17,10 @@ runs/era5_64x32_s21_physfirst/chain_s21.sh: line 31:  2093 Killed               
 [22:18:23] stage B[vnet]: vnet params 981732, steps 1000, batch 4, rollout steps 2 from step 0 (weight 1.0), source budget penalty 0.1 (squared V-Net source share of the core's sub-step change)
 [22:18:23] stage B[vnet]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift off, sub-step solar forcing, graph tendency core (beta-scaled guide transport + conservative face flux + source, core tokens C in PIGT, physics-first: beta starts at 1)
 [22:18:23] stage B[vnet]: resumed from step 751 (best 0.1315, 23193 s elapsed before)
+[00:17:20] B[vnet]   999  L_f 0.1300 L_roll 0.2390 L_phys 0.00005 L_int 0.0940 L_src 0.4361 | val MSE 0.0433 2-step 0.0867 (persistence 0.3295) 6/12/18 h 0.0192/0.0287/0.0369 core beta 0.34/0.33/0.33 rms T 0.181 F 0.123 S 0.145 share P 0.71 S 0.55 | 30.33 s/step
+[00:17:20] stage B[vnet] done in 505.5 min, best val MSE 0.1299
+[00:17:33] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[00:18:12] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[00:18:12] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[00:18:12] run runs/era5_64x32_s21a_physfirst: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[00:18:13] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'physics_only', 'no_guide']
