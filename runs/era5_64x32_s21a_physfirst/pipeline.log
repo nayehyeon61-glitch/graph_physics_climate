@@ -24,3 +24,7 @@ runs/era5_64x32_s21_physfirst/chain_s21.sh: line 31:  2093 Killed               
 [00:18:12] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
 [00:18:12] run runs/era5_64x32_s21a_physfirst: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
 [00:18:13] eval: 90 init times, leads [24, 48, 72, 96, 120] h, models ['lie_guided', 'physics_only', 'no_guide']
+[00:39:53] deterministic rollouts done in 21.7 min
+[00:39:58] physics share of the core (last sub-step of each lead): 24 h 0.512 48 h 0.704 72 h 0.697 96 h 0.721 120 h 0.720
+[00:39:58] eval written to runs/era5_64x32_s21a_physfirst/eval.json
+[00:40:01] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
