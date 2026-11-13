@@ -32,14 +32,17 @@ run_b_and_eval() {  # $1 = run dir, $2 = stage tag
   local RUN=$1 TAG=$2
   {
   python -W ignore scripts/train_eval.py --run $RUN $FT --stage b --init-vnet $S9B/vnet.pt $BFLAGS $SRC &&
-  python -W ignore scripts/train_eval.py --run $RUN $EV --n-ens-cases 0 &&
-  python -W ignore scripts/diagnose_guide.py --run $RUN --threads 4 && echo PIPELINE_DONE
+  { [ -f $RUN/eval.json ] || python -W ignore scripts/train_eval.py --run $RUN $EV --n-ens-cases 0; } &&
+  { [ -f $RUN/diagnose_guide.json ] || python -W ignore scripts/diagnose_guide.py --run $RUN --threads 4; } && echo PIPELINE_DONE
   } >> $RUN/pipeline.log 2>&1
-  echo "[$(date -u +%H:%M:%S)] $TAG pipeline exit $?" >> $LOG
+  local rc=$?
+  echo "[$(date -u +%H:%M:%S)] $TAG pipeline exit $rc" >> $LOG
   for Y in 2020 2022; do
+    [ -f $RUN/eval_$Y.json ] && continue  # restart safety: a finished year is not re-run
     python -W ignore scripts/train_eval.py --run $RUN $EV --n-ens-cases 0 --eval-data data/era5_wb2_64x32_${Y}test.npz \
       --eval-column-data data/era5_wb2_64x32_column10_${Y}test.npz --eval-tag $Y --max-cases 88 > $RUN/eval_$Y.log 2>&1
-    echo "[$(date -u +%H:%M:%S)] $TAG eval_$Y exit $?" >> $LOG
+    rc=$?
+    echo "[$(date -u +%H:%M:%S)] $TAG eval_$Y exit $rc" >> $LOG
   done
   echo "$TAG physics metrics (run, then base):" >> $LOG
   python scripts/core_physics_summary.py $RUN/eval.json $BASE/eval.json >> $LOG 2>&1
@@ -80,7 +83,8 @@ A="--threads 4 --batch 4 --lr 5e-4 --stage a --steps 1000 --val-every 200 --init
    --perturb-model $S17A/vnet_noguide.pt --perturb-prob 0.3 --guide-path-steps 4 --guide-path-weight 1.0"
 echo "[$(date -u +%H:%M:%S)] stage21b start: Stage A guide dynamical core (4 x 6 h path) from $BASE/guide.pt" >> $LOG
 python -W ignore scripts/train_eval.py --run $RUN $A >> $RUN/pipeline.log 2>&1
-echo "[$(date -u +%H:%M:%S)] stage21b stage A exit $?" >> $LOG
+rc=$?
+echo "[$(date -u +%H:%M:%S)] stage21b stage A exit $rc" >> $LOG
 grep "^\[.*\] A " $RUN/pipeline.log | tail -n 1 >> $LOG
 run_b_and_eval $RUN stage21b
 echo "stage21b vs stage21a:" >> $LOG

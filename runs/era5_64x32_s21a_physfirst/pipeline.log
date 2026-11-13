@@ -28,3 +28,128 @@ runs/era5_64x32_s21_physfirst/chain_s21.sh: line 31:  2093 Killed               
 [00:39:58] physics share of the core (last sub-step of each lead): 24 h 0.512 48 h 0.704 72 h 0.697 96 h 0.721 120 h 0.720
 [00:39:58] eval written to runs/era5_64x32_s21a_physfirst/eval.json
 [00:40:01] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[00:40:39] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[00:40:39] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+{
+ "run": "runs/era5_64x32_s21a_physfirst",
+ "p_dependence_mse": {
+  "true_P": 0.04430702639122804,
+  "zero_P": 0.0908956490457058,
+  "shuffled_P": 0.09625879302620888,
+  "persistence": 0.349194457133611
+ },
+ "p_dependence_relative": {
+  "true_P": 1.0,
+  "zero_P": 2.0514951340472134,
+  "shuffled_P": 2.172540133392168,
+  "persistence": 7.881243350665144
+ },
+ "linear_probe_r2_24h_scalar_tendency": {
+  "channels": [
+   "z500",
+   "t850",
+   "q700",
+   "t2m",
+   "msl"
+  ],
+  "state_only": [
+   0.06653839349746704,
+   0.13508695363998413,
+   0.0911257266998291,
+   0.05969017744064331,
+   0.07599544525146484
+  ],
+  "guide_only": [
+   0.38847649097442627,
+   0.4108617901802063,
+   0.2908627390861511,
+   0.24366497993469238,
+   0.34789735078811646
+  ],
+  "state_plus_guide": [
+   0.40748000144958496,
+   0.44545978307724,
+   0.29592597484588623,
+   0.25483405590057373,
+   0.355243444442749
+  ],
+  "physics_ops_only": [
+   0.27005261182785034,
+   0.32458430528640747,
+   0.24744313955307007,
+   0.21593844890594482,
+   0.33570122718811035
+  ],
+  "state_plus_physics_ops": [
+   0.2782202363014221,
+   0.34189629554748535,
+   0.2526128888130188,
+   0.2219122052192688,
+   0.34223324060440063
+  ]
+ },
+ "linear_probe_r2_mean": {
+  "state_only": 0.08568733930587769,
+  "guide_only": 0.33635267019271853,
+  "state_plus_guide": 0.3517886519432068,
+  "physics_ops_only": 0.27874394655227663,
+  "state_plus_physics_ops": 0.28737497329711914
+ },
+ "pigt_attention_mass": {
+  "sources": [
+   "H",
+   "P",
+   "O",
+   "C"
+  ],
+  "P0": [
+   [
+    0.15472005307674408,
+    0.26069486141204834,
+    0.573436439037323,
+    0.011149449273943901
+   ]
+  ],
+  "P1": [
+   [
+    0.20864196121692657,
+    0.3021244406700134,
+    0.47936883568763733,
+    0.009865470230579376
+   ]
+  ],
+  "P2": [
+   [
+    0.325547456741333,
+    0.25211387872695923,
+    0.41324755549430847,
+    0.00909090880304575
+   ]
+  ],
+  "P1u": [
+   [
+    0.4551314115524292,
+    0.24865983426570892,
+    0.28900977969169617,
+    0.007198875304311514
+   ]
+  ],
+  "P0u": [
+   [
+    0.3322473168373108,
+    0.2959408760070801,
+    0.36071765422821045,
+    0.011093310080468655
+   ]
+  ]
+ }
+}
+PIPELINE_DONE
+[00:55:29] feature matrix base11: 5 scalar + 3 vector-pair state channels (11 variables), 5 scalar + 1 vector conditions
+[00:57:21] column inputs fcn10: 8 scalar + 1 vector channels from data/era5_wb2_64x32_column10_2008_2019.npz (initial time only)
+[00:57:21] ODE path supervision: 3 path states (6 h, 12 h, 18 h), weight 1.0
+[00:57:21] run runs/era5_64x32_s21a_physfirst: pairs train 14608 calib 1456 test 1456; graph [2562, 642, 162]
+[00:57:23] stage B[vnet]: vnet params 981732, steps 1000, batch 4, rollout steps 2 from step 0 (weight 1.0), source budget penalty 0.1 (squared V-Net source share of the core's sub-step change)
+[00:57:23] stage B[vnet]: graph neural ODE dynamics, 4 sub-steps of 6 h, solver euler, physics drift off, sub-step solar forcing, graph tendency core (beta-scaled guide transport + conservative face flux + source, core tokens C in PIGT, physics-first: beta starts at 1)
+[00:57:23] stage B[vnet] already finished in this run directory; skipping (delete vnet_done.json to retrain)
+PIPELINE_DONE
